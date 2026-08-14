@@ -287,7 +287,7 @@
   .semanal-day .day-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;}
 
   @media print{
-    @page{ size: A4; margin: 14mm; }
+    @page{ size: A4 landscape; margin: 14mm; }
     .sidebar, .mobile-topbar, .pca-toolbar, .lock-banner, .no-print{display:none !important;}
     .only-print{display:block !important;}
     body{background:#fff;}
@@ -584,7 +584,7 @@ function computeEstadoSemana(f, pcaId){
   }
 
   var today = todayISO();
-  if(minD && today < minD) return 'POR EMPEZAR';
+  if(minD && today < minD) return 'POR COMPLETAR';
   if(maxD && today > maxD) return 'CON RETRASO';
   return 'EN PROCESO';
 }
@@ -607,7 +607,7 @@ function temasPendientesAnteriores(pcaId, semanaActualId){
   return temasAnt.filter(function(t){ return !vistos[t]; });
 }
 var ESTADO_SEMANA_STYLE = {
-  'POR EMPEZAR': {color:'#000000', bg:'#FFFFFF'},
+  'POR COMPLETAR': {color:'#8A6400', bg:'#FFF9DB'},
   'EN PROCESO': {color:'#D69E00', bg:'#FFF6D9'},
   'COMPLETADO': {color:'#0F5132', bg:'#E3F5EC'},
   'CON RETRASO': {color:'#7A1F1F', bg:'#EFD9DC'}
@@ -702,6 +702,7 @@ var state = {
   presentacionForm: {fechaInicio:'', fechaFin:''},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
   editingFechaLimiteId: null,
+  cargaEditing: false,
   loginError: '',
   registerError: ''
 };
@@ -1036,8 +1037,12 @@ function ensureCargaRows(d){
 }
 
 function renderCargaHoraria(d){
+  var savedFlat = load(LS.CARGA).filter(function(r){ return r.docenteId === d.id; });
+  if(!state.cargaEditing && savedFlat.length){
+    return renderCargaHorariaResumen(d);
+  }
   var rows = ensureCargaRows(d);
-  var rowsHtml = rows.map(function(r, i){ return cargaRowHtml(r, i); }).join('');
+  var rowsHtml = rows.map(function(r, i){ return cargaRowHtml(r, i, rows); }).join('');
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Carga Horaria</div><h1>Mi carga horaria</h1><p>Registra las asignaturas que impartes y el curso o grado a tu cargo. Puedes agregar hasta 10 filas, con opción de seguir aumentando.</p></div></div>'
   + '<div class="pca-doc">'
@@ -1048,8 +1053,35 @@ function renderCargaHoraria(d){
   + '    <div style="display:flex; gap:10px; padding:14px 20px; flex-wrap:wrap;">'
   + '      <button class="btn btn-ghost btn-sm" id="btnAddCargaRow">+ Agregar fila</button>'
   + '      <div class="spacer"></div>'
+  + (savedFlat.length ? '      <button class="btn btn-ghost" id="btnCancelCarga">Cancelar</button>' : '')
   + '      <button class="btn btn-primary" id="btnSaveCarga">Guardar carga horaria</button>'
   + '    </div>'
+  + '  </div>'
+  + '</div>';
+}
+function cargaRowResumenHtml(r){
+  var asigHtml = (r.asignaturas||[]).map(function(a){
+    var h = r.horas && r.horas[a];
+    return escapeHtml(a) + (h ? ' <span class="hint">(' + escapeHtml(String(h)) + 'h)</span>' : '');
+  }).join(', ');
+  return '<tr>'
+    + '<td>' + escapeHtml(r.nivel||'—') + '</td>'
+    + '<td>' + (r.especialidad ? escapeHtml(r.especialidad) : '—') + '</td>'
+    + '<td>' + escapeHtml((r.cursos||[]).join(', ')) + '</td>'
+    + '<td>' + (asigHtml || '—') + '</td>'
+    + '</tr>';
+}
+function renderCargaHorariaResumen(d){
+  var rows = ensureCargaRows(d);
+  var rowsHtml = rows.map(cargaRowResumenHtml).join('');
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Carga Horaria</div><h1>Mi carga horaria</h1><p>Esto es lo que tienes registrado actualmente. Haz clic en "Editar" para modificarlo.</p></div>'
+  + '  <button class="btn btn-primary" id="btnEditCarga">Editar</button>'
+  + '</div>'
+  + '<div class="pca-doc">'
+  + '  <div class="pca-band band-section">Datos Informativos</div>'
+  + '  <div class="pca-section" style="padding:0;">'
+  + '    <div class="table-wrap" style="border:none; border-radius:0; overflow-x:auto;"><table><thead><tr><th>Nivel Educativo</th><th>Especialidad</th><th>Curso(s)</th><th>Asignatura(s) y horas semanales</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
   + '  </div>'
   + '</div>';
 }
@@ -1061,8 +1093,26 @@ function renderCargaHoraria(d){
 function horasRequiereCurso(nivel){
   return nivel !== 'Iniciales y Preparatoria' && nivel !== 'Básica Elemental';
 }
-function cargaRowHtml(r, i){
-  var espOpts = especialidadesFor(r.nivel);
+/* Evita que el docente registre la misma combinación Nivel+Especialidad en dos filas distintas
+   de su Carga Horaria: una vez usada en una fila, esa combinación deja de ofrecerse en las
+   demás filas (debe seguir agregando cursos/asignaturas dentro de la misma fila en su lugar). */
+function cargaPairsUsadosEnOtrasFilas(rows, excludeId){
+  var used = {};
+  (rows||[]).forEach(function(r){
+    if(r.id===excludeId || !r.nivel) return;
+    used[r.nivel + '||' + (r.especialidad||'')] = true;
+  });
+  return used;
+}
+function cargaNivelAgotado(nivel, used){
+  var esps = especialidadesFor(nivel);
+  var posibles = esps.length ? esps : [''];
+  return posibles.every(function(e){ return used[nivel+'||'+e]; });
+}
+function cargaRowHtml(r, i, rows){
+  var usedPairs = cargaPairsUsadosEnOtrasFilas(rows, r.id);
+  var nivelOpts = NIVELES.filter(function(n){ return n===r.nivel || !cargaNivelAgotado(n, usedPairs); });
+  var espOpts = especialidadesFor(r.nivel).filter(function(e){ return e===r.especialidad || !usedPairs[r.nivel+'||'+e]; });
 
   var cursoOpts = cursosFor(r.nivel, r.especialidad);
   var allCursoOpts = cursoOpts.concat((r.cursos||[]).filter(function(c){ return cursoOpts.indexOf(c)===-1; }));
@@ -1100,7 +1150,7 @@ function cargaRowHtml(r, i){
   return ''
   + '<tr data-row="' + r.id + '">'
   + '  <td class="tabular">' + (i+1) + '</td>'
-  + '  <td><select class="cell-select" data-f="nivel">' + optionsHtml(NIVELES, r.nivel, 'Selecciona…') + '</select></td>'
+  + '  <td><select class="cell-select" data-f="nivel">' + optionsHtml(nivelOpts, r.nivel, 'Selecciona…') + '</select></td>'
   + '  <td><select class="cell-select" data-f="especialidad" ' + (espOpts.length? '' : 'disabled') + '>' + optionsHtml(espOpts, r.especialidad, espOpts.length? 'Selecciona…':'No aplica') + '</select></td>'
   + '  <td>'
   + '    <div class="checkbox-grid" data-cursobox="' + r.id + '">' + cursoBoxHtml + '</div>'
@@ -1127,6 +1177,15 @@ function optionsHtml(list, selected, placeholder){
 }
 
 function bindCargaHorariaEvents(){
+  var editBtn = document.getElementById('btnEditCarga');
+  if(editBtn){
+    editBtn.onclick = function(){
+      cargaEditRows = null;
+      state.cargaEditing = true;
+      render();
+    };
+    return;
+  }
   var body = document.getElementById('cargaBody');
   function findRow(id){ return cargaEditRows.find(function(r){ return r.id===id; }); }
 
@@ -1233,6 +1292,12 @@ function bindCargaHorariaEvents(){
     cargaEditRows.push(blankCargaRow());
     renderCargaBodyOnly();
   };
+  var cancelBtn = document.getElementById('btnCancelCarga');
+  if(cancelBtn) cancelBtn.onclick = function(){
+    cargaEditRows = null;
+    state.cargaEditing = false;
+    render();
+  };
   document.getElementById('btnSaveCarga').onclick = function(){
     var d = currentDocente();
     var all = load(LS.CARGA).filter(function(r){ return r.docenteId !== d.id; });
@@ -1246,13 +1311,14 @@ function bindCargaHorariaEvents(){
       });
     });
     save(LS.CARGA, all.concat(toSave));
-    toast('Carga horaria guardada (' + toSave.length + ' asignaturas). Los campos se limpiaron para un nuevo registro.', 'success');
-    cargaEditRows = [1].map(blankCargaRow);
-    renderCargaBodyOnly();
+    toast('Carga horaria guardada (' + toSave.length + ' asignaturas).', 'success');
+    cargaEditRows = null;
+    state.cargaEditing = false;
+    render();
   };
 }
 function renderCargaBodyOnly(){
-  document.getElementById('cargaBody').innerHTML = cargaEditRows.map(function(r,i){ return cargaRowHtml(r,i); }).join('');
+  document.getElementById('cargaBody').innerHTML = cargaEditRows.map(function(r,i){ return cargaRowHtml(r,i,cargaEditRows); }).join('');
   bindCargaHorariaEvents();
 }
 
@@ -1336,7 +1402,7 @@ function blankPca(d){
     id: uid('pca'), docenteId: d.id,
     nivel: base.nivel||'', especialidad: base.especialidad||'', curso:'', cursoManual:'', asignatura:'', asignaturaManual:'',
     cargaSemanal:'', semanasT1:13, semanasT2:13, semanasT3:13, fechaLimite: fechaLimiteVigente('pca'),
-    temporalizacion:[{id:uid('tm'), unidad:'Unidad 1', trimestre:'1er Trimestre', semanas:''}],
+    temporalizacion:[{id:uid('tm'), unidad:'Unidad 1', nombreUnidad:'', trimestre:'1er Trimestre', semanas:''}],
     unidades:[{id:uid('un'), nombre:'Unidad 1', filas:[weekRow(1)]}],
     elaboradoPor: nombreFormal(d),
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lic. José Gómez',
@@ -1400,7 +1466,8 @@ function renderPcaForm(d){
 
   var temporalizacionRows = (p.temporalizacion||[]).map(function(t){
     return '<tr data-tmrow="'+t.id+'">'
-    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="Nombre de la unidad" /></td>'
+    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="p.ej. Unidad 1" /></td>'
+    + '<td><input class="cell-input" data-tf="nombreUnidad" value="'+escapeHtml(t.nombreUnidad||'')+'" placeholder="Nombre de la unidad" /></td>'
     + '<td><select class="cell-select" data-tf="trimestre">' + optionsHtml(['1er Trimestre','2do Trimestre','3er Trimestre'], t.trimestre, null) + '</select></td>'
     + '<td><input class="cell-input tabular" data-tf="semanas" type="number" min="0" value="'+escapeHtml(t.semanas)+'" /></td>'
     + '<td><button class="row-remove" data-tmremove="'+t.id+'">✕</button></td>'
@@ -1439,9 +1506,9 @@ function renderPcaForm(d){
   + '  </div>'
   + '  <div class="pca-band band-section">Temporalización</div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th>Unidad didáctica</th><th>Trimestre en que se trabajará</th><th>N.º de semanas</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th>Unidad didáctica</th><th>Nombre de la Unidad</th><th>Trimestre en que se trabajará</th><th>N.º de semanas</th><th></th></tr></thead>'
   + '    <tbody id="tmBody">' + temporalizacionRows + '</tbody>'
-  + '    <tfoot><tr class="totals-row"><td colspan="2">TOTAL</td><td class="tabular">' + totalSemanas + '</td><td></td></tr></tfoot></table></div>'
+  + '    <tfoot><tr class="totals-row"><td colspan="3">TOTAL</td><td class="tabular">' + totalSemanas + '</td><td></td></tr></tfoot></table></div>'
   + '    <button class="btn btn-ghost btn-sm" id="btnAddTemporalizacion" style="margin-top:10px;">+ Agregar unidad a la temporalización</button>'
   + '  </div>'
   + '  <div class="pca-band band-section">Contenidos</div>'
@@ -1528,7 +1595,7 @@ function bindPcaFormEvents(){
 
   // Temporalización
   document.getElementById('btnAddTemporalizacion').onclick = function(){
-    p.temporalizacion.push({id:uid('tm'), unidad:'Unidad ' + (p.temporalizacion.length+1), trimestre:'1er Trimestre', semanas:''});
+    p.temporalizacion.push({id:uid('tm'), unidad:'Unidad ' + (p.temporalizacion.length+1), nombreUnidad:'', trimestre:'1er Trimestre', semanas:''});
     renderPcaFormAgain();
   };
   document.querySelectorAll('[data-tmremove]').forEach(function(btn){
@@ -1540,6 +1607,7 @@ function bindPcaFormEvents(){
       var t = p.temporalizacion.find(function(x){ return x.id===id; });
       el.addEventListener('input', function(){ t[el.getAttribute('data-tf')] = el.value; if(el.tagName==='SELECT') renderPcaFormAgain(); });
       if(el.tagName==='SELECT') el.addEventListener('change', function(){ t[el.getAttribute('data-tf')] = el.value; });
+      if(el.getAttribute('data-tf')==='semanas') el.addEventListener('change', function(){ renderPcaFormAgain(); });
     });
   });
 
@@ -2459,13 +2527,15 @@ function buildPcaDocxXml(p, cont){
   ]);
   body += docxPara('TEMPORALIZACIÓN', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   var tmRows = [docxRow([
-    docxCell('Unidad didáctica', {bold:true, fill:'E7EEFB', pct:2000}),
+    docxCell('Unidad didáctica', {bold:true, fill:'E7EEFB', pct:1500}),
+    docxCell('Nombre de la Unidad', {bold:true, fill:'E7EEFB', pct:2000}),
     docxCell('Trimestre', {bold:true, fill:'E7EEFB', pct:1500}),
     docxCell('N.º semanas', {bold:true, fill:'E7EEFB', pct:1500})
   ])];
   (p.temporalizacion||[]).forEach(function(t){
     tmRows.push(docxRow([
-      docxCell(t.unidad||'', {pct:2000}),
+      docxCell(t.unidad||'', {pct:1500}),
+      docxCell(t.nombreUnidad||'', {pct:2000}),
       docxCell(t.trimestre||'', {pct:1500}),
       docxCell(String(t.semanas!=null?t.semanas:''), {pct:1500, align:'center'})
     ]));
@@ -2507,7 +2577,7 @@ function buildPcaDocxXml(p, cont){
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
     + '<w:body>' + body
-    + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>'
+    + '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>'
     + '</w:body></w:document>';
 }
 
@@ -2682,7 +2752,7 @@ function buildPcaWordHtml(p, cont){
       + rows + '</table>';
   }
   var temporalizacionRows = (p.temporalizacion||[]).map(function(t){
-    return '<tr><td>'+escapeHtml(t.unidad)+'</td><td>'+escapeHtml(t.trimestre)+'</td><td style="text-align:center;">'+escapeHtml(t.semanas)+'</td></tr>';
+    return '<tr><td>'+escapeHtml(t.unidad)+'</td><td>'+escapeHtml(t.nombreUnidad||'')+'</td><td>'+escapeHtml(t.trimestre)+'</td><td style="text-align:center;">'+escapeHtml(t.semanas)+'</td></tr>';
   }).join('');
 
   return ''
@@ -2697,7 +2767,7 @@ function buildPcaWordHtml(p, cont){
   + '<p><strong>Asignatura:</strong> '+escapeHtml(asig)+' &nbsp; <strong>Carga horaria semanal:</strong> '+escapeHtml(p.cargaSemanal)+'</p>'
   + '<p><strong>N.º de semanas:</strong> 1er Trimestre: '+escapeHtml(p.semanasT1)+' · 2do Trimestre: '+escapeHtml(p.semanasT2)+' · 3er Trimestre: '+escapeHtml(p.semanasT3)+'</p>'
   + '<h2 style="background:#F2B705; padding:8px;">Temporalización</h2>'
-  + '<table border="1" cellspacing="0" cellpadding="6" style="width:100%; border-collapse:collapse; font-size:11pt;"><tr style="background:#E7EEFB;"><th>Unidad didáctica</th><th>Trimestre</th><th>N.º semanas</th></tr>' + temporalizacionRows + '</table>'
+  + '<table border="1" cellspacing="0" cellpadding="6" style="width:100%; border-collapse:collapse; font-size:11pt;"><tr style="background:#E7EEFB;"><th>Unidad didáctica</th><th>Nombre de la Unidad</th><th>Trimestre</th><th>N.º semanas</th></tr>' + temporalizacionRows + '</table>'
   + '<h2 style="background:#F2B705; padding:8px;">Contenidos</h2>'
   + (p.unidadesNombres||[]).map(unitSection).join('')
   + '<h2 style="background:#F2B705; padding:8px; margin-top:20px;">Firmas</h2>'
@@ -2724,10 +2794,10 @@ function buildPcaMarkdown(p, cont){
   lines.push('- **N.º de semanas:** 1er Trimestre: ' + p.semanasT1 + ' · 2do Trimestre: ' + p.semanasT2 + ' · 3er Trimestre: ' + p.semanasT3);
   lines.push('');
   lines.push('### Temporalización');
-  lines.push('| Unidad didáctica | Trimestre | N.º semanas |');
-  lines.push('|---|---|---|');
+  lines.push('| Unidad didáctica | Nombre de la Unidad | Trimestre | N.º semanas |');
+  lines.push('|---|---|---|---|');
   (p.temporalizacion||[]).forEach(function(t){
-    lines.push('| ' + mdEsc(t.unidad) + ' | ' + mdEsc(t.trimestre) + ' | ' + mdEsc(t.semanas) + ' |');
+    lines.push('| ' + mdEsc(t.unidad) + ' | ' + mdEsc(t.nombreUnidad||'') + ' | ' + mdEsc(t.trimestre) + ' | ' + mdEsc(t.semanas) + ' |');
   });
   lines.push('');
   lines.push('### Contenidos');
@@ -2828,7 +2898,7 @@ function buildSemanalDocxXml(s, d){
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
     + '<w:body>' + body
-    + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>'
+    + '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>'
     + '</w:body></w:document>';
 }
 function buildSemanalDocxBlob(s, d){
