@@ -310,18 +310,48 @@
 (function(){
 "use strict";
 
-/* ============================= DATA / STORAGE ============================= */
+/* ============================= DATA / STORAGE (Firestore) ============================= */
+/* LS sigue usándose como "nombre de tabla" en todo el código (DOCENTES, CARGA, etc.), pero ahora
+   apunta al nombre de la colección de Firestore en vez de una llave de localStorage. load()/save()
+   ya no son E/S directa: son una caché en memoria (FS_CACHE) mantenida en tiempo real por
+   listeners de Firestore (ver attachRealtimeListeners). save() actualiza la caché al instante
+   (para que la UI se sienta inmediata) y en paralelo sincroniza los cambios hacia Firestore
+   comparando contra la versión anterior — así ningún llamador existente (load()/save() se usan
+   igual en más de cien lugares del código) necesitó cambiar. */
 var LS = {
-  DOCENTES: 'seb_docentes_v1',
-  CARGA: 'seb_carga_v1',
-  PCA: 'seb_pca_v1',
-  CONT: 'seb_contenidos_v1',
-  SEMANAL: 'seb_semanal_v1',
-  FECHAS_LIMITE: 'seb_fechaslimite_v1',
-  SESSION: 'seb_session_v1'
+  DOCENTES: 'DOCENTES',
+  CARGA: 'CARGA',
+  PCA: 'PCA',
+  CONT: 'CONT',
+  SEMANAL: 'SEMANAL',
+  FECHAS_LIMITE: 'FECHAS_LIMITE'
 };
-function load(key){ try{ var v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; } }
-function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+var FS_COLLECTION = {
+  DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite'
+};
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [] };
+function load(key){ return FS_CACHE[key] || []; }
+function save(key, val){
+  var old = FS_CACHE[key] || [];
+  var oldById = {}; old.forEach(function(r){ oldById[r.id] = r; });
+  var keptIds = {};
+  var writes = [];
+  (val||[]).forEach(function(r){
+    keptIds[r.id] = true;
+    var prev = oldById[r.id];
+    if(!prev || JSON.stringify(prev) !== JSON.stringify(r)){
+      writes.push(window.FB.setDoc(window.FB.doc(window.FB.db, FS_COLLECTION[key], String(r.id)), r));
+    }
+  });
+  old.forEach(function(r){
+    if(!keptIds[r.id]) writes.push(window.FB.deleteDoc(window.FB.doc(window.FB.db, FS_COLLECTION[key], String(r.id))));
+  });
+  FS_CACHE[key] = val;
+  Promise.all(writes).catch(function(e){
+    console.error('Error guardando en Firestore', key, e);
+    toast('No se pudo guardar en la nube (' + (e.message||e.code||e) + '). Revisa tu conexión.', 'error');
+  });
+}
 function uid(p){ return (p||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function nowISO(){ return new Date().toISOString(); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -344,12 +374,6 @@ function fmtDateTimeLocal(dtLocal){
   var d = new Date(dtLocal);
   if(isNaN(d.getTime())) return dtLocal;
   return d.toLocaleDateString('es-EC', {day:'2-digit', month:'short', year:'numeric'}) + ' · ' + d.toLocaleTimeString('es-EC', {hour:'2-digit', minute:'2-digit'});
-}
-
-async function hashPw(pw){
-  var enc = new TextEncoder().encode(pw);
-  var buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
 
 /* ============================= CURRICULUM (Ecuador) ============================= */
@@ -484,9 +508,13 @@ function misAsignaturasPara(docenteId, nivel, especialidad, curso){
   return Object.keys(set).sort();
 }
 /* ============================= SESSION ============================= */
-function getSessionId(){ return localStorage.getItem(LS.SESSION); }
-function setSessionId(id){ localStorage.setItem(LS.SESSION, id); }
-function clearSession(){ localStorage.removeItem(LS.SESSION); }
+/* La sesión la controla Firebase Auth (persistencia automática); CURRENT_UID lo mantiene
+   actualizado el listener onAuthStateChanged (ver abajo, sección FIREBASE BOOTSTRAP). */
+var CURRENT_UID = null;
+var FB_READY = false;
+function getSessionId(){ return CURRENT_UID; }
+function setSessionId(id){ CURRENT_UID = id; }
+function clearSession(){ CURRENT_UID = null; }
 function allDocentes(){ return load(LS.DOCENTES); }
 function currentDocente(){
   var id = getSessionId();
@@ -713,9 +741,15 @@ function goAuth(view){ state.authView = view; state.loginError=''; state.registe
 /* ============================= RENDER ROOT ============================= */
 function render(){
   var root = document.getElementById('app');
+  if(!FB_READY){
+    root.innerHTML = '<div class="center-screen"><div class="hint">Conectando…</div></div>';
+    return;
+  }
   if(!getSessionId()){
     root.innerHTML = state.authView === 'register' ? renderRegister() : renderLogin();
     bindAuthEvents();
+  } else if(!currentDocente()){
+    root.innerHTML = '<div class="center-screen"><div class="hint">Cargando tu perfil…</div></div>';
   } else {
     root.innerHTML = renderShell();
     bindShellEvents();
@@ -736,11 +770,11 @@ function renderLogin(){
   + '      <h1>Ingresar al sistema</h1>'
   + '      <div class="auth-sub">Portal para docentes: carga horaria y planes curriculares anuales (PCA).</div>'
   + '      <div class="form-error" id="loginError"></div>'
-  + '      <div class="field"><label>ID de usuario <span class="required">*</span></label><input type="text" id="loginId" autocomplete="username" placeholder="p.ej. jgomez" /></div>'
+  + '      <div class="field"><label>Correo institucional <span class="required">*</span></label><input type="email" id="loginId" autocomplete="username" placeholder="nombre.apellido@simonbolivar-ec.com" /></div>'
   + '      <div class="field"><label>Contraseña <span class="required">*</span></label><input type="password" id="loginPw" autocomplete="current-password" placeholder="••••••••" /></div>'
   + '      <button class="btn btn-primary btn-block" id="btnLogin">Ingresar</button>'
   + '      <div class="switch-line">¿No tienes una cuenta? <button id="toRegister">Crear usuario</button></div>'
-  + '      <div class="field hint" style="margin-top:2px;">Prototipo: tus datos se guardan únicamente en este navegador (almacenamiento local), no en un servidor compartido.</div>'
+  + '      <div class="switch-line"><button id="toResetPw" style="font-size:12.5px;">¿Olvidaste tu contraseña?</button></div>'
   + '    </div>'
   + '  </div>'
   + '</div>';
@@ -762,7 +796,8 @@ function renderRegister(){
   + '      <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input type="text" id="regNombres" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input type="text" id="regApellidos" /></div></div>'
   + '      <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="regCI" maxlength="10" placeholder="10 dígitos" /></div><div class="field"><label>Teléfono</label><input type="text" id="regTelefono" placeholder="09xxxxxxxx" /></div></div>'
   + '      <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="regEmail" placeholder="nombre.apellido@simonbolivar-ec.com" /></div>'
-  + '      <div class="field-row"><div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="regUserId" placeholder="ID de acceso" /></div><div class="field"></div></div>'
+  + '      <div class="field-row"><div class="field"><label>ID a usar (solo referencia) <span class="required">*</span></label><input type="text" id="regUserId" placeholder="p.ej. jgomez" /></div><div class="field"></div></div>'
+  + '      <div class="hint" style="margin-top:-8px; margin-bottom:10px;">Para ingresar al sistema siempre se usa el correo institucional, no este ID.</div>'
   + '      <div class="field"><label>Contraseña <span class="required">*</span></label><input type="password" id="regPw" /></div>'
   + '      <div class="hint">Después de crear tu cuenta, podrás registrar tu carga horaria (nivel, asignaturas y cursos) desde el menú "Mi Carga Horaria".</div>'
   + '      <button class="btn btn-primary btn-block" id="btnRegister">Crear usuario e ingresar</button>'
@@ -784,24 +819,58 @@ function bindAuthEvents(){
   if(pwField) pwField.addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
   var idField = document.getElementById('loginId');
   if(idField) idField.addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  var toReset = document.getElementById('toResetPw');
+  if(toReset) toReset.onclick = doResetPassword;
 
   var btnReg = document.getElementById('btnRegister');
   if(btnReg) btnReg.onclick = doRegister;
 }
 
+/* Mapea los códigos de error de Firebase Auth a mensajes en español para el usuario. */
+function mapAuthError(err){
+  var code = err && err.code;
+  var MAP = {
+    'auth/invalid-email': 'El correo no es válido.',
+    'auth/user-not-found': 'No existe una cuenta con ese correo.',
+    'auth/wrong-password': 'Contraseña incorrecta.',
+    'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+    'auth/email-already-in-use': 'Ese correo ya está registrado. Inicia sesión o usa "¿Olvidaste tu contraseña?".',
+    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+    'auth/too-many-requests': 'Demasiados intentos. Espera un momento e intenta de nuevo.',
+    'auth/network-request-failed': 'No se pudo conectar. Revisa tu conexión a internet.',
+    'auth/requires-recent-login': 'Por seguridad, cierra sesión, vuelve a entrar, e intenta este cambio de inmediato.'
+  };
+  return (code && MAP[code]) || (err && err.message) || 'Ocurrió un error inesperado.';
+}
+
 async function doLogin(){
-  var id = (document.getElementById('loginId').value || '').trim();
+  var email = (document.getElementById('loginId').value || '').trim();
   var pw = document.getElementById('loginPw').value || '';
   var errEl = document.getElementById('loginError');
-  if(!id || !pw){ errEl.textContent='Ingresa tu ID de usuario y contraseña.'; errEl.classList.add('show'); return; }
-  var docente = allDocentes().find(function(d){ return d.usuarioId.toLowerCase() === id.toLowerCase(); });
-  if(!docente){ errEl.textContent='No existe una cuenta con ese ID de usuario.'; errEl.classList.add('show'); return; }
-  var hash = await hashPw(pw);
-  if(hash !== docente.passwordHash){ errEl.textContent='Contraseña incorrecta.'; errEl.classList.add('show'); return; }
-  setSessionId(docente.id);
-  state.subview = 'dashboard';
-  render();
-  toast('¡Bienvenido/a, ' + docente.nombres + '!', 'success');
+  errEl.classList.remove('show');
+  if(!email || !pw){ errEl.textContent='Ingresa tu correo y contraseña.'; errEl.classList.add('show'); return; }
+  try{
+    await window.FB.signInWithEmailAndPassword(window.FB.auth, email, pw);
+    /* onAuthStateChanged (ver FIREBASE BOOTSTRAP) se encarga de cargar el perfil, activar los
+       listeners en tiempo real, y llamar a render() — aquí no hace falta hacerlo. */
+  }catch(err){
+    errEl.textContent = mapAuthError(err);
+    errEl.classList.add('show');
+  }
+}
+
+async function doResetPassword(){
+  var email = (document.getElementById('loginId').value || '').trim();
+  var errEl = document.getElementById('loginError');
+  errEl.classList.remove('show');
+  if(!email){ errEl.textContent='Escribe tu correo arriba primero, luego haz clic en "¿Olvidaste tu contraseña?".'; errEl.classList.add('show'); return; }
+  try{
+    await window.FB.sendPasswordResetEmail(window.FB.auth, email);
+    toast('Te enviamos un correo a ' + email + ' para restablecer tu contraseña.', 'success');
+  }catch(err){
+    errEl.textContent = mapAuthError(err);
+    errEl.classList.add('show');
+  }
 }
 
 async function doRegister(){
@@ -822,36 +891,37 @@ async function doRegister(){
   if(!/^\d{10}$/.test(ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
   if(!/^\S+@\S+\.\S+$/.test(email)) return fail('Ingresa un correo institucional válido.');
   if(pw.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
-  var docentes = allDocentes();
-  if(docentes.some(function(d){ return d.usuarioId.toLowerCase() === usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
 
-  var passwordHash = await hashPw(pw);
-  var role = docentes.length === 0 ? 'admin' : 'docente';
+  var snap;
+  try{
+    snap = await window.FB.getDocs(window.FB.collection(window.FB.db, FS_COLLECTION.DOCENTES));
+  }catch(err){ return fail(mapAuthError(err)); }
+  var existentes = []; snap.forEach(function(d){ existentes.push(d.data()); });
+  if(existentes.some(function(d){ return (d.usuarioId||'').toLowerCase() === usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
+  var role = existentes.length === 0 ? 'admin' : 'docente';
+
+  var cred;
+  try{
+    cred = await window.FB.createUserWithEmailAndPassword(window.FB.auth, email, pw);
+  }catch(err){ return fail(mapAuthError(err)); }
+
   var docente = {
-    id: uid('doc'),
+    id: cred.user.uid,
     titulo: titulo, nombres: nombres, apellidos: apellidos, ci: ci, telefono: telefono,
-    email: email, usuarioId: usuarioId, passwordHash: passwordHash,
+    email: email, usuarioId: usuarioId,
     role: role,
     createdAt: nowISO()
   };
-  docentes.push(docente);
-  save(LS.DOCENTES, docentes);
+  try{
+    await window.FB.setDoc(window.FB.doc(window.FB.db, FS_COLLECTION.DOCENTES, docente.id), docente);
+  }catch(err){
+    return fail('Tu cuenta se creó pero no se pudo guardar tu perfil (' + mapAuthError(err) + '). Cierra esta página e intenta iniciar sesión de nuevo.');
+  }
 
-  setSessionId(docente.id);
-  state.subview = 'dashboard';
-  render();
   toast(role === 'admin'
     ? '¡Bienvenido/a, ' + docente.nombres + '! Eres el primer usuario, así que tu cuenta es Administrador.'
     : '¡Bienvenido/a, ' + docente.nombres + '! Tu cuenta fue creada.', 'success');
-}
-
-function ensureAdminExists(){
-  var docentes = allDocentes();
-  if(docentes.length === 0) return;
-  if(docentes.some(function(d){ return d.role === 'admin'; })) return;
-  var earliest = docentes.slice().sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); })[0];
-  earliest.role = 'admin';
-  save(LS.DOCENTES, docentes.map(function(d){ return d.id === earliest.id ? earliest : d; }));
+  /* onAuthStateChanged toma el control desde aquí (perfil ya escrito arriba antes de que llegue). */
 }
 
 /* ============================= APP SHELL ============================= */
@@ -910,7 +980,7 @@ function bindShellEvents(){
     btn.onclick = function(){ go(btn.getAttribute('data-nav')); };
   });
   var logout = document.getElementById('btnLogout');
-  if(logout) logout.onclick = function(){ clearSession(); state.subview='dashboard'; goAuth('login'); };
+  if(logout) logout.onclick = function(){ state.subview='dashboard'; window.FB.signOut(window.FB.auth); };
   var openBtn = document.getElementById('btnOpenSidebar');
   if(openBtn) openBtn.onclick = function(){ state.sidebarOpen = true; render(); };
   var scrim = document.getElementById('sidebarScrim');
@@ -942,7 +1012,7 @@ function renderPerfil(d){
   + '  <div class="field-row"><div class="field"><label>Título académico</label><input type="text" id="perfilTitulo" value="' + escapeHtml(d.titulo||'') + '" placeholder="Lic., Ing., Mg., Dr., etc." /></div><div class="field"></div></div>'
   + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input type="text" id="perfilNombres" value="' + escapeHtml(d.nombres) + '" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input type="text" id="perfilApellidos" value="' + escapeHtml(d.apellidos) + '" /></div></div>'
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="perfilCI" maxlength="10" value="' + escapeHtml(d.ci) + '" /></div><div class="field"><label>Teléfono</label><input type="text" id="perfilTelefono" value="' + escapeHtml(d.telefono||'') + '" /></div></div>'
-  + '  <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="perfilEmail" value="' + escapeHtml(d.email) + '" /></div>'
+  + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="perfilEmail" value="' + escapeHtml(d.email) + '" disabled /></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="perfilUserId" value="' + escapeHtml(d.usuarioId) + '" /></div>'
   + '  <div class="field"><label>Nueva contraseña</label><input type="password" id="perfilPw" placeholder="Déjalo en blanco para no cambiarla" /></div>'
   + '  <button class="btn btn-primary" id="btnSavePerfil" style="margin-top:6px;">Guardar cambios</button>'
@@ -959,20 +1029,23 @@ async function doSavePerfil(){
   var apellidos = document.getElementById('perfilApellidos').value.trim();
   var ci = document.getElementById('perfilCI').value.trim();
   var telefono = document.getElementById('perfilTelefono').value.trim();
-  var email = document.getElementById('perfilEmail').value.trim();
   var usuarioId = document.getElementById('perfilUserId').value.trim();
   var pw = document.getElementById('perfilPw').value;
 
-  if(!nombres || !apellidos || !ci || !email || !usuarioId) return fail('Completa todos los campos obligatorios (*).');
+  if(!nombres || !apellidos || !ci || !usuarioId) return fail('Completa todos los campos obligatorios (*).');
   if(!/^\d{10}$/.test(ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
-  if(!/^\S+@\S+\.\S+$/.test(email)) return fail('Ingresa un correo institucional válido.');
   if(pw && pw.length < 6) return fail('La nueva contraseña debe tener al menos 6 caracteres.');
   var docentes = allDocentes();
   if(docentes.some(function(x){ return x.id !== d.id && x.usuarioId.toLowerCase() === usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
 
+  if(pw){
+    try{
+      await window.FB.updatePassword(window.FB.auth.currentUser, pw);
+    }catch(err){ return fail(mapAuthError(err)); }
+  }
+
   d.titulo = titulo; d.nombres = nombres; d.apellidos = apellidos; d.ci = ci; d.telefono = telefono;
-  d.email = email; d.usuarioId = usuarioId;
-  if(pw) d.passwordHash = await hashPw(pw);
+  d.usuarioId = usuarioId;
 
   save(LS.DOCENTES, docentes.map(function(x){ return x.id === d.id ? d : x; }));
   render();
@@ -1854,23 +1927,6 @@ function siguienteNumeroSemanal(docenteId){
   var max = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).reduce(function(m,s){ return Math.max(m, s.numero||0); }, 0);
   return max + 1;
 }
-/* Asigna número a los planes ya guardados que no lo tengan (creados antes de esta función),
-   por docente y en orden de creación, para que también queden numerados. Se ejecuta una sola
-   vez al iniciar la app; si todos ya tienen número, no hace nada. */
-function ensureSemanalNumeros(){
-  var all = load(LS.SEMANAL);
-  var porDocente = {};
-  all.forEach(function(s){ (porDocente[s.docenteId] = porDocente[s.docenteId] || []).push(s); });
-  var changed = false;
-  Object.keys(porDocente).forEach(function(docId){
-    var mios = porDocente[docId];
-    var max = mios.reduce(function(m,s){ return Math.max(m, s.numero||0); }, 0);
-    var sinNumero = mios.filter(function(s){ return !s.numero; }).sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
-    sinNumero.forEach(function(s){ max += 1; s.numero = max; changed = true; });
-  });
-  if(changed) save(LS.SEMANAL, all);
-}
-
 /* Agrupa por trimestre y mes según la fecha de inicio del plan. Los límites de trimestre son
    una aproximación estándar del calendario Sierra (Sept-Dic / Ene-Mar / Abr-Jun); si la
    institución maneja otros cortes, este mapeo es el único lugar que hay que ajustar. */
@@ -3135,10 +3191,10 @@ function renderAdminEditDocente(){
   + '  <div class="field-row"><div class="field"><label>Título académico</label><input type="text" id="adTTitulo" value="' + escapeHtml(target.titulo||'') + '" /></div><div class="field"></div></div>'
   + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input type="text" id="adTNombres" value="' + escapeHtml(target.nombres) + '" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input type="text" id="adTApellidos" value="' + escapeHtml(target.apellidos) + '" /></div></div>'
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="adTCI" maxlength="10" value="' + escapeHtml(target.ci) + '" /></div><div class="field"><label>Teléfono</label><input type="text" id="adTTelefono" value="' + escapeHtml(target.telefono||'') + '" /></div></div>'
-  + '  <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" /></div>'
+  + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" disabled /><div class="hint">El correo de acceso no se puede cambiar desde aquí una vez creada la cuenta.</div></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="adTUserId" value="' + escapeHtml(target.usuarioId) + '" /></div>'
   + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol"><option value="docente" ' + (target.role!=='admin'?'selected':'') + '>Docente</option><option value="admin" ' + (target.role==='admin'?'selected':'') + '>Administrador</option></select></div>'
-  + '  <div class="field"><label>Nueva contraseña</label><input type="password" id="adTPw" placeholder="Déjalo en blanco para no cambiarla" /></div>'
+  + '  <div class="field"><label>Contraseña</label><button type="button" class="btn btn-ghost btn-sm" id="btnResetPwAdminDocente">Enviar correo para restablecer contraseña</button></div>'
   + '  <div style="display:flex; gap:10px; margin-top:10px;">'
   + '    <button class="btn btn-primary" id="btnSaveAdminDocente">Guardar cambios</button>'
   + (isSelf ? '' : '    <button class="btn btn-danger" id="btnDeleteAdminDocente">Eliminar docente</button>')
@@ -3156,15 +3212,11 @@ async function doSaveAdminDocente(){
   var apellidos = document.getElementById('adTApellidos').value.trim();
   var ci = document.getElementById('adTCI').value.trim();
   var telefono = document.getElementById('adTTelefono').value.trim();
-  var email = document.getElementById('adTEmail').value.trim();
   var usuarioId = document.getElementById('adTUserId').value.trim();
   var role = document.getElementById('adTRol').value;
-  var pw = document.getElementById('adTPw').value;
 
-  if(!nombres || !apellidos || !ci || !email || !usuarioId) return fail('Completa todos los campos obligatorios (*).');
+  if(!nombres || !apellidos || !ci || !usuarioId) return fail('Completa todos los campos obligatorios (*).');
   if(!/^\d{10}$/.test(ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
-  if(!/^\S+@\S+\.\S+$/.test(email)) return fail('Ingresa un correo institucional válido.');
-  if(pw && pw.length < 6) return fail('La nueva contraseña debe tener al menos 6 caracteres.');
   var all = allDocentes();
   if(all.some(function(x){ return x.id!==target.id && x.usuarioId.toLowerCase()===usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
   if(target.role==='admin' && role!=='admin'){
@@ -3173,8 +3225,7 @@ async function doSaveAdminDocente(){
   }
 
   target.titulo=titulo; target.nombres=nombres; target.apellidos=apellidos; target.ci=ci; target.telefono=telefono;
-  target.email=email; target.usuarioId=usuarioId; target.role=role;
-  if(pw) target.passwordHash = await hashPw(pw);
+  target.usuarioId=usuarioId; target.role=role;
   save(LS.DOCENTES, all.map(function(x){ return x.id===target.id ? target : x; }));
   toast('Docente actualizado correctamente.', 'success');
   state.subview = 'admin'; state.adminTab = 'docentes';
@@ -3187,6 +3238,15 @@ function bindAdminEditDocenteEvents(){
   if(prevBtn && !prevBtn.disabled) prevBtn.onclick = function(){ state.adminEditingDocenteId = prevBtn.getAttribute('data-prev-id'); render(); };
   var nextBtn = document.getElementById('btnNextDocente');
   if(nextBtn && !nextBtn.disabled) nextBtn.onclick = function(){ state.adminEditingDocenteId = nextBtn.getAttribute('data-next-id'); render(); };
+  var resetBtn = document.getElementById('btnResetPwAdminDocente');
+  if(resetBtn) resetBtn.onclick = async function(){
+    var target = allDocentes().find(function(x){ return x.id === state.adminEditingDocenteId; });
+    if(!target) return;
+    try{
+      await window.FB.sendPasswordResetEmail(window.FB.auth, target.email);
+      toast('Correo de restablecimiento enviado a ' + target.email + '.', 'success');
+    }catch(err){ toast(mapAuthError(err), 'error'); }
+  };
   var delBtn = document.getElementById('btnDeleteAdminDocente');
   if(delBtn) delBtn.onclick = function(){
     var target = allDocentes().find(function(x){ return x.id === state.adminEditingDocenteId; });
@@ -3195,12 +3255,13 @@ function bindAdminEditDocenteEvents(){
       var otherAdmins = allDocentes().filter(function(x){ return x.role==='admin' && x.id!==target.id; });
       if(otherAdmins.length===0){ toast('No puedes eliminar al único administrador del sistema.', 'error'); return; }
     }
-    confirmDialog('¿Eliminar a ' + target.nombres + ' ' + target.apellidos + ' y TODOS sus datos (carga horaria, planes curriculares y contenidos)? Esta acción no se puede deshacer.', function(){
+    confirmDialog('¿Eliminar a ' + target.nombres + ' ' + target.apellidos + ' y TODOS sus datos (carga horaria, planes curriculares, contenidos y planes semanales)? Su cuenta de acceso quedará sin ningún dato ni permiso. Esta acción no se puede deshacer.', function(){
       save(LS.DOCENTES, allDocentes().filter(function(x){ return x.id!==target.id; }));
       save(LS.CARGA, load(LS.CARGA).filter(function(r){ return r.docenteId!==target.id; }));
       var pcaIds = load(LS.PCA).filter(function(p){ return p.docenteId===target.id; }).map(function(p){ return p.id; });
       save(LS.PCA, load(LS.PCA).filter(function(p){ return p.docenteId!==target.id; }));
       save(LS.CONT, load(LS.CONT).filter(function(c){ return pcaIds.indexOf(c.pcaId)===-1; }));
+      save(LS.SEMANAL, load(LS.SEMANAL).filter(function(s){ return s.docenteId!==target.id; }));
       toast('Docente eliminado.', 'success');
       state.subview='admin'; state.adminTab='docentes';
       render();
@@ -3249,16 +3310,25 @@ async function doCreateAdminDocente(){
   var docentes = allDocentes();
   if(docentes.some(function(x){ return x.usuarioId.toLowerCase() === usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
 
-  var passwordHash = await hashPw(pw);
+  var cred;
+  try{
+    /* Se crea en la app secundaria de Firebase para no cerrar la sesión del admin actual. */
+    cred = await window.FB.createUserWithEmailAndPassword(window.FB.secondaryAuth, email, pw);
+  }catch(err){ return fail(mapAuthError(err)); }
   var docente = {
-    id: uid('doc'),
+    id: cred.user.uid,
     titulo: titulo, nombres: nombres, apellidos: apellidos, ci: ci, telefono: telefono,
-    email: email, usuarioId: usuarioId, passwordHash: passwordHash,
+    email: email, usuarioId: usuarioId,
     role: role,
     createdAt: nowISO()
   };
-  docentes.push(docente);
-  save(LS.DOCENTES, docentes);
+  try{
+    await window.FB.setDoc(window.FB.doc(window.FB.db, FS_COLLECTION.DOCENTES, docente.id), docente);
+  }catch(err){
+    await window.FB.signOut(window.FB.secondaryAuth);
+    return fail('La cuenta se creó pero no se pudo guardar su perfil (' + mapAuthError(err) + '). Contacta soporte para revisar reglas de Firestore.');
+  }
+  await window.FB.signOut(window.FB.secondaryAuth);
   toast('Usuario creado correctamente.', 'success');
   state.subview = 'admin'; state.adminTab = 'docentes';
   render();
@@ -3821,8 +3891,8 @@ function renderDatabase(d){
   var cont = load(LS.CONT);
   var semanal = load(LS.SEMANAL);
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Base de Datos</div><h1>Respaldo de información</h1><p>El sistema guarda todo en este navegador (localStorage). Usa esta sección para respaldar o consolidar datos entre dispositivos.</p></div></div>'
-  + '<div class="db-warning">⚠️ Este es un prototipo autónomo (Artifact): no existe un servidor compartido entre docentes. Cada quien ve solo los datos guardados en su propio navegador. Para que el coordinador académico consolide la carga horaria de todos los docentes, cada uno debe <strong>exportar</strong> su respaldo .json y enviarlo para que sea <strong>importado / fusionado</strong> en una sola sesión.</div>'
+  + '<div class="page-head"><div><div class="eyebrow">Base de Datos</div><h1>Respaldo de información</h1><p>Los datos ya se guardan y sincronizan en la nube (Firebase) entre todos los docentes y el admin en tiempo real. Usa esta sección solo para tener un respaldo .json extra por seguridad.</p></div></div>'
+  + '<div class="db-warning">ℹ️ Esto es un respaldo adicional, no la fuente principal de datos: la información en vivo vive en Firebase y se comparte automáticamente entre todos. Usa "Exportar" solo para guardar una copia de seguridad periódica, e "Importar" únicamente si necesitas restaurar datos perdidos.</div>'
   + '<div class="grid-4" style="margin-top:18px;">'
   + '  <div class="stat"><div class="stat-num tabular">' + docentes.length + '</div><div class="stat-label">Docentes (DOCENTES)</div></div>'
   + '  <div class="stat"><div class="stat-num tabular">' + carga.length + '</div><div class="stat-label">Filas (CARGA HORARIA)</div></div>'
@@ -3895,9 +3965,89 @@ function mergeBy(key, incoming){
   return incoming.length;
 }
 
+/* ============================= FIREBASE BOOTSTRAP ============================= */
+/* Mantiene FS_CACHE sincronizada en tiempo real con Firestore mientras haya sesión activa:
+   onSnapshot entrega el estado inicial y cada cambio posterior (propio o de otro docente/admin),
+   así que un simple render() en cada callback basta para reflejar los cambios al instante en
+   todas las pestañas/dispositivos abiertos. */
+var FS_UNSUBS = [];
+function detachRealtimeListeners(){
+  FS_UNSUBS.forEach(function(u){ try{ u(); }catch(e){} });
+  FS_UNSUBS = [];
+}
+function attachRealtimeListeners(){
+  detachRealtimeListeners();
+  Object.keys(FS_COLLECTION).forEach(function(key){
+    var unsub = window.FB.onSnapshot(window.FB.collection(window.FB.db, FS_COLLECTION[key]), function(snap){
+      var arr = [];
+      snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
+      FS_CACHE[key] = arr;
+      render();
+    }, function(err){
+      console.error('Error de sincronización en tiempo real (' + key + ')', err);
+      toast('Se perdió la sincronización en tiempo real: ' + (err.message||err.code), 'error');
+    });
+    FS_UNSUBS.push(unsub);
+  });
+}
+
+window.addEventListener('firebase-ready', function(){
+  window.FB.onAuthStateChanged(window.FB.auth, function(user){
+    if(user){
+      CURRENT_UID = user.uid;
+      attachRealtimeListeners();
+    } else {
+      CURRENT_UID = null;
+      detachRealtimeListeners();
+      Object.keys(FS_CACHE).forEach(function(k){ FS_CACHE[k] = []; });
+      state.subview = 'dashboard';
+    }
+    FB_READY = true;
+    render();
+  });
+});
+
 /* ============================= INIT ============================= */
-ensureAdminExists();
-ensureSemanalNumeros();
 render();
 })();
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+  import {
+    getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    signOut, sendPasswordResetEmail, updatePassword
+  } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+  import {
+    getFirestore, doc, setDoc, deleteDoc, getDocs, collection, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyAevZ1ybMoSM2IsgJMHDZO16CJXPA7WQKA",
+    authDomain: "systemped-ba4e0.firebaseapp.com",
+    projectId: "systemped-ba4e0",
+    storageBucket: "systemped-ba4e0.firebasestorage.app",
+    messagingSenderId: "1020268462987",
+    appId: "1:1020268462987:web:d55a3cc355cd57161d258e"
+  };
+
+  var app = initializeApp(firebaseConfig);
+  var auth = getAuth(app);
+  var db = getFirestore(app);
+
+  /* App secundaria: permite al admin crear una cuenta nueva (createUserWithEmailAndPassword)
+     sin cerrar su propia sesión — Firebase Auth normalmente cambia la sesión activa al usuario
+     recién creado, así que ese registro se hace en una instancia aparte y se cierra de inmediato. */
+  var secondaryApp = initializeApp(firebaseConfig, 'Secondary');
+  var secondaryAuth = getAuth(secondaryApp);
+
+  window.FB = {
+    auth: auth, db: db, secondaryAuth: secondaryAuth,
+    onAuthStateChanged: onAuthStateChanged, signInWithEmailAndPassword: signInWithEmailAndPassword,
+    createUserWithEmailAndPassword: createUserWithEmailAndPassword, signOut: signOut,
+    sendPasswordResetEmail: sendPasswordResetEmail, updatePassword: updatePassword,
+    doc: doc, setDoc: setDoc, deleteDoc: deleteDoc, getDocs: getDocs, collection: collection, onSnapshot: onSnapshot
+  };
+
+  window.dispatchEvent(new Event('firebase-ready'));
 </script>
