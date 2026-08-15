@@ -727,6 +727,7 @@ var state = {
   semanalReturnTo: 'semanallist',
   adminTab: 'docentes',
   adminEditingDocenteId: null,
+  editingAdminDocente: null,  // working copy of the docente being edited by admin (survives concurrent real-time updates)
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
@@ -3177,8 +3178,16 @@ function ordenDocentesParaNavegar(){
 function renderAdminEditDocente(){
   var ordenados = ordenDocentesParaNavegar();
   var idx = ordenados.findIndex(function(x){ return x.id === state.adminEditingDocenteId; });
-  var target = ordenados[idx];
-  if(!target) return '<div class="card">Docente no encontrado.</div>';
+  var serverTarget = ordenados[idx];
+  if(!serverTarget) return '<div class="card">Docente no encontrado.</div>';
+  /* Se guarda una copia de trabajo en state (igual que en PCA/Plan Semanal) para que si llega
+     una actualización en tiempo real de Firestore mientras el admin tiene cambios sin guardar
+     en este formulario, no se le borren: el formulario sigue mostrando SU copia, no la del
+     servidor, hasta que él mismo guarde o cancele. */
+  if(!state.editingAdminDocente || state.editingAdminDocente.id !== serverTarget.id){
+    state.editingAdminDocente = Object.assign({}, serverTarget);
+  }
+  var target = state.editingAdminDocente;
   var isSelf = target.id === currentDocente().id;
   var prevId = idx>0 ? ordenados[idx-1].id : null;
   var nextId = idx<ordenados.length-1 ? ordenados[idx+1].id : null;
@@ -3206,24 +3215,25 @@ function renderAdminEditDocente(){
   + '</div>';
 }
 async function doSaveAdminDocente(){
-  var target = allDocentes().find(function(x){ return x.id === state.adminEditingDocenteId; });
+  var target = state.editingAdminDocente;
   var errEl = document.getElementById('adminDocenteError');
   function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
   errEl.classList.remove('show');
 
-  var titulo = document.getElementById('adTTitulo').value.trim();
-  var nombres = document.getElementById('adTNombres').value.trim();
-  var apellidos = document.getElementById('adTApellidos').value.trim();
-  var ci = document.getElementById('adTCI').value.trim();
-  var telefono = document.getElementById('adTTelefono').value.trim();
-  var usuarioId = document.getElementById('adTUserId').value.trim();
-  var role = document.getElementById('adTRol').value;
+  var original = allDocentes().find(function(x){ return x.id === target.id; }) || target;
+  var titulo = target.titulo.trim();
+  var nombres = target.nombres.trim();
+  var apellidos = target.apellidos.trim();
+  var ci = target.ci.trim();
+  var telefono = (target.telefono||'').trim();
+  var usuarioId = target.usuarioId.trim();
+  var role = target.role;
 
   if(!nombres || !apellidos || !ci || !usuarioId) return fail('Completa todos los campos obligatorios (*).');
   if(!/^\d{10}$/.test(ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
   var all = allDocentes();
   if(all.some(function(x){ return x.id!==target.id && x.usuarioId.toLowerCase()===usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
-  if(target.role==='admin' && role!=='admin'){
+  if(original.role==='admin' && role!=='admin'){
     var otherAdmins = all.filter(function(x){ return x.role==='admin' && x.id!==target.id; });
     if(otherAdmins.length===0) return fail('No puedes quitar el rol de administrador: es el único administrador del sistema.');
   }
@@ -3231,21 +3241,26 @@ async function doSaveAdminDocente(){
   target.titulo=titulo; target.nombres=nombres; target.apellidos=apellidos; target.ci=ci; target.telefono=telefono;
   target.usuarioId=usuarioId; target.role=role;
   save(LS.DOCENTES, all.map(function(x){ return x.id===target.id ? target : x; }));
+  state.editingAdminDocente = null;
   toast('Docente actualizado correctamente.', 'success');
   state.subview = 'admin'; state.adminTab = 'docentes';
   render();
 }
 function bindAdminEditDocenteEvents(){
-  document.getElementById('btnBackToAdminDocentes').onclick = function(){ state.subview='admin'; state.adminTab='docentes'; render(); };
+  var target = state.editingAdminDocente;
+  document.getElementById('btnBackToAdminDocentes').onclick = function(){ state.editingAdminDocente=null; state.subview='admin'; state.adminTab='docentes'; render(); };
   document.getElementById('btnSaveAdminDocente').onclick = doSaveAdminDocente;
+  [['adTTitulo','titulo'], ['adTNombres','nombres'], ['adTApellidos','apellidos'], ['adTCI','ci'], ['adTTelefono','telefono'], ['adTUserId','usuarioId']].forEach(function(pair){
+    var el = document.getElementById(pair[0]);
+    el.addEventListener('input', function(){ target[pair[1]] = el.value; });
+  });
+  document.getElementById('adTRol').addEventListener('change', function(e){ target.role = e.target.value; });
   var prevBtn = document.getElementById('btnPrevDocente');
-  if(prevBtn && !prevBtn.disabled) prevBtn.onclick = function(){ state.adminEditingDocenteId = prevBtn.getAttribute('data-prev-id'); render(); };
+  if(prevBtn && !prevBtn.disabled) prevBtn.onclick = function(){ state.editingAdminDocente=null; state.adminEditingDocenteId = prevBtn.getAttribute('data-prev-id'); render(); };
   var nextBtn = document.getElementById('btnNextDocente');
-  if(nextBtn && !nextBtn.disabled) nextBtn.onclick = function(){ state.adminEditingDocenteId = nextBtn.getAttribute('data-next-id'); render(); };
+  if(nextBtn && !nextBtn.disabled) nextBtn.onclick = function(){ state.editingAdminDocente=null; state.adminEditingDocenteId = nextBtn.getAttribute('data-next-id'); render(); };
   var resetBtn = document.getElementById('btnResetPwAdminDocente');
   if(resetBtn) resetBtn.onclick = async function(){
-    var target = allDocentes().find(function(x){ return x.id === state.adminEditingDocenteId; });
-    if(!target) return;
     try{
       await window.FB.sendPasswordResetEmail(window.FB.auth, target.email);
       toast('Correo de restablecimiento enviado a ' + target.email + '.', 'success');
@@ -3253,8 +3268,6 @@ function bindAdminEditDocenteEvents(){
   };
   var delBtn = document.getElementById('btnDeleteAdminDocente');
   if(delBtn) delBtn.onclick = function(){
-    var target = allDocentes().find(function(x){ return x.id === state.adminEditingDocenteId; });
-    if(!target) return;
     if(target.role==='admin'){
       var otherAdmins = allDocentes().filter(function(x){ return x.role==='admin' && x.id!==target.id; });
       if(otherAdmins.length===0){ toast('No puedes eliminar al único administrador del sistema.', 'error'); return; }
@@ -3266,6 +3279,7 @@ function bindAdminEditDocenteEvents(){
       save(LS.PCA, load(LS.PCA).filter(function(p){ return p.docenteId!==target.id; }));
       save(LS.CONT, load(LS.CONT).filter(function(c){ return pcaIds.indexOf(c.pcaId)===-1; }));
       save(LS.SEMANAL, load(LS.SEMANAL).filter(function(s){ return s.docenteId!==target.id; }));
+      state.editingAdminDocente = null;
       toast('Docente eliminado.', 'success');
       state.subview='admin'; state.adminTab='docentes';
       render();
