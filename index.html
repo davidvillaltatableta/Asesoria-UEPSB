@@ -1,4 +1,5 @@
 <title>Sistema Académico · UEP Simón Bolívar</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -92,7 +93,7 @@
   .auth-wrap{width:100%; max-width:920px; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:0; background:var(--surface); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-2); border:1px solid var(--line);}
   @media (max-width:760px){ .auth-wrap{grid-template-columns:1fr;} .auth-banner{display:none;} }
   .auth-banner{position:relative; min-height:100%; background:var(--blue-900);}
-  .auth-banner img{width:100%; height:100%; object-fit:cover; display:block; min-height:420px;}
+  .auth-banner img{width:100%; height:100%; object-fit:contain; display:block; min-height:420px;}
   .auth-banner .banner-caption{position:absolute; left:0; right:0; bottom:0; padding:18px 22px; background:linear-gradient(to top, rgba(6,14,30,.88), rgba(6,14,30,0)); color:#fff;}
   .auth-banner .banner-caption .eyebrow{font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.85;}
   .auth-form{padding:40px 36px; display:flex; flex-direction:column; gap:20px;}
@@ -898,7 +899,12 @@ async function doRegister(){
   }catch(err){ return fail(mapAuthError(err)); }
   var existentes = []; snap.forEach(function(d){ existentes.push(d.data()); });
   if(existentes.some(function(d){ return (d.usuarioId||'').toLowerCase() === usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
-  var role = existentes.length === 0 ? 'admin' : 'docente';
+  /* Toda cuenta que se registra por sí misma queda como 'docente' — nunca 'admin' — reforzado
+     también en las reglas de seguridad de Firestore, para que nadie pueda auto-otorgarse el rol
+     de administrador. Un administrador ya existente promueve a alguien desde Editar Docente, o
+     si el sistema está recién desplegado y todavía no hay ningún admin, se cambia el campo
+     "role" a "admin" manualmente una sola vez desde la consola de Firebase (Firestore → docentes). */
+  var role = 'docente';
 
   var cred;
   try{
@@ -918,9 +924,7 @@ async function doRegister(){
     return fail('Tu cuenta se creó pero no se pudo guardar tu perfil (' + mapAuthError(err) + '). Cierra esta página e intenta iniciar sesión de nuevo.');
   }
 
-  toast(role === 'admin'
-    ? '¡Bienvenido/a, ' + docente.nombres + '! Eres el primer usuario, así que tu cuenta es Administrador.'
-    : '¡Bienvenido/a, ' + docente.nombres + '! Tu cuenta fue creada.', 'success');
+  toast('¡Bienvenido/a, ' + docente.nombres + '! Tu cuenta fue creada.', 'success');
   /* onAuthStateChanged toma el control desde aquí (perfil ya escrito arriba antes de que llegue). */
 }
 
