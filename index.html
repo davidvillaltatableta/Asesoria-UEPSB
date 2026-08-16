@@ -527,6 +527,17 @@ function misAsignaturas(docenteId){
   load(LS.CARGA).filter(function(r){ return r.docenteId===docenteId; }).forEach(function(r){ if(r.asignatura) set[r.asignatura]=1; });
   return Object.keys(set).sort();
 }
+function misCursosTodos(docenteId){
+  var set = {};
+  load(LS.CARGA).filter(function(r){ return r.docenteId===docenteId; }).forEach(function(r){ if(r.curso) set[r.curso]=1; });
+  return Object.keys(set).sort();
+}
+/* "Banda A" = Iniciales a 6.º EGB (Iniciales y Preparatoria / Básica Elemental / Básica Media):
+   ahí se filtra solo por asignatura. "Banda B" = 7.º EGB a 3.º Bachillerato (Básica Superior /
+   Bachillerato): ahí se filtra también por curso. Se evalúa por el nivel de CADA PCA/Plan (no un
+   nivel fijo del docente), porque un mismo docente puede dictar en niveles de ambas bandas. */
+var NIVELES_BANDA_A = ['Iniciales y Preparatoria','Básica Elemental','Básica Media'];
+function nivelEsBandaA(nivel){ return NIVELES_BANDA_A.indexOf(nivel) !== -1; }
 var TITULO_SIGLAS = {
   'licenciado':'Lic.', 'licenciada':'Lic.', 'ingeniero':'Ing.', 'ingeniera':'Ing.',
   'magister':'Mg.', 'máster':'Mg.', 'master':'Mg.', 'doctor':'Dr.', 'doctora':'Dra.',
@@ -728,6 +739,8 @@ var state = {
   adminTab: 'docentes',
   adminEditingDocenteId: null,
   editingAdminDocente: null,  // working copy of the docente being edited by admin (survives concurrent real-time updates)
+  adminPcaFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
+  adminSemanalFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
@@ -1401,6 +1414,43 @@ function renderCargaBodyOnly(){
 }
 
 /* ============================= PCA LIST ============================= */
+/* ============================= FILTRO ADMIN: Docente / Fecha de corte / Asignatura / Curso =============================
+   Compartido entre la lista de PCA y la de Planes Semanales (solo admin). Asignatura y Curso solo
+   se habilitan una vez elegido un docente (sus opciones salen de la Carga Horaria de ESE docente).
+   El campo Curso solo tiene efecto sobre los PCA/Planes de niveles 7.º EGB a 3.º BGU — para
+   Iniciales a 6.º EGB, ver nivelEsBandaA(), el filtro de curso se ignora. */
+function adminFiltroBarraHtml(filtro, idPrefix, tituloCurso){
+  var docentes = allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docOpts = '<option value="">Todos los docentes</option>' + docentes.map(function(x){
+    return '<option value="'+x.id+'" '+(filtro.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
+  }).join('');
+  var asigOpts = filtro.docenteId ? misAsignaturas(filtro.docenteId) : [];
+  var cursoOpts = filtro.docenteId ? misCursosTodos(filtro.docenteId) : [];
+  return ''
+    + '<div class="card" style="margin-bottom:16px;">'
+    + '  <h2 style="font-size:14px;">Filtrar</h2>'
+    + '  <div class="grid-4">'
+    + '    <div class="field"><label>Docente</label><select class="cell-select" id="'+idPrefix+'Docente">'+docOpts+'</select></div>'
+    + '    <div class="field"><label>Asignatura</label><select class="cell-select" id="'+idPrefix+'Asignatura" '+(asigOpts.length?'':'disabled')+'>' + optionsHtml(asigOpts, filtro.asignatura, asigOpts.length?'Todas':'Elige un docente primero') + '</select></div>'
+    + '    <div class="field"><label>' + escapeHtml(tituloCurso) + '</label><select class="cell-select" id="'+idPrefix+'Curso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, filtro.curso, cursoOpts.length?'Todos':'Elige un docente primero') + '</select></div>'
+    + '    <div class="field"></div>'
+    + '  </div>'
+    + '  <div class="grid-2" style="max-width:520px; margin-top:10px;">'
+    + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="'+idPrefix+'FechaInicio" value="'+escapeHtml(filtro.fechaInicio||'')+'" /></div>'
+    + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="'+idPrefix+'FechaFin" value="'+escapeHtml(filtro.fechaFin||'')+'" /></div>'
+    + '  </div>'
+    + '</div>';
+}
+function bindAdminFiltroBarraEvents(filtro, idPrefix){
+  document.getElementById(idPrefix+'Docente').addEventListener('change', function(e){ filtro.docenteId=e.target.value; filtro.asignatura=''; filtro.curso=''; render(); });
+  var asigSel = document.getElementById(idPrefix+'Asignatura');
+  if(asigSel) asigSel.addEventListener('change', function(e){ filtro.asignatura=e.target.value; render(); });
+  var cursoSel = document.getElementById(idPrefix+'Curso');
+  if(cursoSel) cursoSel.addEventListener('change', function(e){ filtro.curso=e.target.value; render(); });
+  document.getElementById(idPrefix+'FechaInicio').addEventListener('change', function(e){ filtro.fechaInicio=e.target.value; render(); });
+  document.getElementById(idPrefix+'FechaFin').addEventListener('change', function(e){ filtro.fechaFin=e.target.value; render(); });
+}
+
 function renderPcaList(d){ return renderPcaListInner(d, false); }
 function renderAdminPca(){ return renderPcaListInner(currentDocente(), true); }
 
@@ -1410,6 +1460,21 @@ function renderPcaListInner(d, scopeAll){
   var pcas = (scopeAll ? all : all.filter(function(p){ return p.docenteId === d.id; })).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+
+  var filtroHtml = '';
+  if(scopeAll){
+    var filtro = state.adminPcaFilter;
+    if(filtro.docenteId) pcas = pcas.filter(function(p){ return p.docenteId===filtro.docenteId; });
+    if(filtro.fechaInicio) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) >= filtro.fechaInicio; });
+    if(filtro.fechaFin) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) <= filtro.fechaFin; });
+    pcas = pcas.filter(function(p){
+      var asigOk = !filtro.asignatura || p.asignatura===filtro.asignatura || p.asignaturaManual===filtro.asignatura;
+      if(nivelEsBandaA(p.nivel)) return asigOk;
+      var cursoOk = !filtro.curso || p.curso===filtro.curso || p.cursoManual===filtro.curso;
+      return asigOk && cursoOk;
+    });
+    filtroHtml = adminFiltroBarraHtml(filtro, 'apf', 'Curso (7.º EGB a 3.º BGU)');
+  }
 
   var rows = pcas.map(function(p){
     var nombre = (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '(sin asignatura)';
@@ -1440,9 +1505,9 @@ function renderPcaListInner(d, scopeAll){
     ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan, incluidos los bloqueados para los docentes.</p>'
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div>';
 
-  return head
+  return head + filtroHtml
   + (pcas.length === 0
-      ? '<div class="card"><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'Todavía no hay planes curriculares creados en el sistema.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
+      ? '<div class="card"><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
       : '<div class="card"><div class="table-wrap"><table><thead><tr>' + theadDocente + '<th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
 }
 function bindPcaListEvents(){
@@ -1453,6 +1518,7 @@ function bindPcaListEvents(){
   bindPcaListSharedEvents();
 }
 function bindPcaListSharedEvents(){
+  if(document.getElementById('apfDocente')) bindAdminFiltroBarraEvents(state.adminPcaFilter, 'apf');
   document.querySelectorAll('[data-edit-pca]').forEach(function(btn){
     btn.onclick = function(){ openPcaForm(btn.getAttribute('data-edit-pca'), state.subview==='admin' ? 'admin' : 'pcalist'); };
   });
@@ -1963,6 +2029,21 @@ function renderSemanalListInner(d, scopeAll){
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
 
+  var filtroHtml = '';
+  if(scopeAll){
+    var filtro = state.adminSemanalFilter;
+    if(filtro.docenteId) planes = planes.filter(function(s){ return s.docenteId===filtro.docenteId; });
+    if(filtro.fechaInicio) planes = planes.filter(function(s){ return (s.fechaInicio||'') >= filtro.fechaInicio; });
+    if(filtro.fechaFin) planes = planes.filter(function(s){ return (s.fechaInicio||'') <= filtro.fechaFin; });
+    planes = planes.filter(function(s){
+      var asigOk = !filtro.asignatura || s.asignatura===filtro.asignatura;
+      if(nivelEsBandaA(s.nivel)) return asigOk;
+      var cursoOk = !filtro.curso || s.curso===filtro.curso;
+      return asigOk && cursoOk;
+    });
+    filtroHtml = adminFiltroBarraHtml(filtro, 'asf', 'Curso (7.º EGB a 3.º BGU)');
+  }
+
   function rowHtml(s){
     var lockedForViewer = !!s.locked && !isAdmin;
     var owner = scopeAll ? docentesById[s.docenteId] : null;
@@ -1994,7 +2075,7 @@ function renderSemanalListInner(d, scopeAll){
     : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div>';
 
   if(planes.length === 0){
-    return head + '<div class="card"><div class="empty-state"><div class="ic">📅</div>' + (scopeAll ? 'Todavía no hay planes semanales creados en el sistema.' : 'Todavía no has creado ningún plan semanal.<br/><button class="btn btn-primary" id="btnNewSemanal2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
+    return head + filtroHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>' + (scopeAll ? 'No hay planes semanales que coincidan con el filtro.' : 'Todavía no has creado ningún plan semanal.<br/><button class="btn btn-primary" id="btnNewSemanal2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
   }
 
   // Agrupa por trimestre y, dentro de cada trimestre, por mes (según fecha de inicio del plan).
@@ -2013,8 +2094,22 @@ function renderSemanalListInner(d, scopeAll){
     if(!mesKeys.length) return '';
     var mesesHtml = mesKeys.map(function(mk){
       var grupo = meses[mk];
-      var filas = grupo.planes.slice().sort(function(a,b){ return (a.fechaInicio||'').localeCompare(b.fechaInicio||''); }).map(rowHtml).join('');
-      return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
+      // Dentro del mes, agrupa además por semana (mismo rango Fecha Inicio/Fin) para que los
+      // planes de una misma semana (p.ej. varias asignaturas) queden juntos bajo un encabezado.
+      var semanas = {}; var semanaOrder = [];
+      grupo.planes.forEach(function(s){
+        var key = (s.fechaInicio||'') + '|' + (s.fechaFin||'');
+        if(!semanas[key]){ semanas[key] = {fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, planes:[]}; semanaOrder.push(key); }
+        semanas[key].planes.push(s);
+      });
+      semanaOrder.sort();
+      var semanasHtml = semanaOrder.map(function(sk){
+        var g = semanas[sk];
+        var filas = g.planes.slice().sort(function(a,b){ return (a.asignatura||'').localeCompare(b.asignatura||''); }).map(rowHtml).join('');
+        var label = g.fechaInicio ? ('Semana del ' + fmtDate(g.fechaInicio) + ' al ' + fmtDate(g.fechaFin)) : 'Sin fecha de inicio';
+        return '<div style="margin-top:10px;"><h4 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; font-weight:700;">' + escapeHtml(label) + '</h4><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
+      }).join('');
+      return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3>' + semanasHtml + '</div>';
     }).join('');
     return '<div class="card"><h2>' + TRIMESTRE_LABELS[t] + '</h2>' + mesesHtml + '</div>';
   }).join('');
@@ -2023,7 +2118,7 @@ function renderSemanalListInner(d, scopeAll){
     ? '<div class="card"><h2>Sin fecha asignada</h2><div class="table-wrap"><table>' + theadHtml + '<tbody>' + sinFecha.map(rowHtml).join('') + '</tbody></table></div></div>'
     : '';
 
-  return head + gruposHtml + sinFechaHtml;
+  return head + filtroHtml + gruposHtml + sinFechaHtml;
 }
 function bindSemanalListEvents(){
   ['btnNewSemanal','btnNewSemanal2'].forEach(function(id){
@@ -2033,6 +2128,7 @@ function bindSemanalListEvents(){
   bindSemanalListSharedEvents();
 }
 function bindSemanalListSharedEvents(){
+  if(document.getElementById('asfDocente')) bindAdminFiltroBarraEvents(state.adminSemanalFilter, 'asf');
   document.querySelectorAll('[data-edit-semanal]').forEach(function(btn){
     btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-edit-semanal'), state.subview==='admin' ? 'admin' : 'semanallist'); };
   });
@@ -2072,6 +2168,17 @@ function blankSemanal(d){
     createdAt: nowISO(), updatedAt: nowISO()
   };
 }
+/* La sección Contenidos del PCA (de donde sale "row.unidad", p.ej. "Unidad 1") y la tabla de
+   Temporalización (de donde sale "Nombre de la Unidad", p.ej. "Los números reales") son dos
+   listas separadas dentro del mismo PCA — se unen aquí por el texto de "unidad" para mostrar
+   "Unidad 1 — Los números reales" en el campo Unidad Didáctica del Plan Semanal. */
+function unidadDidacticaConNombre(pcaId, unidadLabel){
+  if(!unidadLabel) return '';
+  var pca = load(LS.PCA).find(function(p){ return p.id===pcaId; });
+  var tm = pca && (pca.temporalizacion||[]).find(function(t){ return t.unidad===unidadLabel; });
+  var nombre = tm && tm.nombreUnidad;
+  return nombre ? (unidadLabel + ' — ' + nombre) : unidadLabel;
+}
 /* Usada al vincular automáticamente un PCA (nueva ficha, o al cambiar nivel/curso/asignatura):
    precarga la fecha de la primera semana del PCA para que el docente tenga un punto de partida
    editable, en vez de forzarlo a elegir la semana de una lista. Nivel de Logro y Contenidos
@@ -2085,7 +2192,7 @@ function applySemanaSelection(s, pcaId, rowId){
   if(row){
     s.fechaInicio = row.fechaInicio || s.fechaInicio;
     s.fechaFin = row.fechaFin || s.fechaFin;
-    s.unidadDidactica = row.unidad || '';
+    s.unidadDidactica = unidadDidacticaConNombre(pcaId, row.unidad);
     if(s.dias && s.dias[0]) s.dias[0].fecha = s.fechaInicio;
   }
 }
@@ -2104,7 +2211,7 @@ function applyFechaSelection(s){
   });
   if(match){
     s.semanaRowId = match.id;
-    s.unidadDidactica = match.unidad || '';
+    s.unidadDidactica = unidadDidacticaConNombre(s.pcaId, match.unidad);
     return;
   }
   // Sin coincidencia por fecha: si todavía no hay ninguna semana vinculada (p.ej. un plan
@@ -2112,7 +2219,7 @@ function applyFechaSelection(s){
   // primera semana del PCA como respaldo en vez de dejar Nivel de Logro/Contenidos sin nada.
   if(!s.semanaRowId && semanas.length){
     s.semanaRowId = semanas[0].id;
-    s.unidadDidactica = semanas[0].unidad || '';
+    s.unidadDidactica = unidadDidacticaConNombre(s.pcaId, semanas[0].unidad);
   }
 }
 function recomputeSemanalPca(s){
@@ -3910,7 +4017,6 @@ function renderDatabase(d){
   var semanal = load(LS.SEMANAL);
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Base de Datos</div><h1>Respaldo de información</h1><p>Los datos ya se guardan y sincronizan en la nube (Firebase) entre todos los docentes y el admin en tiempo real. Usa esta sección solo para tener un respaldo .json extra por seguridad.</p></div></div>'
-  + '<div class="db-warning">ℹ️ Esto es un respaldo adicional, no la fuente principal de datos: la información en vivo vive en Firebase y se comparte automáticamente entre todos. Usa "Exportar" solo para guardar una copia de seguridad periódica, e "Importar" únicamente si necesitas restaurar datos perdidos.</div>'
   + '<div class="grid-4" style="margin-top:18px;">'
   + '  <div class="stat"><div class="stat-num tabular">' + docentes.length + '</div><div class="stat-label">Docentes (DOCENTES)</div></div>'
   + '  <div class="stat"><div class="stat-num tabular">' + carga.length + '</div><div class="stat-label">Filas (CARGA HORARIA)</div></div>'
