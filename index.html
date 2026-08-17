@@ -783,8 +783,7 @@ function promptDialog(message, defaultValue, onSubmit){
 }
 
 function printAsPdf(){
-  toast('Se abrirá el diálogo de impresión: elige "Guardar como PDF" (o "Microsoft Print to PDF") como destino para obtener el documento en PDF.', 'success');
-  setTimeout(function(){ window.print(); }, 900);
+  window.print();
 }
 
 /* ============================= APP STATE ============================= */
