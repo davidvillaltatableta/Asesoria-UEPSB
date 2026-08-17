@@ -301,7 +301,67 @@
     .unit-block{page-break-inside:avoid;}
     .pca-band{page-break-after:avoid;}
     .signature-grid{page-break-inside:avoid;}
+    /* Los manuales van en A4 vertical (el resto del sistema imprime en horizontal): esta "página
+       con nombre" es la única forma en CSS de tener una orientación distinta dentro del mismo
+       documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
+       el cuadro de diálogo de impresión al guardar como PDF. */
+    @page manualpage{ size: A4 portrait; margin: 18mm; }
+    .manual-doc{ page: manualpage; }
   }
+
+  /* ============================= MANUALES DE USUARIO ============================= */
+  .manual-doc{ background:#fff; max-width:900px; margin:0 auto; }
+  .manual-cover{
+    min-height:90vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    background:linear-gradient(160deg, var(--blue-900), var(--blue-700)); color:#fff; border-radius:var(--radius); padding:60px 40px;
+    page-break-after:always;
+  }
+  .manual-cover img{ width:96px; height:96px; border-radius:50%; background:#fff; object-fit:cover; box-shadow:var(--shadow-2); margin-bottom:22px; }
+  .manual-cover .eyebrow{ font-size:12px; letter-spacing:.14em; text-transform:uppercase; opacity:.8; margin-bottom:10px; }
+  .manual-cover h1{ font-family:var(--serif); font-size:34px; line-height:1.25; max-width:16ch; }
+  .manual-cover .subt{ font-size:15px; opacity:.9; margin-top:14px; max-width:44ch; }
+  .manual-cover .badge{ margin-top:34px; background:var(--gold-500); color:#3A2A00; font-weight:700; font-size:12.5px; padding:8px 18px; border-radius:99px; }
+  .manual-cover .foot{ margin-top:40px; font-size:11.5px; opacity:.75; }
+  .manual-toc{ background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius); padding:22px 26px; margin:0 0 30px; page-break-after:always; }
+  .manual-toc h2{ color:var(--blue-900); font-size:18px; margin-bottom:14px; }
+  .manual-toc ol{ margin:0; padding-left:22px; }
+  .manual-toc li{ padding:6px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
+  .manual-toc li:last-child{ border-bottom:none; }
+  .manual-section{ margin:0 0 34px; page-break-inside:avoid; }
+  .manual-section h2{ color:#fff; background:var(--blue-900); font-size:16px; padding:10px 16px; border-radius:8px 8px 0 0; margin:0; }
+  .manual-section .manual-body{ border:1px solid var(--line); border-top:none; border-radius:0 0 8px 8px; padding:18px 20px; }
+  .manual-section h3{ color:var(--blue-700); font-size:14px; margin:18px 0 8px; }
+  .manual-section h3:first-child{ margin-top:0; }
+  .manual-section p{ font-size:13.5px; line-height:1.65; margin:0 0 10px; color:var(--ink); }
+  .manual-section ol, .manual-section ul{ font-size:13.5px; line-height:1.7; padding-left:22px; margin:0 0 12px; }
+  .manual-section li{ margin-bottom:4px; }
+  .manual-tip{ background:var(--blue-50); border-left:3px solid var(--blue-600); border-radius:6px; padding:10px 14px; font-size:12.5px; margin:12px 0; }
+  .manual-tip b{ color:var(--blue-700); }
+  .manual-warn{ background:#FFF6D9; border-left:3px solid var(--gold-500); border-radius:6px; padding:10px 14px; font-size:12.5px; margin:12px 0; }
+  .manual-example{ background:var(--surface-2); border:1px dashed var(--line-strong); border-radius:6px; padding:10px 14px; font-size:12.5px; margin:12px 0; }
+  .manual-example b{ display:block; color:var(--blue-700); margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  /* Marcos que imitan una captura de pantalla real de la interfaz, reutilizando los mismos
+     colores de marca — como no se pueden insertar imágenes rasterizadas dentro del sistema,
+     esto reproduce fielmente el aspecto real de cada pantalla con HTML/CSS en vivo. */
+  .manual-shot{ border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; margin:14px 0 18px; box-shadow:var(--shadow-1); page-break-inside:avoid; }
+  .manual-shot .bar{ background:#E4E9F2; padding:7px 12px; display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--line-strong); }
+  .manual-shot .bar span{ width:9px; height:9px; border-radius:50%; background:#C7CEDB; display:inline-block; }
+  .manual-shot .bar .cap{ margin-left:8px; font-size:11px; color:var(--muted); font-weight:600; }
+  .manual-shot .zone{ padding:16px; background:#fff; }
+  .manual-shot .mini-side{ background:var(--blue-900); color:#EAF0FF; border-radius:8px; padding:12px; font-size:11.5px; display:flex; flex-direction:column; gap:6px; width:170px; }
+  .manual-shot .mini-side .mi{ padding:6px 8px; border-radius:6px; }
+  .manual-shot .mini-side .mi.active{ background:var(--gold-500); color:#3A2A00; font-weight:700; }
+  .manual-shot table{ width:100%; border-collapse:collapse; font-size:11.5px; }
+  .manual-shot th{ background:var(--blue-50); color:var(--blue-900); text-align:left; padding:6px 8px; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; }
+  .manual-shot td{ padding:6px 8px; border-top:1px solid var(--line); }
+  .manual-shot .mbtn{ display:inline-block; font-size:11px; font-weight:700; padding:5px 11px; border-radius:6px; margin-right:6px; }
+  .manual-shot .mbtn.primary{ background:var(--blue-700); color:#fff; }
+  .manual-shot .mbtn.gold{ background:var(--gold-500); color:#3A2A00; }
+  .manual-shot .mbtn.ghost{ background:#fff; border:1px solid var(--line-strong); color:var(--blue-700); }
+  .manual-shot .mfield label{ display:block; font-size:10.5px; color:var(--muted); margin-bottom:3px; }
+  .manual-shot .mfield .mval{ border:1px solid var(--line-strong); border-radius:6px; padding:7px 9px; font-size:11.5px; background:var(--surface-2); }
+  .manual-num{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--blue-700); color:#fff; font-size:11px; font-weight:700; margin-right:8px; flex:none; }
+  .manual-step{ display:flex; align-items:flex-start; margin-bottom:8px; font-size:13.5px; }
 </style>
 
 <div class="toast-region" id="toastRegion"></div>
@@ -955,7 +1015,7 @@ var NAV_ITEMS = [
 function renderShell(){
   var d = currentDocente();
   var isAdmin = d.role === 'admin';
-  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente')) state.subview = 'dashboard';
+  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin')) state.subview = 'dashboard';
   var items = NAV_ITEMS.concat(isAdmin ? [{key:'admin', label:'Administración', ic:'🛡️'}] : []);
   var navHtml = items.map(function(item){
     var active = (state.subview === item.key
@@ -977,6 +1037,8 @@ function renderShell(){
   else if(state.subview === 'admin') sub = renderAdmin(d);
   else if(state.subview === 'adminEditDocente') sub = renderAdminEditDocente(d);
   else if(state.subview === 'adminNewDocente') sub = renderAdminNewDocente(d);
+  else if(state.subview === 'manualdocente') sub = renderManualDocente();
+  else if(state.subview === 'manualadmin') sub = renderManualAdmin();
   else sub = renderDashboard(d);
 
   return ''
@@ -1018,6 +1080,8 @@ function bindSubviewEvents(){
   else if(state.subview === 'admin') bindAdminEvents();
   else if(state.subview === 'adminEditDocente') bindAdminEditDocenteEvents();
   else if(state.subview === 'adminNewDocente') bindAdminNewDocenteEvents();
+  else if(state.subview === 'manualdocente') bindManualEvents();
+  else if(state.subview === 'manualadmin') bindManualEvents();
   else bindDashboardEvents();
 }
 
@@ -1075,6 +1139,7 @@ function bindPerfilEvents(){
 
 /* ============================= DASHBOARD ============================= */
 function renderDashboard(d){
+  var isAdmin = d.role === 'admin';
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
   + '<div class="grid-4">'
@@ -1082,10 +1147,337 @@ function renderDashboard(d){
   + '  <button class="action-card" data-go="pcalist"><div class="ic">📘</div><h3>Plan Curricular Anual</h3><p>Crea o edita tus PCA siguiendo el formato institucional.</p></button>'
   + '  <button class="action-card" data-go="semanallist"><div class="ic">📅</div><h3>Planes Semanales</h3><p>Crea o revisa tus planes semanales de clase.</p></button>'
   + '  <button class="action-card" data-go="database"><div class="ic">💾</div><h3>Base de datos</h3><p>Exporta o importa un respaldo de la información.</p></button>'
+  + '  <button class="action-card" data-go="manualdocente"><div class="ic">📖</div><h3>Manual de Usuario</h3><p>Guía paso a paso de todas las funciones del sistema.</p></button>'
+  + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
   + '</div>';
 }
 function bindDashboardEvents(){
   document.querySelectorAll('[data-go]').forEach(function(btn){ btn.onclick = function(){ go(btn.getAttribute('data-go')); }; });
+}
+
+/* ============================= MANUALES DE USUARIO ============================= */
+/* No es posible insertar fotografías/capturas de pantalla reales dentro de un Artifact (no hay
+   forma de adjuntar archivos de imagen binarios al sistema), así que estos "mockups" reproducen
+   fielmente cada pantalla con el mismo HTML/CSS y los mismos colores de marca que usa la
+   aplicación real — visualmente son fieles al sistema, solo que se dibujan en vivo en vez de ser
+   una imagen rasterizada. */
+function manualToolbarHtml(volverA, titulo){
+  return '<div class="pca-toolbar no-print" style="margin-bottom:18px;">'
+    + '  <button class="btn btn-ghost btn-sm" data-manual-back="' + volverA + '">← Volver</button>'
+    + '  <div class="spacer"></div>'
+    + '  <button class="btn btn-gold btn-sm" id="btnManualPdf">Descargar PDF</button>'
+    + '</div>';
+}
+function manualShot(caption, innerHtml){
+  return '<div class="manual-shot"><div class="bar"><span></span><span></span><span></span><span class="cap">' + escapeHtml(caption) + '</span></div><div class="zone">' + innerHtml + '</div></div>';
+}
+function manualTip(html){ return '<div class="manual-tip"><b>💡 Consejo:</b> ' + html + '</div>'; }
+function manualWarn(html){ return '<div class="manual-warn"><b>⚠️ Importante:</b> ' + html + '</div>'; }
+function manualExample(label, html){ return '<div class="manual-example"><b>Ejemplo práctico — ' + escapeHtml(label) + '</b>' + html + '</div>'; }
+function manualStep(n, html){ return '<div class="manual-step"><span class="manual-num">' + n + '</span><div>' + html + '</div></div>'; }
+function manualSideNav(items, activeKey){
+  return '<div class="mini-side">' + items.map(function(it){
+    return '<div class="mi' + (it.key===activeKey?' active':'') + '">' + escapeHtml(it.ic) + ' ' + escapeHtml(it.label) + '</div>';
+  }).join('') + '</div>';
+}
+function manualSection(id, titulo, bodyHtml){
+  return '<div class="manual-section" id="' + id + '"><h2>' + escapeHtml(titulo) + '</h2><div class="manual-body">' + bodyHtml + '</div></div>';
+}
+function manualCoverHtml(subtitulo, badge){
+  return '<div class="manual-cover">'
+    + '  <img src="data:image/jpeg;base64,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" alt="Logo" />'
+    + '  <div class="eyebrow">Unidad Educativa Particular “Simón Bolívar” · Lago Agrio</div>'
+    + '  <h1>Manual de Usuario</h1>'
+    + '  <div class="subt">' + escapeHtml(subtitulo) + '</div>'
+    + '  <div class="badge">' + escapeHtml(badge) + '</div>'
+    + '  <div class="foot">Sistema Académico · Año lectivo 2026-2027</div>'
+    + '</div>';
+}
+
+function renderManualDocente(){
+  var toc = '<div class="manual-toc"><h2>Índice</h2><ol>'
+    + '<li>Bienvenida</li>'
+    + '<li>Crear tu cuenta e iniciar sesión</li>'
+    + '<li>Cómo moverte por el sistema</li>'
+    + '<li>Mi Perfil</li>'
+    + '<li>Mi Carga Horaria</li>'
+    + '<li>Plan Curricular Anual (PCA)</li>'
+    + '<li>Planes Semanales de Clase</li>'
+    + '<li>Base de Datos (respaldo)</li>'
+    + '<li>Preguntas frecuentes</li>'
+    + '</ol></div>';
+
+  var secIntro = manualSection('sec-1', '1. Bienvenida', ''
+    + '<p>Este manual te guía paso a paso por el <b>Sistema Académico de la Unidad Educativa Particular “Simón Bolívar”</b>, la herramienta donde registras tu carga horaria, tus Planes Curriculares Anuales (PCA) y tus Planes Semanales de Clase.</p>'
+    + '<p>Todo lo que guardas aquí se sincroniza automáticamente en la nube: no necesitas guardar copias por tu cuenta ni preocuparte de perder tu trabajo si cambias de computadora — con tu correo y contraseña puedes entrar desde cualquier dispositivo y verás siempre la información más reciente.</p>'
+    + manualTip('Si en algún momento te pierdes, recuerda que este manual está siempre disponible desde el botón <b>“Manual de Usuario”</b> en la pantalla de Inicio.')
+  );
+
+  var secCuenta = manualSection('sec-2', '2. Crear tu cuenta e iniciar sesión', ''
+    + '<h3>Crear tu cuenta por primera vez</h3>'
+    + manualStep(1, 'En la pantalla de ingreso, haz clic en <b>“Crear usuario”</b>.')
+    + manualStep(2, 'Completa tus datos: Título académico, Nombres, Apellidos, Cédula, Teléfono, tu <b>correo institucional</b> y un ID de referencia (solo para identificarte internamente — para entrar siempre usarás tu correo).')
+    + manualStep(3, 'Elige una contraseña de al menos 6 caracteres.')
+    + manualStep(4, 'Haz clic en <b>“Crear usuario e ingresar”</b>. Entrarás directo al sistema.')
+    + manualShot('Crear usuario docente', ''
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:480px;">'
+        + '  <div class="mfield"><label>Nombres</label><div class="mval">María Fernanda</div></div>'
+        + '  <div class="mfield"><label>Apellidos</label><div class="mval">Torres Salazar</div></div>'
+        + '  <div class="mfield"><label>Cédula (CI)</label><div class="mval">2100456789</div></div>'
+        + '  <div class="mfield"><label>Teléfono</label><div class="mval">0991234567</div></div>'
+        + '</div>'
+        + '<div class="mfield" style="max-width:480px; margin-top:8px;"><label>E-mail institucional</label><div class="mval">maria.torres@simonbolivar-ec.com</div></div>'
+        + '<div style="margin-top:12px;"><span class="mbtn primary">Crear usuario e ingresar</span></div>')
+    + manualWarn('Tu correo es lo único que usarás para iniciar sesión de ahora en adelante — anótalo en un lugar seguro.')
+    + '<h3>Iniciar sesión</h3>'
+    + manualStep(1, 'Escribe tu <b>correo institucional</b> y tu <b>contraseña</b>.')
+    + manualStep(2, 'Haz clic en <b>“Ingresar”</b>.')
+    + manualShot('Ingresar al sistema', ''
+        + '<div class="mfield" style="max-width:320px;"><label>Correo institucional</label><div class="mval">maria.torres@simonbolivar-ec.com</div></div>'
+        + '<div class="mfield" style="max-width:320px; margin-top:8px;"><label>Contraseña</label><div class="mval">••••••••</div></div>'
+        + '<div style="margin-top:12px;"><span class="mbtn primary">Ingresar</span></div>')
+    + '<h3>Olvidé mi contraseña</h3>'
+    + '<p>En la pantalla de ingreso, escribe tu correo y haz clic en <b>“¿Olvidaste tu contraseña?”</b>. Te llegará un correo con un enlace para crear una nueva contraseña.</p>'
+  );
+
+  var secNav = manualSection('sec-3', '3. Cómo moverte por el sistema', ''
+    + '<p>Todo el sistema se maneja desde el menú de la izquierda (en el celular, tócalo con el botón ☰ de arriba).</p>'
+    + manualShot('Menú principal', manualSideNav([
+        {ic:'🏠', label:'Inicio'}, {ic:'👤', label:'Mi Perfil'}, {ic:'🗂️', label:'Mi Carga Horaria'},
+        {ic:'📘', label:'Planes Curriculares (PCA)'}, {ic:'📅', label:'Planes Semanales'}, {ic:'💾', label:'Base de Datos'}
+      ], 'Mi Carga Horaria'))
+    + '<p>Desde <b>Inicio</b> también puedes entrar directamente a cada sección con las tarjetas grandes de acceso rápido.</p>'
+  );
+
+  var secPerfil = manualSection('sec-4', '4. Mi Perfil', ''
+    + '<p>Aquí actualizas tu información personal: título académico, nombres, apellidos, cédula, teléfono e ID de referencia. Tu correo de acceso no se puede cambiar desde esta pantalla (es tu identificador único de ingreso).</p>'
+    + '<p>También puedes cambiar tu contraseña: escribe la nueva en el campo “Nueva contraseña” y guarda — si la dejas en blanco, tu contraseña actual no cambia.</p>'
+    + manualTip('Si el sistema te pide volver a iniciar sesión al cambiar tu contraseña, es una medida de seguridad normal: cierra sesión, entra de nuevo y repite el cambio.')
+  );
+
+  var secCarga = manualSection('sec-5', '5. Mi Carga Horaria', ''
+    + '<p>Aquí registras <b>qué asignaturas dictas y en qué cursos o grados</b>. El sistema usa esta información para sugerirte automáticamente las opciones correctas al crear tus PCA y Planes Semanales — por eso es el primer paso que debes completar.</p>'
+    + '<h3>Registrar tu carga horaria</h3>'
+    + manualStep(1, 'Elige el <b>Nivel Educativo</b> (por ejemplo, Básica Media).')
+    + manualStep(2, 'Si tu nivel tiene especialidad (como Bachillerato), elígela.')
+    + manualStep(3, 'Marca uno o varios <b>Cursos/Grados</b> y una o varias <b>Asignaturas</b> con las casillas.')
+    + manualStep(4, 'Si dictas más de una combinación de nivel/curso/asignatura, haz clic en <b>“+ Agregar fila”</b> para añadir otra.')
+    + manualStep(5, 'Haz clic en <b>“Guardar carga horaria”</b>.')
+    + manualShot('Mi carga horaria', ''
+        + '<table><thead><tr><th>Nivel</th><th>Curso</th><th>Asignatura</th></tr></thead><tbody>'
+        + '<tr><td>Básica Media</td><td>5.º EGB A</td><td>Matemática</td></tr>'
+        + '</tbody></table>'
+        + '<div style="margin-top:10px;"><span class="mbtn ghost">+ Agregar fila</span> <span class="mbtn primary">Guardar carga horaria</span></div>')
+    + manualExample('Una docente con dos cursos', 'La Lic. Torres dicta Matemática en 5.º y 6.º EGB A. En Carga Horaria marca ambos cursos en la misma fila, junto con la asignatura Matemática — no necesita crear dos filas separadas.')
+    + '<h3>Ver y editar lo ya registrado</h3>'
+    + '<p>Una vez guardada, la pantalla muestra un resumen de solo lectura de lo que registraste. Haz clic en <b>“Editar”</b> para modificarlo, y en <b>“Guardar cambios”</b> o <b>“Cancelar”</b> para salir del modo de edición.</p>'
+    + manualWarn('No puedes repetir la misma combinación de Nivel + Especialidad en dos filas distintas — el sistema oculta esa opción una vez usada, para evitar registros duplicados.')
+  );
+
+  var secPca = manualSection('sec-6', '6. Plan Curricular Anual (PCA)', ''
+    + '<p>El PCA es el documento oficial de planificación anual por asignatura, siguiendo el formato institucional. Debes crear un PCA por cada combinación de nivel/curso/asignatura que dictas.</p>'
+    + '<h3>Crear un PCA</h3>'
+    + manualStep(1, 'Ve a <b>Planes Curriculares (PCA)</b> y haz clic en <b>“+ Nuevo Plan Curricular Anual”</b>.')
+    + manualStep(2, 'En <b>Datos Informativos</b>, elige Nivel, Especialidad (si aplica), Curso y Asignatura — se sugieren automáticamente según tu Carga Horaria.')
+    + manualStep(3, 'Completa la Carga horaria semanal y el número de semanas por trimestre.')
+    + manualStep(4, 'Completa la <b>Temporalización</b>: una fila por cada unidad, con su nombre y el trimestre en que la trabajarás. El total de semanas se suma solo, apenas cambias de casilla.')
+    + manualStep(5, 'Completa <b>Contenidos</b>: cada unidad tiene semanas con destreza (nivel de logro), temas y subtemas, página del texto y observación.')
+    + manualStep(6, 'Completa las <b>Firmas</b> (Elaborado por, Revisado por, Aprobado por).')
+    + manualStep(7, 'Haz clic en <b>“Guardar plan”</b>.')
+    + manualShot('Temporalización del PCA', ''
+        + '<table><thead><tr><th>Unidad didáctica</th><th>Nombre de la Unidad</th><th>Trimestre</th><th>N.º semanas</th></tr></thead><tbody>'
+        + '<tr><td>Unidad 1</td><td>Los números reales</td><td>1er Trimestre</td><td>6</td></tr>'
+        + '<tr><td>Unidad 2</td><td>Fracciones y decimales</td><td>1er Trimestre</td><td>7</td></tr>'
+        + '</tbody></table>')
+    + manualWarn('Una vez que guardas el PCA por primera vez, queda <b>bloqueado</b> para ti (verás un candado 🔒) — así se garantiza que la planificación oficial no cambie sin control. Si necesitas corregir algo después, contacta a un administrador para que lo desbloquee.')
+    + '<h3>Fecha límite de entrega</h3>'
+    + '<p>Arriba del documento verás la <b>Fecha y hora límite de entrega</b>, definida por el administrador — es de solo lectura para ti, y se usa para saber si entregaste tu PCA a tiempo.</p>'
+    + '<h3>Exportar tu PCA</h3>'
+    + '<p>Desde la lista de PCA, cada plan tiene tres botones: <b>PDF ✓</b> (abre el diálogo de impresión para guardar como PDF con el formato oficial completo), <b>Word</b> (descarga un .docx editable) y <b>Excel</b> (descarga el detalle de contenidos en .csv).</p>'
+    + manualTip('Si tu vista no permite el formato .docx real, el sistema intenta automáticamente con .html y luego .md — siempre te entrega algo que puedes abrir en Word.')
+  );
+
+  var secSemanal = manualSection('sec-7', '7. Planes Semanales de Clase', ''
+    + '<p>El Plan Semanal es la planificación detallada de una semana de clase, enlazada automáticamente a tu PCA.</p>'
+    + '<h3>Crear un Plan Semanal</h3>'
+    + manualStep(1, 'Ve a <b>Planes Semanales</b> y haz clic en <b>“+ Nuevo Plan Semanal”</b>.')
+    + manualStep(2, 'En <b>Datos Curriculares</b>, elige Nivel, Curso y Asignatura — el sistema busca tu PCA de esa combinación y completa solo la <b>Unidad Didáctica</b> (con el nombre de la unidad de la Temporalización), la Fecha de Inicio y Fecha de Fin de la semana correspondiente.')
+    + manualStep(3, 'Marca el <b>Bloque Curricular</b> y el <b>Nivel de Logro</b> que trabajarás (salen de la información de tu PCA).')
+    + manualStep(4, 'En cada <b>Día</b>, marca los <b>Contenidos Esenciales</b> que vas a cubrir (temas de esa semana del PCA — y de la semana anterior, si quedó algo pendiente), y describe Actividades, Recursos y Evaluación.')
+    + manualStep(5, 'Completa las Firmas y haz clic en <b>“Guardar plan”</b>.')
+    + manualShot('Datos Curriculares del Plan Semanal', ''
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:520px;">'
+        + '  <div class="mfield"><label>Nivel Educativo</label><div class="mval">Básica Media</div></div>'
+        + '  <div class="mfield"><label>Curso</label><div class="mval">5.º EGB A</div></div>'
+        + '  <div class="mfield"><label>Asignatura</label><div class="mval">Matemática</div></div>'
+        + '  <div class="mfield"><label>Unidad Didáctica</label><div class="mval">Unidad 1 — Los números reales</div></div>'
+        + '</div>')
+    + manualExample('Vínculo automático', 'La Lic. Torres pone Fecha de Inicio 7 de septiembre. Como esa fecha cae dentro de la semana 1 de su PCA, el sistema completa solo la Unidad Didáctica y le muestra las opciones de Nivel de Logro y Contenidos Esenciales de esa semana exacta.')
+    + '<h3>Numeración y agrupado</h3>'
+    + '<p>Cada Plan Semanal recibe un número correlativo (N.º 1, N.º 2, …) por docente. En la lista, tus planes se agrupan automáticamente por Trimestre → Mes → Semana, para que sea fácil ubicar cualquier semana del año.</p>'
+    + '<h3>Fecha límite de entrega</h3>'
+    + '<p>Igual que en el PCA, arriba del documento aparece la fecha límite definida por el administrador — de solo lectura para ti.</p>'
+    + '<h3>Exportar</h3>'
+    + '<p>Los mismos botones <b>PDF ✓ / Word / Excel</b> están disponibles en cada Plan Semanal, con el mismo comportamiento que en el PCA.</p>'
+  );
+
+  var secBd = manualSection('sec-8', '8. Base de Datos (respaldo)', ''
+    + '<p>Aunque tu información ya se guarda automáticamente en la nube y se comparte en tiempo real con el administrador, esta sección te permite exportar un respaldo adicional en formato .json por seguridad, o importar uno si necesitas restaurar información.</p>'
+    + manualTip('Usa Exportar de vez en cuando (por ejemplo, al final de cada trimestre) para tener siempre una copia de respaldo propia.')
+  );
+
+  var secFaq = manualSection('sec-9', '9. Preguntas frecuentes', ''
+    + '<h3>No veo el curso o la asignatura que necesito</h3>'
+    + '<p>Ve primero a <b>Mi Carga Horaria</b> y regístrala ahí — las opciones del PCA y Plan Semanal salen de tu carga horaria.</p>'
+    + '<h3>Mi PCA está bloqueado y necesito corregirlo</h3>'
+    + '<p>Contacta a un administrador: solo él puede desbloquear un plan ya guardado.</p>'
+    + '<h3>No me aparecen los Niveles de Logro ni los Contenidos Esenciales en el Plan Semanal</h3>'
+    + '<p>Revisa que la Fecha de Inicio del plan coincida con el rango de fechas de alguna semana de tu PCA — si no coincide con ninguna, el sistema te lo indica con un mensaje.</p>'
+    + '<h3>¿Qué pasa si pierdo internet mientras trabajo?</h3>'
+    + '<p>El sistema necesita conexión a internet para guardar y cargar información, ya que todo vive en la nube. Guarda tu trabajo apenas recuperes la conexión.</p>'
+    + '<h3>Olvidé mi contraseña</h3>'
+    + '<p>En la pantalla de ingreso, usa el enlace “¿Olvidaste tu contraseña?” con tu correo institucional.</p>'
+  );
+
+  return manualToolbarHtml('dashboard', 'Manual del Docente')
+    + '<div class="manual-doc" id="manualDocenteDoc">'
+    + manualCoverHtml('Guía completa para docentes: carga horaria, Plan Curricular Anual y Planes Semanales de Clase.', 'Manual del Docente')
+    + toc + secIntro + secCuenta + secNav + secPerfil + secCarga + secPca + secSemanal + secBd + secFaq
+    + '</div>';
+}
+
+function renderManualAdmin(){
+  var toc = '<div class="manual-toc"><h2>Índice</h2><ol>'
+    + '<li>Bienvenida y rol de administrador</li>'
+    + '<li>Panel de Administración — visión general</li>'
+    + '<li>Gestión de Docentes</li>'
+    + '<li>Carga Horaria de todos los docentes</li>'
+    + '<li>Planes Curriculares Anuales de todos los docentes</li>'
+    + '<li>Contenidos Anuales</li>'
+    + '<li>Planes Semanales de todos los docentes</li>'
+    + '<li>Consultas</li>'
+    + '<li>Presentación de Planes y de PCA</li>'
+    + '<li>Fechas Límite</li>'
+    + '<li>Base de Datos y seguridad de roles</li>'
+    + '<li>Preguntas frecuentes de administración</li>'
+    + '</ol></div>';
+
+  var secIntro = manualSection('sec-a1', '1. Bienvenida y rol de administrador', ''
+    + '<p>Como <b>Administrador</b>, además de todo lo que puede hacer un docente (registrar tu propia carga horaria, tus PCA y Planes Semanales — ver el <i>Manual del Docente</i> para esa parte), tienes acceso al <b>Panel de Administración</b>: ahí puedes ver, editar y supervisar la información de <u>todos</u> los docentes de la institución.</p>'
+    + manualWarn('Todo lo que hagas en el Panel de Administración afecta datos reales de otros docentes. Antes de eliminar algo, el sistema siempre te pedirá confirmación.')
+  );
+
+  var secPanel = manualSection('sec-a2', '2. Panel de Administración — visión general', ''
+    + '<p>Entra desde el menú lateral, opción <b>“🛡️ Administración”</b> (solo visible para administradores). Arriba encontrarás pestañas para moverte entre las distintas tablas y reportes del sistema.</p>'
+    + manualShot('Pestañas del Panel de Administración', ''
+        + '<div style="display:flex; flex-wrap:wrap; gap:6px;">'
+        + ['Docentes','Carga Horaria','Planes (PCA)','Contenidos Anuales','Planes Semanales','Consultas','Presentación de Planes','Presentación de PCA','Fechas Límite'].map(function(t){
+            return '<span class="mbtn ' + (t==='Docentes'?'primary':'ghost') + '">' + t + '</span>';
+          }).join('')
+        + '</div>')
+  );
+
+  var secDocentes = manualSection('sec-a3', '3. Gestión de Docentes', ''
+    + '<p>Aquí ves la lista completa de docentes registrados, con su Título, Nombre, CI, Email, ID, Rol y acciones.</p>'
+    + manualShot('Docentes registrados', ''
+        + '<table><thead><tr><th>Título</th><th>Nombre</th><th>Rol</th><th></th></tr></thead><tbody>'
+        + '<tr><td>Lic.</td><td>María Fernanda Torres</td><td>Docente</td><td><span class="mbtn ghost">Editar</span></td></tr>'
+        + '<tr><td>Mg.</td><td>Cristina Gómez</td><td>Administrador</td><td><span class="mbtn ghost">Editar</span></td></tr>'
+        + '</tbody></table>'
+        + '<div style="margin-top:10px;"><span class="mbtn primary">+ Nuevo Usuario</span></div>')
+    + '<h3>Crear un usuario nuevo directamente</h3>'
+    + manualStep(1, 'Haz clic en <b>“+ Nuevo Usuario”</b>.')
+    + manualStep(2, 'Completa sus datos, elige su <b>Rol</b> (Docente o Administrador) y una contraseña inicial.')
+    + manualStep(3, 'Haz clic en <b>“Crear usuario”</b> — la cuenta queda lista para que esa persona inicie sesión de inmediato con esa contraseña (puede cambiarla después desde Mi Perfil).')
+    + '<h3>Editar un docente, cambiar su rol o navegar entre todos</h3>'
+    + '<p>Haz clic en <b>“Editar”</b> junto a cualquier docente. Ahí puedes corregir sus datos, y usar <b>“« Anterior”</b> / <b>“Siguiente »”</b> para recorrer la lista completa de docentes sin volver a la tabla cada vez.</p>'
+    + manualExample('Promover a un docente a Administrador', 'Para dar acceso de administración a la Lic. Torres, entras a Editar su ficha, cambias el campo Rol de "Docente" a "Administrador" y guardas. Ella verá el menú "Administración" aparecer automáticamente la próxima vez que use el sistema — sin que tenga que crear una cuenta nueva.')
+    + manualWarn('No puedes quitar el rol de Administrador a la última cuenta administradora del sistema, ni eliminarla — siempre debe quedar al menos una.')
+    + '<h3>Restablecer la contraseña de un docente</h3>'
+    + '<p>El sistema no permite que el administrador escriba una contraseña nueva directamente por seguridad. En su lugar, haz clic en <b>“Enviar correo para restablecer contraseña”</b> — el docente recibirá un correo para crear una nueva él mismo. El correo de acceso tampoco se puede cambiar desde aquí una vez creada la cuenta.</p>'
+    + '<h3>Eliminar un docente</h3>'
+    + '<p>Desde su ficha de edición, botón <b>“Eliminar docente”</b>. Esto borra también toda su Carga Horaria, PCA, Contenidos y Planes Semanales. Esta acción no se puede deshacer.</p>'
+  );
+
+  var secCarga = manualSection('sec-a4', '4. Carga Horaria de todos los docentes', ''
+    + '<p>Tabla editable con la carga horaria de todos los docentes a la vez. Puedes corregir cualquier campo directamente en la fila y eliminar filas erróneas, luego hacer clic en <b>“Guardar cambios”</b>.</p>'
+  );
+
+  var secPca = manualSection('sec-a5', '5. Planes Curriculares Anuales de todos los docentes', ''
+    + '<p>Puedes ver, editar (incluso los que están bloqueados 🔒 para el docente), exportar y eliminar cualquier PCA del sistema.</p>'
+    + '<h3>Filtrar por Docente, Fecha, Asignatura y Curso</h3>'
+    + '<p>Arriba de la lista hay una barra de filtros:</p>'
+    + manualShot('Filtrar PCA', ''
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:520px;">'
+        + '  <div class="mfield"><label>Docente</label><div class="mval">María Fernanda Torres</div></div>'
+        + '  <div class="mfield"><label>Asignatura</label><div class="mval">Matemática</div></div>'
+        + '  <div class="mfield"><label>Curso (7.º EGB a 3.º BGU)</label><div class="mval">Todos</div></div>'
+        + '  <div class="mfield"><label>Fecha de corte — inicio</label><div class="mval">01/09/2026</div></div>'
+        + '</div>')
+    + manualStep(1, 'Elige un <b>Docente</b> — recién ahí se activan los filtros de Asignatura y Curso, con las opciones que ESE docente dicta.')
+    + manualStep(2, 'Elige una <b>Asignatura</b> y/o un <b>Curso</b> para acotar más la búsqueda, y/o un rango de <b>Fecha de corte</b>.')
+    + manualTip('El filtro de Curso solo afecta a los PCA de <b>7.º EGB a 3.º de Bachillerato</b>. Para niveles de <b>Iniciales a 6.º EGB</b>, el sistema solo filtra por Asignatura — en esos niveles el curso no es un dato tan relevante para la búsqueda.')
+  );
+
+  var secCont = manualSection('sec-a6', '6. Contenidos Anuales', ''
+    + '<p>Vista de todas las filas de contenidos (una por semana de cada unidad de cada PCA) de todos los docentes. Útil para revisar o eliminar una fila puntual sin abrir el PCA completo — para editar el detalle completo de una semana, ábrela desde “Abrir PCA”.</p>'
+  );
+
+  var secSemanal = manualSection('sec-a7', '7. Planes Semanales de todos los docentes', ''
+    + '<p>Igual que en PCA: puedes ver, editar, exportar y eliminar cualquier Plan Semanal, y filtrar por <b>Docente</b>, <b>Fecha de corte</b>, <b>Asignatura</b> y <b>Curso</b>, con la misma regla — el filtro de Curso solo aplica de 7.º EGB a 3.º BGU.</p>'
+  );
+
+  var secConsultas = manualSection('sec-a8', '8. Consultas', ''
+    + '<p>Formulario para revisar, de un docente y un PCA específico, todos los temas cubiertos desde la Semana 1 hasta una fecha elegida, con la observación de si cada semana está Completada, En Proceso, Por Completar o Con Retraso. El resultado es imprimible en A4, con el membrete institucional y el pie “Elaborado por: Lic. David Villalta — Asesor Pedagógico”.</p>'
+    + manualExample('Uso típico', 'Antes de una reunión de área, el administrador elige al docente y su PCA de Matemática, pone la fecha de hoy, y obtiene un reporte de todo lo avanzado en el año hasta ese momento, listo para imprimir.')
+  );
+
+  var secPresentacion = manualSection('sec-a9', '9. Presentación de Planes y de PCA', ''
+    + '<h3>Presentación de Planes Semanales</h3>'
+    + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su fecha límite, y si lo presentó <b>a tiempo</b> o <b>con retraso</b> — además de si en esa semana envió Tareas en casa, hizo Talleres en clase, o evaluó con Lecciones (detectado automáticamente del campo Evaluación de cada día).</p>'
+    + '<h3>Presentación de PCA</h3>'
+    + '<p>El mismo concepto, pero para los PCA: compara la fecha en que cada docente creó su PCA contra la Fecha Límite que tú definiste, y te dice si lo presentó a tiempo, con retraso, o si esa categoría no tiene fecha límite definida todavía.</p>'
+    + manualShot('Observación de presentación', ''
+        + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
+        + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
+        + '</tbody></table>')
+  );
+
+  var secFechas = manualSection('sec-a10', '10. Fechas Límite', ''
+    + '<p>Aquí defines las fechas y horas tope de entrega, separadas en dos categorías: <b>PCA</b> y <b>Planes Semanales</b>. La fecha más reciente que registres en cada categoría se usa para autorellenar el campo "Fecha Límite" de los PCA/Planes nuevos que se creen de ahí en adelante — el docente solo la ve, no la puede cambiar.</p>'
+    + manualStep(1, 'Elige la categoría (PCA o Planes Semanales).')
+    + manualStep(2, 'Ingresa la fecha y hora tope, y una nota opcional (por ejemplo, "Trimestre 1").')
+    + manualStep(3, 'Haz clic en <b>“+ Agregar”</b>.')
+    + '<p>Las fechas de Planes Semanales quedan agrupadas por mes (siguiendo el año lectivo, de septiembre a agosto) para que sea fácil ubicar cualquier corte. Puedes <b>Editar</b> o <b>Eliminar</b> cualquier fecha ya registrada.</p>'
+  );
+
+  var secBd = manualSection('sec-a11', '11. Base de Datos y seguridad de roles', ''
+    + '<p>Toda la información del sistema (Docentes, Carga Horaria, PCA, Contenidos, Planes Semanales) vive en la nube y se sincroniza en tiempo real entre todos — no necesitas consolidar nada manualmente. Usa Exportar solo como respaldo de seguridad periódico.</p>'
+    + '<h3>Sobre los roles</h3>'
+    + '<p>Solo un Administrador puede otorgar o quitar el rol de Administrador a otra persona — nadie puede auto-otorgarse ese rol, ni siquiera técnicamente. El primer usuario que se registra en un sistema recién instalado queda como Docente por defecto; el primer Administrador se define una única vez desde la configuración del proyecto.</p>'
+  );
+
+  var secFaq = manualSection('sec-a12', '12. Preguntas frecuentes de administración', ''
+    + '<h3>Un docente dice que no puede editar su PCA</h3>'
+    + '<p>Es normal: los PCA quedan bloqueados para el docente después de guardarse la primera vez. Entra como administrador, ábrelo y edítalo por él, o guíalo para que te pida el cambio.</p>'
+    + '<h3>¿Cómo sé si alguien entregó tarde su PCA o Plan Semanal?</h3>'
+    + '<p>Usa <b>Presentación de PCA</b> o <b>Presentación de Planes</b> — ahí ves la observación "a tiempo" o "con retraso" comparando la fecha de creación contra la Fecha Límite que definiste.</p>'
+    + '<h3>Necesito buscar solo los PCA de un docente en un curso específico</h3>'
+    + '<p>Usa la barra de filtros arriba de la lista de PCA: elige el Docente, luego el Curso.</p>'
+  );
+
+  return manualToolbarHtml('dashboard', 'Manual del Administrador')
+    + '<div class="manual-doc" id="manualAdminDoc">'
+    + manualCoverHtml('Guía completa de administración: docentes, tablas maestras, filtros, consultas, presentación de planes y fechas límite.', 'Manual del Administrador')
+    + toc + secIntro + secPanel + secDocentes + secCarga + secPca + secCont + secSemanal + secConsultas + secPresentacion + secFechas + secBd + secFaq
+    + '</div>';
+}
+
+function bindManualEvents(){
+  var backBtn = document.querySelector('[data-manual-back]');
+  if(backBtn) backBtn.onclick = function(){ go(backBtn.getAttribute('data-manual-back')); };
+  var pdfBtn = document.getElementById('btnManualPdf');
+  if(pdfBtn) pdfBtn.onclick = printAsPdf;
 }
 
 /* ============================= CARGA HORARIA ============================= */
