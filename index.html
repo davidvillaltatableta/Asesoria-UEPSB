@@ -474,7 +474,12 @@ var ASIGNATURAS = {
   'Iniciales y Preparatoria': ['Comprensión y Expresión de Lenguaje','Convivencia','Expresión Artística','Expresión Corporal y Motricidad','Identidad y Autonomía','Relación con el Medio Natural y Cultural','Relación Lógico-Matemática','Robótica','Inglés','Computación'],
   'Básica Elemental': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Computación','Robótica','Informática Aplicada (Programación)'],
   'Básica Media': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Computación','Robótica','Informática Aplicada (Programación)'],
-  'Básica Superior': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)'],
+  'Básica Superior': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)',
+    'Inglés A2(8vo-9no)',
+    'Inglés Grupo A1(7mo A y B)','Inglés Grupo A1(8vo-9no)','Inglés Grupo A1(2do´s Bach)','Inglés Grupo A1(3ero´s Bach)',
+    'Inglés Grupo A2(7mo A y B)','Inglés Grupo A2(8vo-9no)','Inglés Grupo A2(2do´s Bach)','Inglés Grupo A2(3ero´s Bach)',
+    'Inglés Grupo B1(7mo A y B)','Inglés Grupo B1(8vo-9no)','Inglés Grupo B1(2do´s Bach)','Inglés Grupo B1(3ero´s Bach)'
+  ],
   'Bachillerato': ['Matemática','Lengua y Literatura','Física','Química','Biología','Historia','Educación para la Ciudadanía','Filosofía','Inglés','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)']
 };
 var ASIGNATURAS_ESP = {
@@ -2647,9 +2652,22 @@ var OBS_PERSPECTIVAS = [
 ];
 function blankObservacion(){
   return {
-    id: uid('obs'), fecha: todayISO(), asignatura: '', docenteId: '', observador: 'Lic. David Villalta',
+    id: uid('obs'), fecha: todayISO(), hora: '', nivel: '', asignatura: '', docenteId: '', observador: 'Lic. David Villalta',
     respuestas: {}, comentarios_p1: '', comentarios_p2: '', registradoPor: '', createdAt:'', updatedAt:''
   };
+}
+/* Docentes que dictan en un nivel educativo (según su Carga Horaria), y las asignaturas que
+   ese docente en particular dicta en ese nivel — para las listas desplegables en cascada
+   Nivel Educativo → Docente → Asignatura del formulario de Observación de Clases. */
+function docentesPorNivel(nivel){
+  return allDocentes().filter(function(x){
+    return misCargaRows(x.id).some(function(r){ return r.nivel===nivel; });
+  }).sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+}
+function asignaturasDeDocentePorNivel(docenteId, nivel){
+  var set = {};
+  misCargaRows(docenteId).filter(function(r){ return r.nivel===nivel; }).forEach(function(r){ if(r.asignatura) set[r.asignatura]=1; });
+  return Object.keys(set).sort();
 }
 /* Visible para todos (docentes y administradores) — solo un administrador puede crear, editar
    o eliminar; un docente ve, en modo solo lectura, el historial de SUS PROPIAS observaciones
@@ -2723,12 +2741,15 @@ function obsGrupoRowsHtml(grupo, o){
 function renderObsForm(d){
   var o = state.editingObservacion;
   var editable = d.role === 'admin';
-  var docentes = allDocentes().slice().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
-  var docOpts = '<option value="">Elija un elemento…</option>' + docentes.map(function(x){
+  var docentesDelNivel = o.nivel ? docentesPorNivel(o.nivel) : [];
+  var docOpts = '<option value="">' + (o.nivel ? 'Elija un elemento…' : 'Elija primero el nivel educativo') + '</option>' + docentesDelNivel.map(function(x){
     return '<option value="'+x.id+'" '+(o.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
   }).join('');
-  var docenteSel = docentes.find(function(x){ return x.id===o.docenteId; });
-  var asigOpts = docenteSel ? misAsignaturas(docenteSel.id) : [];
+  var docenteSel = allDocentes().find(function(x){ return x.id===o.docenteId; });
+  var asigOpts = (o.docenteId && o.nivel) ? asignaturasDeDocentePorNivel(o.docenteId, o.nivel) : [];
+  var asigOptsHtml = '<option value="">' + (asigOpts.length ? 'Elija un elemento…' : 'Elija primero el docente') + '</option>' + asigOpts.map(function(a){
+    return '<option value="'+escapeHtml(a)+'" '+(o.asignatura===a?'selected':'')+'>'+escapeHtml(a)+'</option>';
+  }).join('');
 
   var perspectivasHtml = OBS_PERSPECTIVAS.map(function(persp){
     var filas = persp.grupos.map(function(g){ return obsGrupoRowsHtml(g, o); }).join('');
@@ -2747,11 +2768,16 @@ function renderObsForm(d){
   + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
   + '  <div style="background:var(--blue-700); color:#fff; text-align:center; padding:6px; font-weight:700; font-size:12px; letter-spacing:.05em;">CLASE CON ENFOQUE DUA</div>'
   + '  <div class="pca-band band-title">FORMATO PARA OBSERVAR Y VALORAR CLASES INSPIRADORAS</div>'
+  + '  <div class="pca-band band-section">Datos Informativos</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-4">'
+  + '    <div class="grid-3">'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="obsFecha" value="' + escapeHtml(o.fecha) + '" /></div>'
-  + '      <div class="field"><label>Asignatura</label><input class="cell-input" id="obsAsignatura" list="obsAsigList" value="' + escapeHtml(o.asignatura||'') + '" /><datalist id="obsAsigList">' + asigOpts.map(function(a){ return '<option value="'+escapeHtml(a)+'"></option>'; }).join('') + '</datalist></div>'
-  + '      <div class="field"><label>Docente</label><select class="cell-select" id="obsDocente">' + docOpts + '</select></div>'
+  + '      <div class="field"><label>Hora</label><input class="cell-input" type="time" id="obsHora" value="' + escapeHtml(o.hora||'') + '" /></div>'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="obsNivel">' + optionsHtml(NIVELES, o.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    </div>'
+  + '    <div class="grid-3" style="margin-top:14px;">'
+  + '      <div class="field"><label>Docente</label><select class="cell-select" id="obsDocente" ' + (docentesDelNivel.length?'':'disabled') + '>' + docOpts + '</select></div>'
+  + '      <div class="field"><label>Asignatura</label><select class="cell-select" id="obsAsignatura" ' + (asigOpts.length?'':'disabled') + '>' + asigOptsHtml + '</select></div>'
   + '      <div class="field"><label>Observador</label><input class="cell-input" id="obsObservador" value="' + escapeHtml(o.observador||'') + '" /></div>'
   + '    </div>'
   + '  </div>'
@@ -2776,8 +2802,10 @@ function bindObsFormEvents(){
   }
 
   document.getElementById('obsFecha').oninput = function(e){ o.fecha = e.target.value; };
-  document.getElementById('obsAsignatura').oninput = function(e){ o.asignatura = e.target.value; };
-  document.getElementById('obsDocente').onchange = function(e){ o.docenteId = e.target.value; render(); };
+  document.getElementById('obsHora').oninput = function(e){ o.hora = e.target.value; };
+  document.getElementById('obsNivel').onchange = function(e){ o.nivel = e.target.value; o.docenteId=''; o.asignatura=''; render(); };
+  document.getElementById('obsDocente').onchange = function(e){ o.docenteId = e.target.value; o.asignatura=''; render(); };
+  document.getElementById('obsAsignatura').onchange = function(e){ o.asignatura = e.target.value; };
   document.getElementById('obsObservador').oninput = function(e){ o.observador = e.target.value; };
 
   document.querySelectorAll('[data-obs-radio]').forEach(function(radio){
@@ -2990,9 +3018,9 @@ function cargaRowHtml(r, i, rows){
   + '  <td><button class="row-remove" data-remove-row="' + r.id + '" title="Quitar fila">✕</button></td>'
   + '</tr>';
 }
-function optionsHtml(list, selected, placeholder){
+function optionsHtml(list, selected, placeholder, labelFn){
   var html = placeholder ? '<option value="">' + escapeHtml(placeholder) + '</option>' : '';
-  html += list.map(function(o){ return '<option value="' + escapeHtml(o) + '" ' + (o===selected?'selected':'') + '>' + escapeHtml(o) + '</option>'; }).join('');
+  html += list.map(function(o){ return '<option value="' + escapeHtml(o) + '" ' + (o===selected?'selected':'') + '>' + escapeHtml(labelFn ? labelFn(o) : o) + '</option>'; }).join('');
   return html;
 }
 
@@ -3306,29 +3334,95 @@ function openPcaForm(pcaId, returnTo){
   go('pcaform');
 }
 
+/* Cuando la asignatura del PCA es de Inglés (cualquier variante: "Inglés" normal o los grupos
+   "Inglés Grupo A1/A2/B1(...)"), todos los campos y leyendas del formulario de PCA se muestran
+   en inglés — el resto del sistema (Carga Horaria, Plan Semanal, Administración) sigue en
+   español; esto es exclusivo del formulario de PCA. */
+function pcaEsIngles(p){
+  return /inglés/i.test(p.asignatura||'') || /inglés/i.test(p.asignaturaManual||'');
+}
+var PCA_EN = {
+  'Plan Curricular Anual': 'Annual Curriculum Plan',
+  'Fecha y hora límite de entrega': 'Submission deadline (date and time)',
+  ' (definida por el administrador)': ' (set by the administrator)',
+  'Datos Informativos': 'General Information',
+  'Nivel, especialidad, curso y asignatura se sugieren automáticamente a partir de tu Carga Horaria. Si no ves la opción que buscas, elige "Otro…/Otra…" o ve primero a "Mi Carga Horaria" a registrarla.':
+    'Level, specialization, course and subject are suggested automatically from your Teaching Load. If you don’t see the option you need, choose “Other…” or go to “My Teaching Load” first to register it.',
+  'Nivel Educativo': 'Educational Level',
+  'Especialidad': 'Specialization',
+  'Curso / Grado': 'Course / Grade',
+  'Asignatura': 'Subject',
+  'Carga horaria semanal': 'Weekly Teaching Hours',
+  'N.º semanas · Primer Trimestre': 'No. of Weeks · First Term',
+  'N.º semanas · Segundo Trimestre': 'No. of Weeks · Second Term',
+  'N.º semanas · Tercer Trimestre': 'No. of Weeks · Third Term',
+  'Temporalización': 'Timing',
+  'Unidad didáctica': 'Teaching Unit',
+  'Nombre de la Unidad': 'Unit Name',
+  'Trimestre en que se trabajará': 'Term',
+  'N.º de semanas': 'No. of Weeks',
+  'TOTAL': 'TOTAL',
+  '+ Agregar unidad a la temporalización': '+ Add unit to timing',
+  'Contenidos': 'Contents',
+  '+ Agregar unidad': '+ Add unit',
+  'Firmas': 'Signatures',
+  'Elaborado por · Docente': 'Prepared by · Teacher',
+  'Revisado por · Asesor Pedagógico': 'Reviewed by · Pedagogical Advisor',
+  'Aprobado por · Vicerrector': 'Approved by · Vice Principal',
+  '← Volver a la lista': '← Back to list',
+  'Bloqueado para el docente': 'Locked for the teacher',
+  'Exportar Word': 'Export Word',
+  'Exportar Excel': 'Export Excel',
+  'Guardar plan': 'Save plan',
+  'Este plan ya fue guardado y no puede editarse. Si necesitas una corrección, contacta a un administrador.':
+    'This plan has already been saved and can no longer be edited. If you need a correction, contact an administrator.',
+  'Elija un elemento…': 'Choose an option…',
+  'No aplica': 'N/A',
+  'Especifica': 'Specify',
+  'p.ej. Unidad 1': 'e.g. Unit 1',
+  'Nombre de la unidad': 'Unit name',
+  '1er Trimestre': '1st Term',
+  '2do Trimestre': '2nd Term',
+  '3er Trimestre': '3rd Term',
+  'Semana': 'Week',
+  'Fecha': 'Date',
+  'Nivel de Logro': 'Achievement Level',
+  'Nivel de logro': 'Achievement level',
+  'Temas y subtemas': 'Topics and subtopics',
+  'Página': 'Page',
+  'Observación': 'Remark',
+  'al': 'to',
+  '+ Agregar semana': '+ Add week',
+  'Eliminar unidad': 'Delete unit',
+  'Otro…': 'Other…',
+  'Otra…': 'Other…'
+};
+function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
+  var isIngles = pcaEsIngles(p);
   var isAdmin = currentDocente().role === 'admin';
   var existsInDb = load(LS.PCA).some(function(x){ return x.id===p.id; });
   var locked = !!p.locked && !isAdmin;
   var lockToggle = (isAdmin && existsInDb)
-    ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="pfLockToggle" ' + (p.locked?'checked':'') + ' /> Bloqueado para el docente</label>'
+    ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="pfLockToggle" ' + (p.locked?'checked':'') + ' /> ' + te('Bloqueado para el docente', isIngles) + '</label>'
     : '';
   return ''
     + '<div class="pca-toolbar no-print">'
-    + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">← Volver a la lista</button>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">' + te('← Volver a la lista', isIngles) + '</button>'
     + lockToggle
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
-    + '  <button class="btn btn-ghost btn-sm" id="btnExportWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">Exportar Word</button>'
-    + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">Exportar Excel</button>'
-    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">Guardar plan</button>')
+    + '  <button class="btn btn-ghost btn-sm" id="btnExportWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
+    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 Este plan ya fue guardado y no puede editarse. Si necesitas una corrección, contacta a un administrador.</div>' : '');
+    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan ya fue guardado y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
 }
 
 function renderPcaForm(d){
   var p = state.editingPca || blankPca(d);
   state.editingPca = p;
+  var isIngles = pcaEsIngles(p);
   var isAdminViewer = d.role === 'admin';
   var espOpts = especialidadesFor(p.nivel);
   var misCursos = misCursosPara(d.id, p.nivel, p.especialidad);
@@ -3339,70 +3433,70 @@ function renderPcaForm(d){
 
   var temporalizacionRows = (p.temporalizacion||[]).map(function(t){
     return '<tr data-tmrow="'+t.id+'">'
-    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="p.ej. Unidad 1" /></td>'
-    + '<td><input class="cell-input" data-tf="nombreUnidad" value="'+escapeHtml(t.nombreUnidad||'')+'" placeholder="Nombre de la unidad" /></td>'
-    + '<td><select class="cell-select" data-tf="trimestre">' + optionsHtml(['1er Trimestre','2do Trimestre','3er Trimestre'], t.trimestre, null) + '</select></td>'
+    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="'+te('p.ej. Unidad 1', isIngles)+'" /></td>'
+    + '<td><input class="cell-input" data-tf="nombreUnidad" value="'+escapeHtml(t.nombreUnidad||'')+'" placeholder="'+te('Nombre de la unidad', isIngles)+'" /></td>'
+    + '<td><select class="cell-select" data-tf="trimestre">' + optionsHtml(['1er Trimestre','2do Trimestre','3er Trimestre'], t.trimestre, null, function(x){ return te(x, isIngles); }) + '</select></td>'
     + '<td><input class="cell-input tabular" data-tf="semanas" type="number" min="0" value="'+escapeHtml(t.semanas)+'" /></td>'
     + '<td><button class="row-remove" data-tmremove="'+t.id+'">✕</button></td>'
     + '</tr>';
   }).join('');
 
-  var unidadesHtml = (p.unidades||[]).map(function(u, ui){ return unitBlockHtml(u, ui, p.id); }).join('');
+  var unidadesHtml = (p.unidades||[]).map(function(u, ui){ return unitBlockHtml(u, ui, p.id, isIngles); }).join('');
 
   return ''
   + pcaToolbarHtml(p)
   + '<div class="pca-doc" id="pcaDoc">'
   + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
-  + '  <div class="pca-band band-title">Plan Curricular Anual</div>'
+  + '  <div class="pca-band band-title">' + te('Plan Curricular Anual', isIngles) + '</div>'
   + '  <div style="text-align:center; padding:10px 20px; background:var(--surface-2); border-bottom:1px solid var(--line-strong);">'
-  + '    <div class="hint" style="margin-bottom:4px;">Fecha y hora límite de entrega' + (isAdminViewer ? '' : ' (definida por el administrador)') + '</div>'
+  + '    <div class="hint" style="margin-bottom:4px;">' + te('Fecha y hora límite de entrega', isIngles) + (isAdminViewer ? '' : te(' (definida por el administrador)', isIngles)) + '</div>'
   + (isAdminViewer
       ? '    <input class="cell-input no-print" type="datetime-local" id="pfFechaLimite" style="max-width:260px; margin:0 auto; text-align:center;" value="' + escapeHtml(p.fechaLimite||'') + '" />'
         + '<div class="only-print" style="display:none; font-weight:700;">' + escapeHtml(fmtDateTimeLocal(p.fechaLimite)) + '</div>'
       : '    <strong>' + escapeHtml(fmtDateTimeLocal(p.fechaLimite)) + '</strong>')
   + '  </div>'
-  + '  <div class="pca-band band-section">Datos Informativos</div>'
+  + '  <div class="pca-band band-section">' + te('Datos Informativos', isIngles) + '</div>'
   + '  <div class="pca-section">'
-  + '    <div class="hint" style="margin-bottom:10px;">Nivel, especialidad, curso y asignatura se sugieren automáticamente a partir de tu Carga Horaria. Si no ves la opción que buscas, elige "Otro…/Otra…" o ve primero a "Mi Carga Horaria" a registrarla.</div>'
+  + '    <div class="hint" style="margin-bottom:10px;">' + te('Nivel, especialidad, curso y asignatura se sugieren automáticamente a partir de tu Carga Horaria. Si no ves la opción que buscas, elige "Otro…/Otra…" o ve primero a "Mi Carga Horaria" a registrarla.', isIngles) + '</div>'
   + '    <div class="grid-4">'
-  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="pfNivel">' + optionsHtml(NIVELES, p.nivel, 'Elija un elemento…') + '</select></div>'
-  + '      <div class="field"><label>Especialidad</label><select class="cell-select" id="pfEspecialidad" ' + (espOpts.length?'':'disabled') + '>' + optionsHtml(espOpts, p.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
-  + '      <div class="field"><label>Curso / Grado</label><select class="cell-select" id="pfCurso">' + optionsHtml(cursoOpts.concat(['Otro…']), p.curso, 'Elija un elemento…') + '</select>' + (p.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="pfCursoManual" value="'+escapeHtml(p.cursoManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
-  + '      <div class="field"><label>Asignatura</label><select class="cell-select" id="pfAsignatura">' + optionsHtml(asigOpts.concat(['Otra…']), p.asignatura, 'Elija un elemento…') + '</select>' + (p.asignatura==='Otra…' ? '<input class="cell-input" style="margin-top:6px;" id="pfAsignaturaManual" value="'+escapeHtml(p.asignaturaManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
+  + '      <div class="field"><label>' + te('Nivel Educativo', isIngles) + '</label><select class="cell-select" id="pfNivel">' + optionsHtml(NIVELES, p.nivel, te('Elija un elemento…', isIngles)) + '</select></div>'
+  + '      <div class="field"><label>' + te('Especialidad', isIngles) + '</label><select class="cell-select" id="pfEspecialidad" ' + (espOpts.length?'':'disabled') + '>' + optionsHtml(espOpts, p.especialidad, espOpts.length?te('Elija un elemento…', isIngles):te('No aplica', isIngles)) + '</select></div>'
+  + '      <div class="field"><label>' + te('Curso / Grado', isIngles) + '</label><select class="cell-select" id="pfCurso">' + optionsHtml(cursoOpts.concat(['Otro…']), p.curso, te('Elija un elemento…', isIngles), function(x){ return x==='Otro…' ? te(x, isIngles) : x; }) + '</select>' + (p.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="pfCursoManual" value="'+escapeHtml(p.cursoManual||'')+'" placeholder="'+te('Especifica', isIngles)+'" />' : '') + '</div>'
+  + '      <div class="field"><label>' + te('Asignatura', isIngles) + '</label><select class="cell-select" id="pfAsignatura">' + optionsHtml(asigOpts.concat(['Otra…']), p.asignatura, te('Elija un elemento…', isIngles), function(x){ return x==='Otra…' ? te(x, isIngles) : x; }) + '</select>' + (p.asignatura==='Otra…' ? '<input class="cell-input" style="margin-top:6px;" id="pfAsignaturaManual" value="'+escapeHtml(p.asignaturaManual||'')+'" placeholder="'+te('Especifica', isIngles)+'" />' : '') + '</div>'
   + '    </div>'
   + '    <div class="grid-4" style="margin-top:14px;">'
-  + '      <div class="field"><label>Carga horaria semanal</label><input class="cell-input tabular" id="pfCargaSemanal" type="number" min="0" value="'+escapeHtml(p.cargaSemanal)+'" /></div>'
-  + '      <div class="field"><label>N.º semanas · Primer Trimestre</label><input class="cell-input tabular" id="pfT1" type="number" min="0" value="'+escapeHtml(p.semanasT1)+'" /></div>'
-  + '      <div class="field"><label>N.º semanas · Segundo Trimestre</label><input class="cell-input tabular" id="pfT2" type="number" min="0" value="'+escapeHtml(p.semanasT2)+'" /></div>'
-  + '      <div class="field"><label>N.º semanas · Tercer Trimestre</label><input class="cell-input tabular" id="pfT3" type="number" min="0" value="'+escapeHtml(p.semanasT3)+'" /></div>'
+  + '      <div class="field"><label>' + te('Carga horaria semanal', isIngles) + '</label><input class="cell-input tabular" id="pfCargaSemanal" type="number" min="0" value="'+escapeHtml(p.cargaSemanal)+'" /></div>'
+  + '      <div class="field"><label>' + te('N.º semanas · Primer Trimestre', isIngles) + '</label><input class="cell-input tabular" id="pfT1" type="number" min="0" value="'+escapeHtml(p.semanasT1)+'" /></div>'
+  + '      <div class="field"><label>' + te('N.º semanas · Segundo Trimestre', isIngles) + '</label><input class="cell-input tabular" id="pfT2" type="number" min="0" value="'+escapeHtml(p.semanasT2)+'" /></div>'
+  + '      <div class="field"><label>' + te('N.º semanas · Tercer Trimestre', isIngles) + '</label><input class="cell-input tabular" id="pfT3" type="number" min="0" value="'+escapeHtml(p.semanasT3)+'" /></div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Temporalización</div>'
+  + '  <div class="pca-band band-section">' + te('Temporalización', isIngles) + '</div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th>Unidad didáctica</th><th>Nombre de la Unidad</th><th>Trimestre en que se trabajará</th><th>N.º de semanas</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th>' + te('Unidad didáctica', isIngles) + '</th><th>' + te('Nombre de la Unidad', isIngles) + '</th><th>' + te('Trimestre en que se trabajará', isIngles) + '</th><th>' + te('N.º de semanas', isIngles) + '</th><th></th></tr></thead>'
   + '    <tbody id="tmBody">' + temporalizacionRows + '</tbody>'
-  + '    <tfoot><tr class="totals-row"><td colspan="3">TOTAL</td><td class="tabular">' + totalSemanas + '</td><td></td></tr></tfoot></table></div>'
-  + '    <button class="btn btn-ghost btn-sm" id="btnAddTemporalizacion" style="margin-top:10px;">+ Agregar unidad a la temporalización</button>'
+  + '    <tfoot><tr class="totals-row"><td colspan="3">' + te('TOTAL', isIngles) + '</td><td class="tabular">' + totalSemanas + '</td><td></td></tr></tfoot></table></div>'
+  + '    <button class="btn btn-ghost btn-sm" id="btnAddTemporalizacion" style="margin-top:10px;">' + te('+ Agregar unidad a la temporalización', isIngles) + '</button>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Contenidos</div>'
+  + '  <div class="pca-band band-section">' + te('Contenidos', isIngles) + '</div>'
   + '  <div id="unidadesWrap">' + unidadesHtml + '</div>'
-  + '  <div style="padding:14px 20px;"><button class="btn btn-ghost btn-sm" id="btnAddUnidad">+ Agregar unidad</button></div>'
-  + '  <div class="pca-band band-section">Firmas</div>'
+  + '  <div style="padding:14px 20px;"><button class="btn btn-ghost btn-sm" id="btnAddUnidad">' + te('+ Agregar unidad', isIngles) + '</button></div>'
+  + '  <div class="pca-band band-section">' + te('Firmas', isIngles) + '</div>'
   + '  <div class="signature-grid">'
-  + '    <div class="signature-box"><div class="role">Elaborado por · Docente</div><input class="cell-input" id="pfElaborado" value="' + escapeHtml(p.elaboradoPor) + '" readonly /></div>'
-  + '    <div class="signature-box"><div class="role">Revisado por · Asesor Pedagógico</div><input class="cell-input" id="pfRevisado" value="' + escapeHtml(p.revisadoPor) + '" /></div>'
-  + '    <div class="signature-box"><div class="role">Aprobado por · Vicerrector</div><input class="cell-input" id="pfAprobado" value="' + escapeHtml(p.aprobadoPor) + '" /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Elaborado por · Docente', isIngles) + '</div><input class="cell-input" id="pfElaborado" value="' + escapeHtml(p.elaboradoPor) + '" readonly /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Revisado por · Asesor Pedagógico', isIngles) + '</div><input class="cell-input" id="pfRevisado" value="' + escapeHtml(p.revisadoPor) + '" /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Aprobado por · Vicerrector', isIngles) + '</div><input class="cell-input" id="pfAprobado" value="' + escapeHtml(p.aprobadoPor) + '" /></div>'
   + '  </div>'
   + '</div>';
 }
 
-function unitBlockHtml(u, ui, pcaId){
+function unitBlockHtml(u, ui, pcaId, isIngles){
   var rows = u.filas.map(function(f, fi){
     return '<tr data-wkrow="'+f.id+'">'
     + '<td class="tabular" style="text-align:center;">' + (fi+1) + '</td>'
-    + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">al</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
-    + '<td style="min-width:280px;">' + richEditorHtml('destreza', f.id, f.destreza, 'Nivel de logro') + '</td>'
-    + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, 'Temas y subtemas') + '</td>'
+    + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
+    + '<td style="min-width:280px;">' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro', isIngles)) + '</td>'
+    + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, te('Temas y subtemas', isIngles)) + '</td>'
     + '<td><input class="cell-input" data-wf="pagina" style="min-width:60px;" value="'+escapeHtml(f.pagina)+'" /></td>'
     + '<td style="min-width:130px;">' + estadoSemanaBadgeHtml(f, pcaId) + '</td>'
     + '<td><button class="row-remove" data-wkremove="'+f.id+'">✕</button></td>'
@@ -3410,12 +3504,12 @@ function unitBlockHtml(u, ui, pcaId){
   }).join('');
   return ''
   + '<div class="unit-block" data-unit="' + u.id + '">'
-  + '  <div class="pca-band band-unit"><input class="unit-head-input" data-unitname="'+u.id+'" value="'+escapeHtml(u.nombre)+'" placeholder="Nombre de la unidad" />'
-  + '    <button class="btn btn-danger btn-sm no-print" data-removeunit="'+u.id+'" style="margin-left:auto; background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">Eliminar unidad</button></div>'
+  + '  <div class="pca-band band-unit"><input class="unit-head-input" data-unitname="'+u.id+'" value="'+escapeHtml(u.nombre)+'" placeholder="'+te('Nombre de la unidad', isIngles)+'" />'
+  + '    <button class="btn btn-danger btn-sm no-print" data-removeunit="'+u.id+'" style="margin-left:auto; background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">' + te('Eliminar unidad', isIngles) + '</button></div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">Semana</th><th style="width:150px;">Fecha</th><th>Nivel de Logro</th><th>Temas y subtemas</th><th style="width:70px;">Página</th><th>Observación</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">' + te('Semana', isIngles) + '</th><th style="width:150px;">' + te('Fecha', isIngles) + '</th><th>' + te('Nivel de Logro', isIngles) + '</th><th>' + te('Temas y subtemas', isIngles) + '</th><th style="width:70px;">' + te('Página', isIngles) + '</th><th>' + te('Observación', isIngles) + '</th><th></th></tr></thead>'
   + '    <tbody data-unitbody="' + u.id + '">' + rows + '</tbody></table></div>'
-  + '    <button class="btn btn-ghost btn-sm no-print" data-addweek="' + u.id + '" style="margin-top:10px;">+ Agregar semana</button>'
+  + '    <button class="btn btn-ghost btn-sm no-print" data-addweek="' + u.id + '" style="margin-top:10px;">' + te('+ Agregar semana', isIngles) + '</button>'
   + '  </div>'
   + '</div>';
 }
