@@ -275,6 +275,10 @@
   .checkbox-pill{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--line); border-radius:99px; padding:5px 10px 5px 8px; font-size:12px; font-weight:600; color:var(--ink); cursor:pointer; user-select:none; white-space:nowrap;}
   .checkbox-pill:has(input:checked){background:var(--blue-100); border-color:var(--blue-500); color:var(--blue-700);}
   .checkbox-pill input{accent-color:var(--blue-600); cursor:pointer; margin:0;}
+  .obs-opts{display:flex; flex-wrap:wrap; gap:6px;}
+  .obs-table{table-layout:fixed;}
+  .obs-table td, .obs-table th{vertical-align:middle;}
+  .obs-table .obs-evidencia{font-weight:700; font-size:12.5px; color:var(--blue-900);}
   .add-inline{display:flex; gap:8px; margin-top:8px;}
   .add-inline input{flex:1; min-width:0; padding:7px 9px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--surface-2); font-size:13px; color:var(--ink);}
   .add-inline input:focus{outline:2px solid var(--blue-500); outline-offset:1px; border-color:var(--blue-500);}
@@ -310,7 +314,7 @@
        documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
        el cuadro de diálogo de impresión al guardar como PDF. */
     @page manualpage{ size: A4 portrait; margin: 18mm; }
-    .manual-doc, .insp-report-doc{ page: manualpage; }
+    .manual-doc, .insp-report-doc, .obs-doc{ page: manualpage; }
   }
 
   /* ============================= MANUALES DE USUARIO ============================= */
@@ -392,13 +396,14 @@ var LS = {
   FECHAS_LIMITE: 'FECHAS_LIMITE',
   ESTUDIANTES: 'ESTUDIANTES',
   ASISTENCIA: 'ASISTENCIA',
-  INCIDENTES: 'INCIDENTES'
+  INCIDENTES: 'INCIDENTES',
+  OBSERVACIONES: 'OBSERVACIONES'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
-  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes'
+  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -1049,6 +1054,7 @@ var NAV_ITEMS = [
   {key:'cargahoraria', label:'Mi Carga Horaria', ic:'🗂️'},
   {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
   {key:'semanallist', label:'Planes Semanales', ic:'📅'},
+  {key:'observacion', label:'Observación de Clases', ic:'📋'},
   {key:'database', label:'Base de Datos', ic:'💾'}
 ];
 
@@ -1080,6 +1086,7 @@ function renderShell(){
   else if(state.subview === 'manualdocente') sub = renderManualDocente();
   else if(state.subview === 'manualadmin') sub = renderManualAdmin();
   else if(state.subview === 'inspeccion') sub = renderInspeccion(d);
+  else if(state.subview === 'observacion') sub = renderObservacion(d);
   else sub = renderDashboard(d);
 
   return ''
@@ -1124,6 +1131,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'manualdocente') bindManualEvents();
   else if(state.subview === 'manualadmin') bindManualEvents();
   else if(state.subview === 'inspeccion') bindInspeccionEvents();
+  else if(state.subview === 'observacion') bindObservacionEvents();
   else bindDashboardEvents();
 }
 
@@ -2569,6 +2577,244 @@ function bindRepIncidentesEvents(){
   document.getElementById('rcInicio').onchange = function(e){ f.fechaInicio = e.target.value; render(); };
   document.getElementById('rcFin').onchange = function(e){ f.fechaFin = e.target.value; render(); };
   var printBtn = document.getElementById('btnPrintRepIncidentes'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+
+/* ============================= OBSERVACIÓN DE CLASES (Admin) ============================= */
+/* Mapeado 1:1 del formato institucional "FORMATO PARA OBSERVAR Y VALORAR CLASES INSPIRADORAS"
+   (enfoque DUA): 32 acciones agrupadas en 2 perspectivas y, dentro de cada una, por evidencia. */
+var OBS_TIPOS_OPCIONES = {
+  SN: ['Sí','No'],
+  SN_NA: ['Sí','No','N/A'],
+  ESC4: ['Todos/Casi todos','La mayoría de estudiantes','Pocos estudiantes','Ningún/Casi ninguno'],
+  ESC5: ['Siempre/Casi siempre','La mayoría de veces','Pocas veces','Nunca/Casi nunca','N/A'],
+  ESC4B: ['Siempre/Casi siempre','La mayoría de veces','Pocas veces','Nunca/Casi nunca']
+};
+var OBS_PERSPECTIVAS = [
+  {
+    id: 'p1', titulo: 'PERSPECTIVA 1: AMBIENTE DEL AULA DE CLASE',
+    grupos: [
+      { evidencia: 'Hay en el aula un ambiente de respeto.', items: [
+        {n:1, texto:'Rechaza y detiene una o más burlas entre estudiantes.', tipo:'SN_NA'},
+        {n:2, texto:'Saluda a los estudiantes cuando entran o al inicio de la clase.', tipo:'SN_NA'},
+        {n:3, texto:'Es respetuoso con los estudiantes (ni burlas ni humillaciones).', tipo:'SN'},
+        {n:4, texto:'Trata a todos los alumnos por igual.', tipo:'SN'}
+      ]},
+      { evidencia: 'Hay un entorno garantizado que promueve el aprendizaje.', items: [
+        {n:5, texto:'Hace referencia al trabajo de clases anteriores.', tipo:'SN'},
+        {n:6, texto:'Los estudiantes hacen preguntas relacionadas con el tema de clase.', tipo:'NUM'},
+        {n:7, texto:'Les habla a los estudiantes por su nombre.', tipo:'ESC4'},
+        {n:8, texto:'Incluye en actividades/discusiones a estudiantes que NO están involucrados.', tipo:'ESC5'},
+        {n:9, texto:'Da instrucciones claras para el desarrollo de las actividades.', tipo:'ESC5'},
+        {n:10, texto:'Los estudiantes participan, activos, involucrados en clase.', tipo:'ESC4'},
+        {n:11, texto:'Tiene rutinas eficientes para los procedimientos de clase.', tipo:'SN'}
+      ]},
+      { evidencia: 'Hay normas de comportamiento y convivencia y se cumplen.', items: [
+        {n:12, texto:'Tiene normas de convivencia y se cumplen.', tipo:'ESC5'},
+        {n:13, texto:'Cuando habla con un estudiante, los demás están atentos.', tipo:'ESC5'},
+        {n:14, texto:'Se corrigen respetuosamente entre ellos.', tipo:'SN'},
+        {n:15, texto:'Los estudiantes levantan la mano para participar.', tipo:'ESC5'}
+      ]}
+    ]
+  },
+  {
+    id: 'p2', titulo: 'PERSPECTIVA 2: DIDÁCTICA UTILIZADA EN EL AULA DE CLASE',
+    grupos: [
+      { evidencia: 'Se comunica efectivamente con los alumnos.', items: [
+        {n:16, texto:'Se pone a la misma altura física de los estudiantes al hablar de manera individual con un estudiante o un grupo.', tipo:'ESC5'},
+        {n:17, texto:'Mantiene contacto visual al exponer o explicar algo.', tipo:'ESC4B'},
+        {n:18, texto:'Volumen de voz suficientemente alto para ser escuchado de lejos.', tipo:'SN'}
+      ]},
+      { evidencia: 'Utiliza estrategias que fomentan el aprendizaje activo y el pensamiento crítico.', items: [
+        {n:19, texto:'Utiliza las TIC´s como medio visual y auditivo. (ej. Proyector, parlantes, Diapositivas).', tipo:'SN'},
+        {n:20, texto:'Las diapositivas son ordenadas, estructuradas, llamativas y concretas.', tipo:'SN'},
+        {n:21, texto:'Hace preguntas que ayudan a que los estudiantes profundicen y espera que respondan (ej.: ¿por qué? ¿cómo? Explícame más)', tipo:'NUM'},
+        {n:22, texto:'Da tiempo adecuado para cada actividad.', tipo:'ESC5'},
+        {n:23, texto:'Las actividades en clase son pertinentes para el aprendizaje valiéndose de diferentes instrumentos.', tipo:'ESC5'},
+        {n:24, texto:'Ayuda a recordar que se hizo en clases anteriores.', tipo:'SN'},
+        {n:25, texto:'Hay un trabajo cooperativo entre los estudiantes.', tipo:'SN'},
+        {n:26, texto:'Si la anterior respuesta fue sí, responda la siguiente pregunta: ¿Se identifica que los estudiantes tienen roles definidos?', tipo:'SN'},
+        {n:27, texto:'Comunica los objetivos de aprendizaje.', tipo:'NUM'}
+      ]},
+      { evidencia: 'Utiliza la evaluación continua como una herramienta de aprendizaje.', items: [
+        {n:28, texto:'Hace preguntas a los estudiantes durante las clases para verificar su comprensión.', tipo:'NUM'},
+        {n:29, texto:'Les da retroalimentación "instantánea" a los estudiantes sobre sus respuestas.', tipo:'SN'},
+        {n:30, texto:'Hace comentarios sobre el buen desempeño.', tipo:'NUM'},
+        {n:31, texto:'Al asignar una actividad el profesor rota por el salón monitoreando el aprendizaje.', tipo:'ESC5'},
+        {n:32, texto:'Se asegura que los estudiantes entiendan.', tipo:'SN'}
+      ]}
+    ]
+  }
+];
+function blankObservacion(){
+  return {
+    id: uid('obs'), fecha: todayISO(), asignatura: '', docenteId: '', observador: 'Lic. David Villalta',
+    respuestas: {}, comentarios_p1: '', comentarios_p2: '', registradoPor: '', createdAt:'', updatedAt:''
+  };
+}
+/* Visible para todos (docentes y administradores) — solo un administrador puede crear, editar
+   o eliminar; un docente ve, en modo solo lectura, el historial de SUS PROPIAS observaciones
+   (ya llegan filtradas desde Firestore, ver attachRealtimeListeners). */
+function renderObservacion(d){
+  return (state.obsView === 'form') ? renderObsForm(d) : renderObsLista(d);
+}
+function bindObservacionEvents(){
+  if(state.obsView === 'form') bindObsFormEvents();
+  else bindObsListaEvents();
+}
+function renderObsLista(d){
+  var isAdmin = d.role === 'admin';
+  var docentes = allDocentes();
+  var todos = load(LS.OBSERVACIONES).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var rows = todos.map(function(o){
+    var doc = docentes.find(function(x){ return x.id===o.docenteId; });
+    return '<tr>'
+      + '<td class="tabular">' + fmtDate(o.fecha) + '</td>'
+      + '<td>' + (doc ? escapeHtml(nombreFormal(doc)) : '—') + '</td>'
+      + '<td>' + escapeHtml(o.asignatura||'—') + '</td>'
+      + '<td>' + escapeHtml(o.observador||'—') + '</td>'
+      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-obs-open="'+o.id+'">' + (isAdmin?'Abrir':'Ver') + '</button>' + (isAdmin ? ' <button class="btn btn-danger btn-sm" data-obs-delete="'+o.id+'">Eliminar</button>' : '') + '</td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="5" class="hint">Todavía no hay observaciones registradas' + (isAdmin?'.':' para ti.') + '</td></tr>';
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Observación de Clases</div><h1>' + (isAdmin ? 'Observaciones de clase' : 'Mi historial de observaciones') + '</h1><p>Formato para observar y valorar clases inspiradoras — enfoque DUA.' + (isAdmin ? '' : ' Solo el Asesor Pedagógico puede registrar o modificar observaciones.') + '</p></div></div>'
+  + '<div class="card">'
+  + (isAdmin ? '  <button class="btn btn-primary btn-sm" id="btnObsNueva" style="margin-bottom:14px;">+ Nueva observación</button>' : '')
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Docente</th><th>Asignatura</th><th>Observador</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '</div>';
+}
+function bindObsListaEvents(){
+  var nuevaBtn = document.getElementById('btnObsNueva');
+  if(nuevaBtn) nuevaBtn.onclick = function(){ state.editingObservacion = blankObservacion(); state.obsView='form'; render(); };
+  document.querySelectorAll('[data-obs-open]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.OBSERVACIONES).find(function(x){ return x.id===btn.getAttribute('data-obs-open'); });
+      if(target){ state.editingObservacion = Object.assign({}, target, {respuestas: Object.assign({}, target.respuestas)}); state.obsView='form'; render(); }
+    };
+  });
+  document.querySelectorAll('[data-obs-delete]').forEach(function(btn){
+    btn.onclick = function(){
+      confirmDialog('¿Eliminar esta observación de clase? Esta acción no se puede deshacer.', function(){
+        save(LS.OBSERVACIONES, load(LS.OBSERVACIONES).filter(function(x){ return x.id!==btn.getAttribute('data-obs-delete'); }));
+        toast('Observación eliminada.', 'success');
+        render();
+      });
+    };
+  });
+}
+function obsOpcionesHtml(item, valorActual){
+  if(item.tipo === 'NUM'){
+    return '<div style="display:flex; align-items:center; gap:8px;"><label style="white-space:nowrap; font-size:12.5px;">N.º de veces:</label><input type="number" min="0" class="cell-input tabular" style="width:80px;" data-obs-num="'+item.n+'" value="'+escapeHtml(valorActual||'')+'" /></div>';
+  }
+  var opciones = OBS_TIPOS_OPCIONES[item.tipo];
+  return '<div class="obs-opts">' + opciones.map(function(op){
+    return '<label class="checkbox-pill"><input type="radio" name="obs-radio-'+item.n+'" value="'+escapeHtml(op)+'" data-obs-radio="'+item.n+'" '+(valorActual===op?'checked':'')+' /> '+escapeHtml(op)+'</label>';
+  }).join('') + '</div>';
+}
+function obsGrupoRowsHtml(grupo, o){
+  return grupo.items.map(function(item, i){
+    return '<tr>'
+      + (i===0 ? '<td rowspan="'+grupo.items.length+'" class="obs-evidencia">'+escapeHtml(grupo.evidencia)+'</td>' : '')
+      + '<td class="tabular" style="text-align:center;">' + item.n + '</td>'
+      + '<td>' + escapeHtml(item.texto) + '</td>'
+      + '<td>' + obsOpcionesHtml(item, o.respuestas[item.n]) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+function renderObsForm(d){
+  var o = state.editingObservacion;
+  var editable = d.role === 'admin';
+  var docentes = allDocentes().slice().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docOpts = '<option value="">Elija un elemento…</option>' + docentes.map(function(x){
+    return '<option value="'+x.id+'" '+(o.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
+  }).join('');
+  var docenteSel = docentes.find(function(x){ return x.id===o.docenteId; });
+  var asigOpts = docenteSel ? misAsignaturas(docenteSel.id) : [];
+
+  var perspectivasHtml = OBS_PERSPECTIVAS.map(function(persp){
+    var filas = persp.grupos.map(function(g){ return obsGrupoRowsHtml(g, o); }).join('');
+    return ''
+      + '<div class="pca-band band-section">' + escapeHtml(persp.titulo) + '</div>'
+      + '<div class="pca-section" style="padding:0;">'
+      + '  <div class="table-wrap" style="border:none; border-radius:0;"><table class="obs-table"><colgroup><col style="width:16%;" /><col style="width:6%;" /><col style="width:40%;" /><col style="width:38%;" /></colgroup><thead><tr><th>Evidencias</th><th>N.º</th><th>Acciones</th><th>Respuestas</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+      + '  <div class="field" style="padding:16px 20px;"><label>Comentarios</label>' + richEditorHtml('comentarios_'+persp.id, o.id, o['comentarios_'+persp.id], 'Observaciones adicionales…') + '</div>'
+      + '</div>';
+  }).join('');
+
+  return ''
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnObsVolver">← Volver</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnObsPrint">Imprimir / PDF (A4)</button>' + (editable ? '<button class="btn btn-primary btn-sm" id="btnObsGuardar">Guardar</button>' : '') + '</div>'
+  + (editable ? '<div class="form-error no-print" id="obsError" style="margin-bottom:10px;"></div>' : '<div class="lock-banner no-print">🔒 Solo el Asesor Pedagógico puede editar esta observación. Esta es tu copia de solo lectura.</div>')
+  + '<div class="pca-doc obs-doc" id="obsDoc">'
+  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+  + '  <div style="background:var(--blue-700); color:#fff; text-align:center; padding:6px; font-weight:700; font-size:12px; letter-spacing:.05em;">CLASE CON ENFOQUE DUA</div>'
+  + '  <div class="pca-band band-title">FORMATO PARA OBSERVAR Y VALORAR CLASES INSPIRADORAS</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-4">'
+  + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="obsFecha" value="' + escapeHtml(o.fecha) + '" /></div>'
+  + '      <div class="field"><label>Asignatura</label><input class="cell-input" id="obsAsignatura" list="obsAsigList" value="' + escapeHtml(o.asignatura||'') + '" /><datalist id="obsAsigList">' + asigOpts.map(function(a){ return '<option value="'+escapeHtml(a)+'"></option>'; }).join('') + '</datalist></div>'
+  + '      <div class="field"><label>Docente</label><select class="cell-select" id="obsDocente">' + docOpts + '</select></div>'
+  + '      <div class="field"><label>Observador</label><input class="cell-input" id="obsObservador" value="' + escapeHtml(o.observador||'') + '" /></div>'
+  + '    </div>'
+  + '  </div>'
+  + perspectivasHtml
+  + '  <div class="signature-grid">'
+  + '    <div class="signature-box"><div class="role">Observador</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(o.observador||'—') + '</div><div class="hint">Asesor Pedagógico</div></div>'
+  + '    <div class="signature-box"><div class="role">Docente de la Asignatura</div><div style="font-weight:700; font-size:14px;">' + (docenteSel ? escapeHtml(nombreFormal(docenteSel)) : '—') + '</div></div>'
+  + '  </div>'
+  + '</div>';
+}
+function bindObsFormEvents(){
+  var o = state.editingObservacion;
+  var editable = currentDocente().role === 'admin';
+
+  document.getElementById('btnObsVolver').onclick = function(){ state.editingObservacion=null; state.obsView='lista'; render(); };
+  document.getElementById('btnObsPrint').onclick = printAsPdf;
+
+  if(!editable){
+    document.querySelectorAll('#obsDoc input, #obsDoc select, #obsDoc textarea, #obsDoc button').forEach(function(el){ el.disabled = true; });
+    document.querySelectorAll('#obsDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
+    return;
+  }
+
+  document.getElementById('obsFecha').oninput = function(e){ o.fecha = e.target.value; };
+  document.getElementById('obsAsignatura').oninput = function(e){ o.asignatura = e.target.value; };
+  document.getElementById('obsDocente').onchange = function(e){ o.docenteId = e.target.value; render(); };
+  document.getElementById('obsObservador').oninput = function(e){ o.observador = e.target.value; };
+
+  document.querySelectorAll('[data-obs-radio]').forEach(function(radio){
+    radio.addEventListener('change', function(){
+      if(radio.checked) o.respuestas[radio.getAttribute('data-obs-radio')] = radio.value;
+    });
+  });
+  document.querySelectorAll('[data-obs-num]').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      o.respuestas[inp.getAttribute('data-obs-num')] = inp.value;
+    });
+  });
+  document.querySelectorAll('.rte-editable').forEach(function(el){
+    var key = el.getAttribute('data-rte-field');
+    el.addEventListener('input', function(){ o[key] = el.innerHTML; });
+  });
+  bindRteToolbars(document.getElementById('obsDoc'));
+
+  document.getElementById('obsError').classList.remove('show');
+  document.getElementById('btnObsGuardar').onclick = doSaveObservacion;
+}
+function doSaveObservacion(){
+  var o = state.editingObservacion;
+  var errEl = document.getElementById('obsError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!o.fecha || !o.docenteId){ return fail('Elige la fecha y el docente observado.'); }
+  var d = currentDocente();
+  var toSave = Object.assign({}, o, {
+    comentarios_p1: sanitizeRte(o.comentarios_p1), comentarios_p2: sanitizeRte(o.comentarios_p2),
+    registradoPor: o.registradoPor || d.id, createdAt: o.createdAt || nowISO(), updatedAt: nowISO()
+  });
+  var all = load(LS.OBSERVACIONES);
+  var exists = all.some(function(x){ return x.id===o.id; });
+  save(LS.OBSERVACIONES, exists ? all.map(function(x){ return x.id===o.id?toSave:x; }) : all.concat([toSave]));
+  state.editingObservacion=null; state.obsView='lista'; render();
+  toast('Observación guardada correctamente.', 'success');
 }
 
 /* ============================= CARGA HORARIA ============================= */
@@ -5587,10 +5833,26 @@ function detachRealtimeListeners(){
   FS_UNSUBS.forEach(function(u){ try{ u(); }catch(e){} });
   FS_UNSUBS = [];
 }
-function attachRealtimeListeners(){
+/* Observación de Clases se lee completa solo si eres admin; un docente solo puede LEER sus
+   propias observaciones (nunca escribirlas — eso lo exigen también las reglas de Firestore).
+   Firestore exige que una consulta de colección completa esté acotada con un where() que calce
+   exactamente con la regla de seguridad basada en resource.data, así que hace falta saber el rol
+   ANTES de armar la consulta — por eso esta única lectura puntual (no en tiempo real) de la
+   colección "docentes" (de lectura pública) se hace primero y se espera antes de suscribirse. */
+async function attachRealtimeListeners(){
   detachRealtimeListeners();
+  var soyAdmin = false;
+  try{
+    var docentesSnap = await window.FB.getDocs(window.FB.collection(window.FB.db, FS_COLLECTION.DOCENTES));
+    docentesSnap.forEach(function(d){ if(d.id === CURRENT_UID && d.data().role === 'admin') soyAdmin = true; });
+  }catch(e){ console.error('No se pudo determinar el rol antes de sincronizar', e); }
+
   Object.keys(FS_COLLECTION).forEach(function(key){
-    var unsub = window.FB.onSnapshot(window.FB.collection(window.FB.db, FS_COLLECTION[key]), function(snap){
+    var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
+    var queryRef = (key === 'OBSERVACIONES' && !soyAdmin)
+      ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
+      : colRef;
+    var unsub = window.FB.onSnapshot(queryRef, function(snap){
       var arr = [];
       snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
       FS_CACHE[key] = arr;
@@ -5631,7 +5893,7 @@ render();
     signOut, sendPasswordResetEmail, updatePassword
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
   import {
-    getFirestore, doc, setDoc, deleteDoc, getDocs, collection, onSnapshot
+    getFirestore, doc, setDoc, deleteDoc, getDocs, collection, onSnapshot, query, where
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   var firebaseConfig = {
@@ -5658,7 +5920,8 @@ render();
     onAuthStateChanged: onAuthStateChanged, signInWithEmailAndPassword: signInWithEmailAndPassword,
     createUserWithEmailAndPassword: createUserWithEmailAndPassword, signOut: signOut,
     sendPasswordResetEmail: sendPasswordResetEmail, updatePassword: updatePassword,
-    doc: doc, setDoc: setDoc, deleteDoc: deleteDoc, getDocs: getDocs, collection: collection, onSnapshot: onSnapshot
+    doc: doc, setDoc: setDoc, deleteDoc: deleteDoc, getDocs: getDocs, collection: collection, onSnapshot: onSnapshot,
+    query: query, where: where
   };
 
   window.dispatchEvent(new Event('firebase-ready'));
