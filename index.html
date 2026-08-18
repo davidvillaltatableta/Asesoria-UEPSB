@@ -1723,6 +1723,15 @@ function renderInspEstudiantesMasivo(){
   if(!estudianteEditRows) estudianteEditRows = [1,2,3,4,5].map(blankEstudianteRow);
   var rowsHtml = estudianteEditRows.map(function(r,i){ return estudianteRowHtml(r,i); }).join('');
   return ''
+  + '<div class="card" style="margin-bottom:16px;">'
+  + '  <h2>Importar desde Excel</h2>'
+  + '  <div class="card-sub">Sube un archivo .xlsx o .csv con las columnas: Nombres, Apellidos, Cédula, Nivel, Especialidad, Curso, Representante, Teléfono. Las filas cargadas reemplazan la tabla de abajo — revísalas y ajústalas antes de guardar.</div>'
+  + '  <div class="form-error" id="estImportError"></div>'
+  + '  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">'
+  + '    <input type="file" id="estImportFile" accept=".xlsx,.csv" />'
+  + '    <button class="btn btn-ghost btn-sm" type="button" id="btnDescargarPlantilla">Descargar plantilla</button>'
+  + '  </div>'
+  + '</div>'
   + '<div class="card">'
   + '  <h2>Carga masiva de estudiantes</h2>'
   + '  <div class="card-sub">Completa varias filas y guarda todo de una vez. Puedes seguir agregando filas.</div>'
@@ -1779,6 +1788,220 @@ function bindInspEstudiantesMasivoEvents(){
     toast(toSave.length + ' estudiante(s) agregado(s) correctamente.', 'success');
     estudianteEditRows = null; state.inspEstView='lista'; render();
   };
+  var importInput = document.getElementById('estImportFile');
+  if(importInput) importInput.addEventListener('change', doImportEstudiantesFile);
+  var plantillaBtn = document.getElementById('btnDescargarPlantilla');
+  if(plantillaBtn) plantillaBtn.onclick = function(){ saveAttempts('plantilla_estudiantes', [{ext:'xlsx', data: buildXlsxTemplateBlob()}]); };
+}
+
+/* --- Inspección · Estudiantes: importar desde Excel/CSV -----------------------------------
+   Lector .xlsx dependiente-cero: un .xlsx es un ZIP con XML adentro, así que reutilizamos el
+   mismo ZIP/OOXML hecho a mano que ya existe para exportar .docx (makeZip, docxEsc). Para leer
+   entradas comprimidas dentro del ZIP (lo normal en un .xlsx real de Excel/Sheets) usamos
+   DecompressionStream('deflate-raw'), una API nativa del navegador — no una librería externa. */
+function readZipEntriesFromLocalHeaders(bytes){
+  var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  var entries = {};
+  var pos = 0;
+  while(pos + 30 <= bytes.length && view.getUint32(pos, true) === 0x04034b50){
+    var method = view.getUint16(pos+8, true);
+    var compSize = view.getUint32(pos+18, true);
+    var nameLen = view.getUint16(pos+26, true);
+    var extraLen = view.getUint16(pos+28, true);
+    var nameStart = pos + 30;
+    var name = new TextDecoder('utf-8').decode(bytes.subarray(nameStart, nameStart+nameLen));
+    var dataStart = nameStart + nameLen + extraLen;
+    var dataEnd = dataStart + compSize;
+    entries[name] = {method: method, data: bytes.subarray(dataStart, dataEnd)};
+    pos = dataEnd;
+  }
+  return entries;
+}
+async function inflateRaw(bytes){
+  if(!window.DecompressionStream) throw new Error('Tu navegador no admite descomprimir archivos .xlsx. Usa Chrome o Edge actualizados, o guarda el archivo como .csv.');
+  var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function getZipEntryText(entries, name){
+  var e = entries[name];
+  if(!e) return null;
+  var raw = e.method === 8 ? await inflateRaw(e.data) : e.data;
+  return new TextDecoder('utf-8').decode(raw);
+}
+function colLetterToIndex(ref){
+  var m = ref.match(/^[A-Z]+/);
+  if(!m) return 0;
+  var n = 0;
+  for(var i=0;i<m[0].length;i++){ n = n*26 + (m[0].charCodeAt(i) - 64); }
+  return n - 1;
+}
+function parseSharedStrings(xmlText){
+  if(!xmlText) return [];
+  var doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  var siEls = doc.getElementsByTagName('si');
+  var out = [];
+  for(var i=0;i<siEls.length;i++) out.push(siEls[i].textContent || '');
+  return out;
+}
+function parseWorksheetRows(xmlText, sst){
+  var doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  var rowEls = doc.getElementsByTagName('row');
+  var rowsOut = [];
+  for(var i=0;i<rowEls.length;i++){
+    var cellEls = rowEls[i].getElementsByTagName('c');
+    var rowArr = [];
+    for(var j=0;j<cellEls.length;j++){
+      var c = cellEls[j];
+      var ref = c.getAttribute('r') || '';
+      var idx = ref ? colLetterToIndex(ref) : j;
+      var type = c.getAttribute('t');
+      var value = '';
+      if(type === 'inlineStr'){
+        var isEl = c.getElementsByTagName('is')[0];
+        value = isEl ? isEl.textContent : '';
+      } else {
+        var vEl = c.getElementsByTagName('v')[0];
+        var raw = vEl ? vEl.textContent : '';
+        value = (type === 's') ? (sst[parseInt(raw,10)] || '') : raw;
+      }
+      rowArr[idx] = value;
+    }
+    rowsOut.push(rowArr);
+  }
+  return rowsOut;
+}
+async function parseXlsxFirstSheet(bytes){
+  var entries = readZipEntriesFromLocalHeaders(bytes);
+  var sheetKey = entries['xl/worksheets/sheet1.xml'] ? 'xl/worksheets/sheet1.xml'
+    : Object.keys(entries).filter(function(k){ return /^xl\/worksheets\/sheet\d+\.xml$/i.test(k); }).sort()[0];
+  if(!sheetKey) throw new Error('No se encontró ninguna hoja en el archivo. ¿Es un .xlsx válido?');
+  var sheetXml = await getZipEntryText(entries, sheetKey);
+  var sstXml = await getZipEntryText(entries, 'xl/sharedStrings.xml');
+  return parseWorksheetRows(sheetXml, sstXml ? parseSharedStrings(sstXml) : []);
+}
+function detectCsvDelimiter(headerLine){
+  var counts = {',': (headerLine.match(/,/g)||[]).length, ';': (headerLine.match(/;/g)||[]).length, '\t': (headerLine.match(/\t/g)||[]).length};
+  var best = ',';
+  if(counts[';'] > counts[best]) best = ';';
+  if(counts['\t'] > counts[best]) best = '\t';
+  return best;
+}
+function parseCsvText(text){
+  var lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(function(l){ return l.length>0; });
+  if(!lines.length) return [];
+  var delim = detectCsvDelimiter(lines[0]);
+  return lines.map(function(line){
+    var cells = [], cur = '', inQuotes = false;
+    for(var i=0;i<line.length;i++){
+      var ch = line[i];
+      if(inQuotes){
+        if(ch === '"'){ if(line[i+1] === '"'){ cur += '"'; i++; } else inQuotes = false; }
+        else cur += ch;
+      } else {
+        if(ch === '"') inQuotes = true;
+        else if(ch === delim){ cells.push(cur); cur=''; }
+        else cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  });
+}
+var COMBINING_MARKS_RE = new RegExp(String.fromCharCode(91,92,117,48,51,48,48,45,92,117,48,51,54,102,93), 'g');
+function normImportHeader(s){
+  return String(s||'').trim().toLowerCase().normalize('NFD').replace(COMBINING_MARKS_RE,'');
+}
+var ESTUDIANTE_IMPORT_HEADERS = {
+  nombres: ['nombres','nombre'],
+  apellidos: ['apellidos','apellido'],
+  ci: ['cedula','ci'],
+  nivel: ['nivel','nivel educativo'],
+  especialidad: ['especialidad'],
+  curso: ['curso','grado','curso/grado'],
+  nombreRepresentante: ['representante','nombre del representante','nombre representante'],
+  telefonoRepresentante: ['telefono','telefono representante','telefono del representante']
+};
+function mapImportedRowsToEstudianteRows(rows){
+  if(!rows.length) return [];
+  var headerRow = (rows[0]||[]).map(normImportHeader);
+  var colIndex = {};
+  Object.keys(ESTUDIANTE_IMPORT_HEADERS).forEach(function(field){
+    var aliases = ESTUDIANTE_IMPORT_HEADERS[field];
+    var idx = headerRow.findIndex(function(h){ return aliases.indexOf(h)!==-1; });
+    if(idx!==-1) colIndex[field] = idx;
+  });
+  function cell(r, field){ return colIndex[field]!=null ? String(r[colIndex[field]]==null ? '' : r[colIndex[field]]).trim() : ''; }
+  var out = [];
+  for(var i=1;i<rows.length;i++){
+    var r = rows[i] || [];
+    var nombres = cell(r,'nombres'), apellidos = cell(r,'apellidos');
+    if(!nombres && !apellidos) continue;
+    var nivelRaw = cell(r,'nivel'), especialidadRaw = cell(r,'especialidad'), cursoRaw = cell(r,'curso');
+    var nivel = NIVELES.find(function(n){ return normImportHeader(n)===normImportHeader(nivelRaw); }) || '';
+    var especialidad = '';
+    if(nivel){
+      especialidad = especialidadesFor(nivel).find(function(e){ return normImportHeader(e)===normImportHeader(especialidadRaw); }) || '';
+    }
+    var curso = '', cursoManual = '';
+    if(nivel){
+      var match = cursosFor(nivel, especialidad).find(function(c){ return normImportHeader(c)===normImportHeader(cursoRaw); });
+      if(match) curso = match;
+      else if(cursoRaw){ curso = 'Otro…'; cursoManual = cursoRaw; }
+    }
+    out.push({
+      id: uid('est'), nombres: nombres, apellidos: apellidos, ci: cell(r,'ci'),
+      nivel: nivel, especialidad: especialidad, curso: curso, cursoManual: cursoManual,
+      nombreRepresentante: cell(r,'nombreRepresentante'), telefonoRepresentante: cell(r,'telefonoRepresentante')
+    });
+  }
+  return out;
+}
+async function doImportEstudiantesFile(ev){
+  var file = ev.target.files[0];
+  if(!file) return;
+  var errEl = document.getElementById('estImportError');
+  if(errEl) errEl.classList.remove('show');
+  try{
+    var rows;
+    if(/\.csv$/i.test(file.name)) rows = parseCsvText(await file.text());
+    else rows = await parseXlsxFirstSheet(new Uint8Array(await file.arrayBuffer()));
+    var imported = mapImportedRowsToEstudianteRows(rows);
+    if(!imported.length){ throw new Error('No se encontraron filas válidas. Revisa que la primera fila tenga los encabezados (Nombres, Apellidos, Nivel, Curso…) y que haya datos debajo.'); }
+    estudianteEditRows = imported;
+    renderInspEstMasivoBodyOnly();
+    toast(imported.length + ' fila(s) importada(s) desde el archivo. Revisa nivel/curso y guarda.', 'success');
+  }catch(err){
+    console.error('Error al importar archivo de estudiantes', err);
+    if(errEl){ errEl.textContent = err.message || String(err); errEl.classList.add('show'); }
+  }
+  ev.target.value = '';
+}
+/* Plantilla descargable (.xlsx) con los encabezados esperados + una fila de ejemplo. Reutiliza
+   makeZip/docxEsc (ya definidos para el exportador de .docx) — mismo principio: un .xlsx es un
+   ZIP de XML, sin necesitar ninguna librería externa. */
+function buildXlsxTemplateBlob(){
+  var headers = ['Nombres','Apellidos','Cédula','Nivel','Especialidad','Curso','Representante','Teléfono'];
+  var ejemplo = ['María','Torres Salazar','2100456789','Básica Media','','5.º EGB A','Juan Torres','0991234567'];
+  var cols = ['A','B','C','D','E','F','G','H'];
+  function cellXml(col, rowNum, text){
+    return '<c r="'+col+rowNum+'" t="inlineStr"><is><t xml:space="preserve">'+docxEsc(text)+'</t></is></c>';
+  }
+  var row1 = '<row r="1">' + headers.map(function(h,i){ return cellXml(cols[i],1,h); }).join('') + '</row>';
+  var row2 = '<row r="2">' + ejemplo.map(function(v,i){ return cellXml(cols[i],2,v); }).join('') + '</row>';
+  var sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+row1+row2+'</sheetData></worksheet>';
+  var workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Estudiantes" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  var workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>';
+  var rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  var enc = new TextEncoder();
+  var zipBytes = makeZip([
+    {name:'[Content_Types].xml', data: enc.encode(contentTypes)},
+    {name:'_rels/.rels', data: enc.encode(rootRels)},
+    {name:'xl/workbook.xml', data: enc.encode(workbookXml)},
+    {name:'xl/_rels/workbook.xml.rels', data: enc.encode(workbookRels)},
+    {name:'xl/worksheets/sheet1.xml', data: enc.encode(sheetXml)}
+  ]);
+  return new Blob([zipBytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
 /* --- Inspección · Asistencia --- */
@@ -2064,6 +2287,7 @@ function doSaveIncidente(){
 /* --- Inspección · Reportes (imprimibles A4 vertical) --- */
 var INSP_REPORT_TIPOS = [
   {key:'diaria', label:'Asistencia diaria (por curso)'},
+  {key:'semanal', label:'Asistencia semanal (por curso)'},
   {key:'individual', label:'Historial de un estudiante'},
   {key:'mensual', label:'Consolidado mensual por curso'},
   {key:'incidentes', label:'Incidentes de disciplina'}
@@ -2085,7 +2309,8 @@ function renderInspReportes(){
     + '  <div class="field"><label>Tipo de reporte</label><select class="cell-select" id="repTipo" style="max-width:380px;">' + INSP_REPORT_TIPOS.map(function(t){ return '<option value="'+t.key+'" '+(t.key===tipo?'selected':'')+'>'+escapeHtml(t.label)+'</option>'; }).join('') + '</select></div>'
     + '</div>';
   var body;
-  if(tipo==='individual') body = renderRepIndividual();
+  if(tipo==='semanal') body = renderRepSemanal();
+  else if(tipo==='individual') body = renderRepIndividual();
   else if(tipo==='mensual') body = renderRepMensual();
   else if(tipo==='incidentes') body = renderRepIncidentes();
   else body = renderRepDiaria();
@@ -2094,7 +2319,8 @@ function renderInspReportes(){
 function bindInspReportesEvents(){
   document.getElementById('repTipo').onchange = function(e){ state.inspReportTipo = e.target.value; render(); };
   var tipo = state.inspReportTipo || 'diaria';
-  if(tipo==='individual') bindRepIndividualEvents();
+  if(tipo==='semanal') bindRepSemanalEvents();
+  else if(tipo==='individual') bindRepIndividualEvents();
   else if(tipo==='mensual') bindRepMensualEvents();
   else if(tipo==='incidentes') bindRepIncidentesEvents();
   else bindRepDiariaEvents();
@@ -2146,6 +2372,63 @@ function bindRepDiariaEvents(){
   var cursoSel = document.getElementById('rdCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
   var fechaInp = document.getElementById('rdFecha'); if(fechaInp) fechaInp.onchange = function(e){ f.fecha=e.target.value; render(); };
   var printBtn = document.getElementById('btnPrintRepDiaria'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+var DIAS_SEMANA_CORTOS = ['Lunes','Martes','Miércoles','Jueves','Viernes'];
+function renderRepSemanal(){
+  var f = state.repSemanalFiltro || (state.repSemanalFiltro = {nivel:'', especialidad:'', curso:'', fechaInicio:''});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Nivel</label><select class="cell-select" id="rsNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="rsEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+    + '  </div>'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Curso</label><select class="cell-select" id="rsCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Semana del (lunes)</label><input class="cell-input" type="date" id="rsFechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /></div>'
+    + '  </div>'
+    + '</div>';
+  if(!f.nivel || !f.curso || !f.fechaInicio) return selHtml;
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  var dias = [0,1,2,3,4].map(function(i){ return addDays(f.fechaInicio, i); });
+  var docsPorDia = dias.map(function(fecha){
+    var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, fecha);
+    return load(LS.ASISTENCIA).find(function(x){ return x.id===docId; }) || {periodos:{}};
+  });
+  var headCells = dias.map(function(fecha,i){ return '<th>' + DIAS_SEMANA_CORTOS[i] + '<br>' + fmtDate(fecha) + '</th>'; }).join('');
+  var rows = estudiantes.map(function(e){
+    var totSemana = {P:0,A:0,F:0};
+    var cells = docsPorDia.map(function(a){
+      var tot = {P:0,A:0,F:0};
+      PERIODOS.forEach(function(p){
+        var val = a.periodos[p.n] && a.periodos[p.n][e.id];
+        if(val){ tot[val]++; totSemana[val]++; }
+      });
+      var hayIncidencia = (tot.A+tot.F) > 0;
+      return '<td class="tabular"' + (hayIncidencia ? ' style="background:var(--gold-100); font-weight:700;"' : '') + '>' + tot.P + '/' + tot.A + '/' + tot.F + '</td>';
+    }).join('');
+    return '<tr><td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>' + cells + '<td class="tabular">' + totSemana.P + '/' + totSemana.A + '/' + totSemana.F + '</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="hint">No hay estudiantes en este curso.</td></tr>';
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepSemanal">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repSemanalDoc">'
+  + repInstitucionalHead('Reporte de Asistencia Semanal')
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2"><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(f.nivel + (f.especialidad?' · '+f.especialidad:'') + ' · ' + f.curso)+'" /></div><div class="field"><label>Semana</label><input class="cell-input" readonly value="'+escapeHtml(fmtDate(dias[0])+' al '+fmtDate(dias[4]))+'" /></div></div>'
+  + '    <div class="hint" style="margin:8px 0;">Cada celda muestra Presente/Atraso/Falta del día (sumando las 11 horas curriculares). Las celdas resaltadas tuvieron al menos un atraso o falta.</div>'
+  + '    <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>Total semana</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepSemanalEvents(){
+  var f = state.repSemanalFiltro;
+  var nivelSel = document.getElementById('rsNivel'); if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('rsEspecialidad'); if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('rsCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
+  var fechaInp = document.getElementById('rsFechaInicio'); if(fechaInp) fechaInp.onchange = function(e){ f.fechaInicio=e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepSemanal'); if(printBtn) printBtn.onclick = printAsPdf;
 }
 function renderRepIndividual(){
   var f = state.repIndividualFiltro || (state.repIndividualFiltro = {estudianteId:'', fechaInicio:'', fechaFin: todayISO()});
@@ -5161,8 +5444,11 @@ function bindAdminFechasLimiteEvents(){
       var notaInput = document.getElementById('fl-nota-' + categoria);
       var fecha = fechaInput.value;
       if(!fecha){ toast('Ingresa la fecha y hora límite.', 'error'); return; }
-      var entradas = load(LS.FECHAS_LIMITE);
-      entradas.push({id: uid('fl'), categoria: categoria, fechaHoraLimite: fecha, nota: (notaInput.value||'').trim(), createdAt: nowISO()});
+      /* .concat() en vez de .push() sobre load(): load() devuelve la MISMA referencia que
+         FS_CACHE, así que empujar directo a ese arreglo hacía que save() comparara el caché
+         contra sí mismo (ya con la fila nueva adentro) y creyera que "nada cambió" — la fila
+         se veía en pantalla pero nunca se escribía a Firestore. */
+      var entradas = load(LS.FECHAS_LIMITE).concat([{id: uid('fl'), categoria: categoria, fechaHoraLimite: fecha, nota: (notaInput.value||'').trim(), createdAt: nowISO()}]);
       save(LS.FECHAS_LIMITE, entradas);
       toast('Fecha límite agregada.', 'success');
       render();
@@ -5187,10 +5473,12 @@ function bindAdminFechasLimiteEvents(){
       var notaInput = document.getElementById('fl-edit-nota-' + id);
       var fecha = fechaInput.value;
       if(!fecha){ toast('Ingresa la fecha y hora límite.', 'error'); return; }
-      var entradas = load(LS.FECHAS_LIMITE);
-      var entrada = entradas.find(function(x){ return x.id===id; });
-      entrada.fechaHoraLimite = fecha;
-      entrada.nota = (notaInput.value||'').trim();
+      /* .map() para construir un objeto y un arreglo nuevos, por la misma razón que en
+         "+ Agregar": mutar la entrada y el arreglo que devuelve load() en el sitio hacía que
+         save() los comparara contra sí mismos y nunca detectara el cambio. */
+      var entradas = load(LS.FECHAS_LIMITE).map(function(x){
+        return x.id===id ? Object.assign({}, x, {fechaHoraLimite: fecha, nota: (notaInput.value||'').trim()}) : x;
+      });
       save(LS.FECHAS_LIMITE, entradas);
       state.editingFechaLimiteId = null;
       toast('Fecha límite actualizada.', 'success');
