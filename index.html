@@ -220,6 +220,8 @@
   table thead th{background:var(--blue-50); color:var(--blue-900); text-align:left; padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid var(--line); white-space:nowrap;}
   table td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
   table tbody tr:last-child td{border-bottom:none;}
+  table tbody tr.group-head-row td{background:var(--blue-50); color:var(--blue-900); font-weight:700; font-size:12.5px; padding:10px 10px; border-top:2px solid var(--line-strong); border-bottom:1px solid var(--line-strong);}
+  table tbody tr.group-head-row:first-child td{border-top:none;}
   table tbody tr:hover{background:var(--surface-2);}
   .cell-input, .cell-select{width:100%; min-width:120px; padding:7px 8px; border:1px solid var(--line-strong); border-radius:6px; background:var(--surface-2); font-size:13px;}
   .carga-table{table-layout:auto; width:auto;}
@@ -5645,28 +5647,50 @@ function ensureAdminCargaRows(){
   adminCargaEditRows = load(LS.CARGA).map(function(r){ return Object.assign({}, r); });
   return adminCargaEditRows;
 }
+/* Agrupa las filas de carga por docente (orden alfabético apellidos+nombres); las filas cuyo
+   docente ya no existe quedan en un grupo aparte al final. */
+function groupCargaByDocente(rows, docentesById){
+  var groups = {}; var order = [];
+  rows.forEach(function(r){
+    var key = r.docenteId || '__sin__';
+    if(!groups[key]){ groups[key] = {docenteId: r.docenteId, docente: docentesById[r.docenteId], rows: []}; order.push(key); }
+    groups[key].rows.push(r);
+  });
+  var list = order.map(function(k){ return groups[k]; });
+  list.sort(function(a,b){
+    if(!a.docente && !b.docente) return 0;
+    if(!a.docente) return 1;
+    if(!b.docente) return -1;
+    return (a.docente.apellidos+a.docente.nombres).localeCompare(b.docente.apellidos+b.docente.nombres);
+  });
+  return list;
+}
 function renderAdminCarga(){
   var rows = ensureAdminCargaRows();
   var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
-  var rowsHtml = rows.map(function(r, i){ return adminCargaRowHtml(r, i, docentesById); }).join('');
+  var groups = groupCargaByDocente(rows, docentesById);
+  var bodyHtml = groups.map(function(g){ return adminCargaGroupHtml(g); }).join('');
   return ''
   + '<div class="card">'
   + '  <h2>Carga horaria de todos los docentes</h2>'
-  + '  <div class="card-sub">Puedes editar o eliminar cualquier fila. Los cambios se guardan al presionar "Guardar cambios".</div>'
+  + '  <div class="card-sub">Agrupada por docente. Puedes editar o eliminar cualquier fila. Los cambios se guardan al presionar "Guardar cambios".</div>'
   + (rows.length === 0
       ? '<div class="empty-state"><div class="ic">🗂️</div>Todavía no hay filas de carga horaria registradas.</div>'
-      : '<div class="table-wrap"><table><thead><tr><th>Docente</th><th style="width:28px;">#</th><th>Nivel educativo</th><th>Especialidad</th><th>Curso / grado</th><th>Asignatura</th><th style="width:36px;"></th></tr></thead><tbody id="adminCargaBody">' + rowsHtml + '</tbody></table></div>'
+      : '<div class="table-wrap"><table><thead><tr><th style="width:28px;">#</th><th>Nivel educativo</th><th>Especialidad</th><th>Curso / grado</th><th>Asignatura</th><th style="width:36px;"></th></tr></thead><tbody id="adminCargaBody">' + bodyHtml + '</tbody></table></div>'
       + '<div style="display:flex; gap:10px; margin-top:14px;"><div class="spacer"></div><button class="btn btn-primary" id="btnSaveAdminCarga">Guardar cambios</button></div>')
   + '</div>';
 }
-function adminCargaRowHtml(r, i, docentesById){
+function adminCargaGroupHtml(g){
+  var nombre = g.docente ? (escapeHtml(g.docente.nombres) + ' ' + escapeHtml(g.docente.apellidos)) : '(docente eliminado)';
+  var rowsHtml = g.rows.map(function(r, i){ return adminCargaRowHtml(r, i); }).join('');
+  return '<tr class="group-head-row"><td colspan="6">' + nombre + ' <span class="hint">(' + g.rows.length + (g.rows.length===1?' fila':' filas') + ')</span></td></tr>' + rowsHtml;
+}
+function adminCargaRowHtml(r, i){
   var espOpts = especialidadesFor(r.nivel);
   var cursoOpts = cursosFor(r.nivel, r.especialidad);
   var asigOpts = asignaturasFor(r.nivel, r.especialidad);
-  var owner = docentesById[r.docenteId];
   return ''
   + '<tr data-row="' + r.id + '">'
-  + '  <td>' + (owner ? escapeHtml(owner.nombres) + ' ' + escapeHtml(owner.apellidos) : '<span class="hint">(docente eliminado)</span>') + '</td>'
   + '  <td class="tabular">' + (i+1) + '</td>'
   + '  <td><select class="cell-select" data-f="nivel">' + optionsHtml(NIVELES, r.nivel, 'Selecciona…') + '</select></td>'
   + '  <td><select class="cell-select" data-f="especialidad" ' + (espOpts.length? '' : 'disabled') + '>' + optionsHtml(espOpts, r.especialidad, espOpts.length? 'Selecciona…':'No aplica') + '</select></td>'
@@ -5721,7 +5745,8 @@ function bindAdminCargaEvents(){
   };
 }
 function renderAdminCargaBodyOnly(docentesById){
-  document.getElementById('adminCargaBody').innerHTML = adminCargaEditRows.map(function(r,i){ return adminCargaRowHtml(r,i,docentesById); }).join('');
+  var groups = groupCargaByDocente(adminCargaEditRows, docentesById);
+  document.getElementById('adminCargaBody').innerHTML = groups.map(function(g){ return adminCargaGroupHtml(g); }).join('');
   bindAdminCargaEvents();
 }
 
