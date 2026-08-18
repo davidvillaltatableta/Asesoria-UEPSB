@@ -219,6 +219,10 @@
   .pill-gold{background:var(--gold-100); color:var(--gold-600);}
   .pill-green{background:var(--green-100); color:var(--green-600);}
   .pill-muted{background:var(--surface-2); color:var(--muted); border:1px solid var(--line);}
+  .asis-cell{width:32px; height:28px; border:1px solid var(--line); border-radius:6px; background:var(--surface-2); color:var(--muted); font-weight:700; font-size:12px; cursor:pointer;}
+  .asis-cell.asis-P{background:var(--green-100); color:var(--green-600); border-color:var(--green-100);}
+  .asis-cell.asis-A{background:var(--gold-100); color:var(--gold-600); border-color:var(--gold-100);}
+  .asis-cell.asis-F{background:var(--red-100); color:var(--red-600); border-color:var(--red-100);}
 
 
   .empty-state{text-align:center; padding:40px 20px; color:var(--muted);}
@@ -306,7 +310,7 @@
        documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
        el cuadro de diálogo de impresión al guardar como PDF. */
     @page manualpage{ size: A4 portrait; margin: 18mm; }
-    .manual-doc{ page: manualpage; }
+    .manual-doc, .insp-report-doc{ page: manualpage; }
   }
 
   /* ============================= MANUALES DE USUARIO ============================= */
@@ -385,12 +389,16 @@ var LS = {
   PCA: 'PCA',
   CONT: 'CONT',
   SEMANAL: 'SEMANAL',
-  FECHAS_LIMITE: 'FECHAS_LIMITE'
+  FECHAS_LIMITE: 'FECHAS_LIMITE',
+  ESTUDIANTES: 'ESTUDIANTES',
+  ASISTENCIA: 'ASISTENCIA',
+  INCIDENTES: 'INCIDENTES'
 };
 var FS_COLLECTION = {
-  DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite'
+  DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
+  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -598,6 +606,39 @@ function misCursosTodos(docenteId){
    nivel fijo del docente), porque un mismo docente puede dictar en niveles de ambas bandas. */
 var NIVELES_BANDA_A = ['Iniciales y Preparatoria','Básica Elemental','Básica Media'];
 function nivelEsBandaA(nivel){ return NIVELES_BANDA_A.indexOf(nivel) !== -1; }
+
+/* ============================= INSPECCIÓN GENERAL ============================= */
+/* Jornada fija: 11 horas curriculares de 45 min desde las 07:15, con receso de 45 min
+   (10:15-11:00) entre la 4.ª y la 5.ª hora. */
+var PERIODOS = [
+  {n:1, inicio:'07:15', fin:'08:00'},
+  {n:2, inicio:'08:00', fin:'08:45'},
+  {n:3, inicio:'08:45', fin:'09:30'},
+  {n:4, inicio:'09:30', fin:'10:15'},
+  {n:5, inicio:'11:00', fin:'11:45'},
+  {n:6, inicio:'11:45', fin:'12:30'},
+  {n:7, inicio:'12:30', fin:'13:15'},
+  {n:8, inicio:'13:15', fin:'14:00'},
+  {n:9, inicio:'14:00', fin:'14:45'},
+  {n:10, inicio:'14:45', fin:'15:30'},
+  {n:11, inicio:'15:30', fin:'16:15'}
+];
+var RECESO = {inicio:'10:15', fin:'11:00'};
+var ESTADOS_ASISTENCIA = ['P','A','F']; // Presente, Atraso, Falta
+var ESTADO_ASISTENCIA_LABEL = {P:'Presente', A:'Atraso', F:'Falta', '':'Sin marcar'};
+var TIPOS_FALTA_DISCIPLINA = ['Leve','Grave','Muy grave'];
+var CATEGORIAS_INCIDENTE = ['Impuntualidad','Uso indebido de celular','Uniforme incompleto','Incumplimiento de tareas','Agresión verbal','Agresión física','Falta de respeto','Daño a bienes institucionales','Incumplimiento de protocolos','Otro'];
+var ESTADOS_INCIDENTE = ['Abierto','En seguimiento','Cerrado'];
+/* Clave determinística del documento de asistencia de un curso en un día — así se puede leer
+   directo con getDoc en vez de tener que hacer una query, y nunca se duplica la hoja del día. */
+function asistenciaDocId(nivel, especialidad, curso, fecha){
+  return ['asis', nivel, especialidad||'x', curso, fecha].join('|').replace(/[^\w|.-]/g, '_');
+}
+function estudiantesDe(nivel, especialidad, curso){
+  return load(LS.ESTUDIANTES).filter(function(e){
+    return e.nivel===nivel && (e.especialidad||'')===(especialidad||'') && e.curso===curso && e.estado!=='Inactivo';
+  }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+}
 var TITULO_SIGLAS = {
   'licenciado':'Lic.', 'licenciada':'Lic.', 'ingeniero':'Ing.', 'ingeniera':'Ing.',
   'magister':'Mg.', 'máster':'Mg.', 'master':'Mg.', 'doctor':'Dr.', 'doctora':'Dra.',
@@ -1014,8 +1055,8 @@ var NAV_ITEMS = [
 function renderShell(){
   var d = currentDocente();
   var isAdmin = d.role === 'admin';
-  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin')) state.subview = 'dashboard';
-  var items = NAV_ITEMS.concat(isAdmin ? [{key:'admin', label:'Administración', ic:'🛡️'}] : []);
+  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion')) state.subview = 'dashboard';
+  var items = NAV_ITEMS.concat(isAdmin ? [{key:'admin', label:'Administración', ic:'🛡️'}, {key:'inspeccion', label:'Inspección General', ic:'🧭'}] : []);
   var navHtml = items.map(function(item){
     var active = (state.subview === item.key
       || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
@@ -1038,6 +1079,7 @@ function renderShell(){
   else if(state.subview === 'adminNewDocente') sub = renderAdminNewDocente(d);
   else if(state.subview === 'manualdocente') sub = renderManualDocente();
   else if(state.subview === 'manualadmin') sub = renderManualAdmin();
+  else if(state.subview === 'inspeccion') sub = renderInspeccion(d);
   else sub = renderDashboard(d);
 
   return ''
@@ -1081,6 +1123,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'adminNewDocente') bindAdminNewDocenteEvents();
   else if(state.subview === 'manualdocente') bindManualEvents();
   else if(state.subview === 'manualadmin') bindManualEvents();
+  else if(state.subview === 'inspeccion') bindInspeccionEvents();
   else bindDashboardEvents();
 }
 
@@ -1477,6 +1520,772 @@ function bindManualEvents(){
   if(backBtn) backBtn.onclick = function(){ go(backBtn.getAttribute('data-manual-back')); };
   var pdfBtn = document.getElementById('btnManualPdf');
   if(pdfBtn) pdfBtn.onclick = printAsPdf;
+}
+
+/* ============================= INSPECCIÓN GENERAL (solo admin) ============================= */
+var INSPECCION_TABS = [
+  {key:'estudiantes', label:'Estudiantes'},
+  {key:'asistencia', label:'Asistencia'},
+  {key:'disciplina', label:'Disciplina'},
+  {key:'reportes', label:'Reportes'}
+];
+function renderInspeccion(d){
+  if(d.role !== 'admin') return renderDashboard(d);
+  var tab = state.inspeccionTab || 'estudiantes';
+  var tabsHtml = INSPECCION_TABS.map(function(t){
+    return '<button class="'+(tab===t.key?'active':'')+'" data-insptab="'+t.key+'">'+t.label+'</button>';
+  }).join('');
+  var body;
+  if(tab === 'asistencia') body = renderInspAsistencia();
+  else if(tab === 'disciplina') body = renderInspDisciplina();
+  else if(tab === 'reportes') body = renderInspReportes();
+  else body = renderInspEstudiantes();
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Inspección General</div><h1>Disciplina, asistencia y convivencia</h1><p>Organiza, coordina y supervisa la disciplina, la asistencia y la convivencia armónica entre estudiantes, docentes y personal administrativo. Visible solo para administradores.</p></div></div>'
+  + '<div class="admin-tabs">' + tabsHtml + '</div>'
+  + body;
+}
+function bindInspeccionEvents(){
+  document.querySelectorAll('[data-insptab]').forEach(function(btn){
+    btn.onclick = function(){ state.inspeccionTab = btn.getAttribute('data-insptab'); render(); };
+  });
+  var tab = state.inspeccionTab || 'estudiantes';
+  if(tab === 'asistencia') bindInspAsistenciaEvents();
+  else if(tab === 'disciplina') bindInspDisciplinaEvents();
+  else if(tab === 'reportes') bindInspReportesEvents();
+  else bindInspEstudiantesEvents();
+}
+
+/* --- Inspección · Estudiantes --- */
+function blankEstudiante(){
+  return {id:uid('est'), nombres:'', apellidos:'', ci:'', nivel:'', especialidad:'', curso:'', cursoManual:'',
+    nombreRepresentante:'', telefonoRepresentante:'', emailRepresentante:'', estado:'Activo', observaciones:''};
+}
+function renderInspEstudiantes(){
+  var view = state.inspEstView || 'lista';
+  if(view === 'nuevo' || view === 'editar') return renderInspEstudianteForm();
+  if(view === 'masivo') return renderInspEstudiantesMasivo();
+  return renderInspEstudiantesLista();
+}
+function bindInspEstudiantesEvents(){
+  var view = state.inspEstView || 'lista';
+  if(view === 'nuevo' || view === 'editar') bindInspEstudianteFormEvents();
+  else if(view === 'masivo') bindInspEstudiantesMasivoEvents();
+  else bindInspEstudiantesListaEvents();
+}
+function renderInspEstudiantesLista(){
+  var f = state.inspEstFiltro || (state.inspEstFiltro = {nivel:'', especialidad:'', curso:''});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var todos = load(LS.ESTUDIANTES).slice().sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+  var filtrados = todos.filter(function(e){
+    if(f.nivel && e.nivel !== f.nivel) return false;
+    if(f.especialidad && (e.especialidad||'') !== f.especialidad) return false;
+    if(f.curso && e.curso !== f.curso) return false;
+    return true;
+  });
+  var rows = filtrados.map(function(e){
+    return '<tr>'
+    + '<td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>'
+    + '<td>' + escapeHtml(e.nivel) + (e.especialidad?' · '+escapeHtml(e.especialidad):'') + '</td>'
+    + '<td>' + escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso) + '</td>'
+    + '<td>' + escapeHtml(e.nombreRepresentante||'—') + '</td>'
+    + '<td>' + (e.estado==='Inactivo' ? '<span class="pill pill-muted">Inactivo</span>' : '<span class="pill pill-gold">Activo</span>') + '</td>'
+    + '<td><button class="btn btn-ghost btn-sm" data-est-edit="'+e.id+'">Editar</button></td>'
+    + '</tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
+  return ''
+  + '<div class="card">'
+  + '  <h2>Estudiantes registrados <span class="hint">(' + filtrados.length + ' de ' + todos.length + ')</span></h2>'
+  + '  <div class="field-row" style="margin:10px 0;">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="ieFNivel">' + optionsHtml(NIVELES, f.nivel, 'Todos') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="ieFEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Todas':'No aplica') + '</select></div>'
+  + '    <div class="field"><label>Curso</label><select class="cell-select" id="ieFCurso">' + optionsHtml(cursoOpts, f.curso, 'Todos') + '</select></div>'
+  + '  </div>'
+  + '  <div style="display:flex; gap:10px; margin-bottom:14px;">'
+  + '    <button class="btn btn-primary btn-sm" id="btnEstNuevo">+ Nuevo estudiante</button>'
+  + '    <button class="btn btn-ghost btn-sm" id="btnEstMasivo">+ Carga masiva</button>'
+  + '  </div>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Estudiante</th><th>Nivel</th><th>Curso</th><th>Representante</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '</div>';
+}
+function bindInspEstudiantesListaEvents(){
+  var f = state.inspEstFiltro;
+  var nivelSel = document.getElementById('ieFNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel = e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('ieFEspecialidad');
+  if(espSel) espSel.onchange = function(e){ f.especialidad = e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('ieFCurso');
+  if(cursoSel) cursoSel.onchange = function(e){ f.curso = e.target.value; render(); };
+  var newBtn = document.getElementById('btnEstNuevo');
+  if(newBtn) newBtn.onclick = function(){ state.editingEstudiante = blankEstudiante(); state.inspEstView='nuevo'; render(); };
+  var masBtn = document.getElementById('btnEstMasivo');
+  if(masBtn) masBtn.onclick = function(){ estudianteEditRows = null; state.inspEstView='masivo'; render(); };
+  document.querySelectorAll('[data-est-edit]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.ESTUDIANTES).find(function(x){ return x.id===btn.getAttribute('data-est-edit'); });
+      if(target){ state.editingEstudiante = Object.assign({}, target); state.inspEstView='editar'; render(); }
+    };
+  });
+}
+function renderInspEstudianteForm(){
+  var e = state.editingEstudiante;
+  var isEdit = (state.inspEstView === 'editar');
+  var espOpts = especialidadesFor(e.nivel);
+  var cursoOpts = cursosFor(e.nivel, e.especialidad);
+  return ''
+  + '<div class="card">'
+  + '  <h2>' + (isEdit ? 'Editar estudiante' : 'Nuevo estudiante') + '</h2>'
+  + '  <div class="form-error" id="estError"></div>'
+  + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input class="cell-input" id="estNombres" value="'+escapeHtml(e.nombres)+'" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input class="cell-input" id="estApellidos" value="'+escapeHtml(e.apellidos)+'" /></div></div>'
+  + '  <div class="field-row"><div class="field"><label>Cédula</label><input class="cell-input" id="estCI" maxlength="10" value="'+escapeHtml(e.ci||'')+'" /></div><div class="field"><label>Estado</label><select class="cell-select" id="estEstado">' + optionsHtml(['Activo','Inactivo'], e.estado||'Activo', null) + '</select></div></div>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Nivel <span class="required">*</span></label><select class="cell-select" id="estNivel">' + optionsHtml(NIVELES, e.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="estEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, e.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '  </div>'
+  + '  <div class="field"><label>Curso <span class="required">*</span></label><select class="cell-select" id="estCurso">' + optionsHtml(cursoOpts.concat(['Otro…']), e.curso, 'Elija un elemento…') + '</select>' + (e.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="estCursoManual" value="'+escapeHtml(e.cursoManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
+  + '  <div class="pca-band band-section" style="margin:16px -22px 0;">Representante</div>'
+  + '  <div class="field-row" style="margin-top:14px;"><div class="field"><label>Nombre del representante</label><input class="cell-input" id="estRepNombre" value="'+escapeHtml(e.nombreRepresentante||'')+'" /></div><div class="field"><label>Teléfono</label><input class="cell-input" id="estRepTelefono" value="'+escapeHtml(e.telefonoRepresentante||'')+'" /></div></div>'
+  + '  <div class="field"><label>E-mail del representante</label><input class="cell-input" type="email" id="estRepEmail" value="'+escapeHtml(e.emailRepresentante||'')+'" /></div>'
+  + '  <div class="field"><label>Observaciones</label><textarea class="cell-input" id="estObs" rows="2">'+escapeHtml(e.observaciones||'')+'</textarea></div>'
+  + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
+  + '    <button class="btn btn-primary" id="btnGuardarEstudiante">Guardar</button>'
+  + '    <button class="btn btn-ghost" id="btnCancelarEstudiante">Cancelar</button>'
+  + (isEdit ? '<div class="spacer"></div><button class="btn btn-danger btn-sm" id="btnEliminarEstudiante">Eliminar estudiante</button>' : '')
+  + '  </div>'
+  + '</div>';
+}
+function bindInspEstudianteFormEvents(){
+  var e = state.editingEstudiante;
+  document.getElementById('estNombres').oninput = function(ev){ e.nombres = ev.target.value; };
+  document.getElementById('estApellidos').oninput = function(ev){ e.apellidos = ev.target.value; };
+  document.getElementById('estCI').oninput = function(ev){ e.ci = ev.target.value; };
+  document.getElementById('estEstado').onchange = function(ev){ e.estado = ev.target.value; };
+  document.getElementById('estNivel').onchange = function(ev){ e.nivel = ev.target.value; e.especialidad=''; e.curso=''; e.cursoManual=''; render(); };
+  var espSel = document.getElementById('estEspecialidad');
+  if(espSel) espSel.onchange = function(ev){ e.especialidad = ev.target.value; e.curso=''; e.cursoManual=''; render(); };
+  document.getElementById('estCurso').onchange = function(ev){ e.curso = ev.target.value; if(e.curso!=='Otro…') e.cursoManual=''; render(); };
+  var cursoManual = document.getElementById('estCursoManual');
+  if(cursoManual) cursoManual.oninput = function(ev){ e.cursoManual = ev.target.value; };
+  document.getElementById('estRepNombre').oninput = function(ev){ e.nombreRepresentante = ev.target.value; };
+  document.getElementById('estRepTelefono').oninput = function(ev){ e.telefonoRepresentante = ev.target.value; };
+  document.getElementById('estRepEmail').oninput = function(ev){ e.emailRepresentante = ev.target.value; };
+  document.getElementById('estObs').oninput = function(ev){ e.observaciones = ev.target.value; };
+  document.getElementById('btnGuardarEstudiante').onclick = doSaveEstudiante;
+  document.getElementById('btnCancelarEstudiante').onclick = function(){ state.editingEstudiante=null; state.inspEstView='lista'; render(); };
+  var delBtn = document.getElementById('btnEliminarEstudiante');
+  if(delBtn) delBtn.onclick = doDeleteEstudiante;
+}
+function doSaveEstudiante(){
+  var e = state.editingEstudiante;
+  var errEl = document.getElementById('estError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!e.nombres.trim() || !e.apellidos.trim() || !e.nivel || !e.curso) return fail('Completa nombres, apellidos, nivel y curso.');
+  if(e.curso==='Otro…' && !(e.cursoManual||'').trim()) return fail('Especifica el curso.');
+  if(e.ci && !/^\d{10}$/.test(e.ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
+  var todos = load(LS.ESTUDIANTES);
+  var exists = todos.some(function(x){ return x.id===e.id; });
+  var toSave = Object.assign({}, e, {updatedAt: nowISO()});
+  save(LS.ESTUDIANTES, exists ? todos.map(function(x){ return x.id===e.id?toSave:x; }) : todos.concat([toSave]));
+  state.editingEstudiante=null; state.inspEstView='lista'; render();
+  toast('Estudiante guardado correctamente.', 'success');
+}
+function doDeleteEstudiante(){
+  var e = state.editingEstudiante;
+  confirmDialog('¿Eliminar a ' + e.nombres + ' ' + e.apellidos + '? Esta acción no se puede deshacer.', function(){
+    save(LS.ESTUDIANTES, load(LS.ESTUDIANTES).filter(function(x){ return x.id!==e.id; }));
+    state.editingEstudiante=null; state.inspEstView='lista'; render();
+    toast('Estudiante eliminado.', 'success');
+  });
+}
+
+/* --- Inspección · Estudiantes: carga masiva --- */
+var estudianteEditRows = null;
+function blankEstudianteRow(){ return {id:uid('est'), nombres:'', apellidos:'', ci:'', nivel:'', especialidad:'', curso:'', cursoManual:'', nombreRepresentante:'', telefonoRepresentante:''}; }
+function estudianteRowHtml(r, i){
+  var espOpts = especialidadesFor(r.nivel);
+  var cursoOpts = cursosFor(r.nivel, r.especialidad);
+  return ''
+  + '<tr data-esrow="' + r.id + '">'
+  + '  <td class="tabular">' + (i+1) + '</td>'
+  + '  <td><input class="cell-input" data-ef="nombres" value="'+escapeHtml(r.nombres)+'" placeholder="Nombres" /></td>'
+  + '  <td><input class="cell-input" data-ef="apellidos" value="'+escapeHtml(r.apellidos)+'" placeholder="Apellidos" /></td>'
+  + '  <td><select class="cell-select" data-ef="nivel">' + optionsHtml(NIVELES, r.nivel, 'Nivel…') + '</select></td>'
+  + '  <td><select class="cell-select" data-ef="especialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, r.especialidad, espOpts.length?'—':'No aplica') + '</select></td>'
+  + '  <td><select class="cell-select" data-ef="curso">' + optionsHtml(cursoOpts.concat(['Otro…']), r.curso, 'Curso…') + '</select>' + (r.curso==='Otro…' ? '<input class="cell-input" style="margin-top:4px;" data-ef="cursoManual" value="'+escapeHtml(r.cursoManual||'')+'" placeholder="Especifica" />' : '') + '</td>'
+  + '  <td><input class="cell-input" data-ef="nombreRepresentante" value="'+escapeHtml(r.nombreRepresentante)+'" placeholder="Representante" /></td>'
+  + '  <td><input class="cell-input" data-ef="telefonoRepresentante" value="'+escapeHtml(r.telefonoRepresentante)+'" placeholder="Teléfono" /></td>'
+  + '  <td><button class="row-remove" data-es-remove="'+r.id+'">✕</button></td>'
+  + '</tr>';
+}
+function renderInspEstudiantesMasivo(){
+  if(!estudianteEditRows) estudianteEditRows = [1,2,3,4,5].map(blankEstudianteRow);
+  var rowsHtml = estudianteEditRows.map(function(r,i){ return estudianteRowHtml(r,i); }).join('');
+  return ''
+  + '<div class="card">'
+  + '  <h2>Carga masiva de estudiantes</h2>'
+  + '  <div class="card-sub">Completa varias filas y guarda todo de una vez. Puedes seguir agregando filas.</div>'
+  + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th style="width:28px;">#</th><th>Nombres</th><th>Apellidos</th><th>Nivel</th><th>Especialidad</th><th>Curso</th><th>Representante</th><th>Teléfono</th><th></th></tr></thead><tbody id="estMasivoBody">' + rowsHtml + '</tbody></table></div>'
+  + '  <div style="display:flex; gap:10px; margin-top:14px;">'
+  + '    <button class="btn btn-ghost btn-sm" id="btnAddEstRow">+ Agregar fila</button>'
+  + '    <div class="spacer"></div>'
+  + '    <button class="btn btn-ghost" id="btnCancelEstMasivo">Cancelar</button>'
+  + '    <button class="btn btn-primary" id="btnSaveEstMasivo">Guardar todos</button>'
+  + '  </div>'
+  + '</div>';
+}
+function renderInspEstMasivoBodyOnly(){
+  document.getElementById('estMasivoBody').innerHTML = estudianteEditRows.map(function(r,i){ return estudianteRowHtml(r,i); }).join('');
+  bindInspEstudiantesMasivoEvents();
+}
+function bindInspEstudiantesMasivoEvents(){
+  var body = document.getElementById('estMasivoBody');
+  function findRow(id){ return estudianteEditRows.find(function(r){ return r.id===id; }); }
+  body.querySelectorAll('tr').forEach(function(tr){
+    var id = tr.getAttribute('data-esrow');
+    tr.querySelectorAll('[data-ef]').forEach(function(el){
+      var evt = (el.tagName==='SELECT') ? 'change' : 'input';
+      el.addEventListener(evt, function(){
+        var row = findRow(id);
+        var f = el.getAttribute('data-ef');
+        row[f] = el.value;
+        if(f==='nivel'){ row.especialidad=''; row.curso=''; row.cursoManual=''; renderInspEstMasivoBodyOnly(); }
+        else if(f==='especialidad'){ row.curso=''; row.cursoManual=''; renderInspEstMasivoBodyOnly(); }
+        else if(f==='curso'){ if(row.curso!=='Otro…') row.cursoManual=''; renderInspEstMasivoBodyOnly(); }
+      });
+    });
+  });
+  document.querySelectorAll('[data-es-remove]').forEach(function(btn){
+    btn.onclick = function(){
+      estudianteEditRows = estudianteEditRows.filter(function(r){ return r.id!==btn.getAttribute('data-es-remove'); });
+      renderInspEstMasivoBodyOnly();
+    };
+  });
+  document.getElementById('btnAddEstRow').onclick = function(){
+    estudianteEditRows.push(blankEstudianteRow());
+    renderInspEstMasivoBodyOnly();
+  };
+  document.getElementById('btnCancelEstMasivo').onclick = function(){
+    estudianteEditRows = null; state.inspEstView='lista'; render();
+  };
+  document.getElementById('btnSaveEstMasivo').onclick = function(){
+    var validos = estudianteEditRows.filter(function(r){ return r.nombres.trim() && r.apellidos.trim() && r.nivel && r.curso; });
+    if(!validos.length){ toast('Completa al menos una fila con nombres, apellidos, nivel y curso.', 'error'); return; }
+    var toSave = validos.map(function(r){
+      return { id:r.id, nombres:r.nombres.trim(), apellidos:r.apellidos.trim(), ci:r.ci||'', nivel:r.nivel, especialidad:r.especialidad||'', curso:r.curso, cursoManual:r.cursoManual||'', nombreRepresentante:r.nombreRepresentante||'', telefonoRepresentante:r.telefonoRepresentante||'', emailRepresentante:'', estado:'Activo', observaciones:'', updatedAt: nowISO() };
+    });
+    save(LS.ESTUDIANTES, load(LS.ESTUDIANTES).concat(toSave));
+    toast(toSave.length + ' estudiante(s) agregado(s) correctamente.', 'success');
+    estudianteEditRows = null; state.inspEstView='lista'; render();
+  };
+}
+
+/* --- Inspección · Asistencia --- */
+function blankAsistenciaDoc(nivel, especialidad, curso, fecha){
+  return { id: asistenciaDocId(nivel,especialidad,curso,fecha), nivel:nivel, especialidad:especialidad||'', curso:curso, fecha:fecha, periodos:{}, justificativos:{}, registradoPor:'', updatedAt:'' };
+}
+function renderInspAsistencia(){
+  var f = state.inspAsisFiltro || (state.inspAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  return ''
+  + '<div class="card">'
+  + '  <h2>Tomar / revisar asistencia</h2>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="iaNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="iaEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '  </div>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Curso</label><select class="cell-select" id="iaCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="iaFecha" value="'+escapeHtml(f.fecha)+'" /></div>'
+  + '  </div>'
+  + '</div>'
+  + '<div id="asistenciaResultWrap">' + asistenciaResultHtml() + '</div>';
+}
+function asistenciaResultHtml(){
+  var f = state.inspAsisFiltro;
+  if(!f.nivel || !f.curso || !f.fecha) return '<div class="hint" style="margin-top:14px;">Elige nivel, curso y fecha para ver o tomar la asistencia.</div>';
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  if(!estudiantes.length) return '<div class="hint" style="margin-top:14px;">No hay estudiantes activos registrados en este curso. Ve a la pestaña "Estudiantes" para registrarlos.</div>';
+  var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, f.fecha);
+  if(!state.editingAsistencia || state.editingAsistencia.id !== docId){
+    var existing = load(LS.ASISTENCIA).find(function(x){ return x.id === docId; });
+    state.editingAsistencia = existing
+      ? Object.assign({}, existing, {periodos: JSON.parse(JSON.stringify(existing.periodos||{})), justificativos: JSON.parse(JSON.stringify(existing.justificativos||{}))})
+      : blankAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
+  }
+  var a = state.editingAsistencia;
+  var headCells = PERIODOS.map(function(p){ return '<th class="tabular" title="'+p.inicio+' – '+p.fin+'">H'+p.n+'</th>'; }).join('');
+  var rows = estudiantes.map(function(e){
+    var cells = PERIODOS.map(function(p){
+      var val = (a.periodos[p.n] && a.periodos[p.n][e.id]) || '';
+      return '<td class="tabular"><button type="button" class="asis-cell asis-'+(val||'na')+'" data-asis-cell="'+p.n+'|'+e.id+'">'+(val||'·')+'</button></td>';
+    }).join('');
+    var just = a.justificativos[e.id];
+    return '<tr><td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>' + cells + '<td style="text-align:center;"><input type="checkbox" class="asis-just-cb" data-asis-just="'+e.id+'" '+(just&&just.recibido?'checked':'')+' /></td></tr>';
+  }).join('');
+  return ''
+  + '<div class="card" style="margin-top:16px;">'
+  + '  <h2>Asistencia · ' + escapeHtml(f.curso==='Otro…'?'':f.curso) + ' · ' + fmtDate(f.fecha) + '</h2>'
+  + '  <div class="card-sub">Haz clic en cada celda para cambiar el estado: sin marcar → P (presente) → A (atraso) → F (falta). Receso ' + RECESO.inicio + '–' + RECESO.fin + ' (entre H4 y H5).</div>'
+  + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>Justif.</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
+  + '    <button class="btn btn-ghost btn-sm" id="btnAsisTodosPresentes">Marcar todos Presente</button>'
+  + '    <div class="spacer"></div>'
+  + '    <button class="btn btn-primary" id="btnGuardarAsistencia">Guardar asistencia</button>'
+  + '  </div>'
+  + '</div>';
+}
+function renderAsistenciaResultOnly(){
+  document.getElementById('asistenciaResultWrap').innerHTML = asistenciaResultHtml();
+  bindAsistenciaResultEvents();
+}
+function bindInspAsistenciaEvents(){
+  var f = state.inspAsisFiltro;
+  var nivelSel = document.getElementById('iaNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; state.editingAsistencia=null; render(); };
+  var espSel = document.getElementById('iaEspecialidad');
+  if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; state.editingAsistencia=null; render(); };
+  var cursoSel = document.getElementById('iaCurso');
+  if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; state.editingAsistencia=null; render(); };
+  var fechaInp = document.getElementById('iaFecha');
+  if(fechaInp) fechaInp.onchange = function(e){ f.fecha=e.target.value; state.editingAsistencia=null; render(); };
+  bindAsistenciaResultEvents();
+}
+function bindAsistenciaResultEvents(){
+  var f = state.inspAsisFiltro;
+  var a = state.editingAsistencia;
+  if(!a) return;
+  document.querySelectorAll('[data-asis-cell]').forEach(function(btn){
+    btn.onclick = function(){
+      var parts = btn.getAttribute('data-asis-cell').split('|');
+      var periodo = parts[0], estId = parts[1];
+      var cur = (a.periodos[periodo] && a.periodos[periodo][estId]) || '';
+      var next = cur==='' ? 'P' : (cur==='P' ? 'A' : (cur==='A' ? 'F' : ''));
+      a.periodos[periodo] = a.periodos[periodo] || {};
+      if(next===''){ delete a.periodos[periodo][estId]; } else { a.periodos[periodo][estId] = next; }
+      renderAsistenciaResultOnly();
+    };
+  });
+  document.querySelectorAll('.asis-just-cb').forEach(function(cb){
+    cb.onchange = function(){
+      var estId = cb.getAttribute('data-asis-just');
+      a.justificativos[estId] = a.justificativos[estId] || {};
+      a.justificativos[estId].recibido = cb.checked;
+    };
+  });
+  var todosBtn = document.getElementById('btnAsisTodosPresentes');
+  if(todosBtn) todosBtn.onclick = function(){
+    var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+    PERIODOS.forEach(function(p){
+      a.periodos[p.n] = a.periodos[p.n] || {};
+      estudiantes.forEach(function(e){ a.periodos[p.n][e.id] = 'P'; });
+    });
+    renderAsistenciaResultOnly();
+  };
+  var saveBtn = document.getElementById('btnGuardarAsistencia');
+  if(saveBtn) saveBtn.onclick = function(){
+    var d = currentDocente();
+    var toSave = Object.assign({}, a, {registradoPor: d.id, updatedAt: nowISO()});
+    var all = load(LS.ASISTENCIA).filter(function(x){ return x.id!==toSave.id; });
+    save(LS.ASISTENCIA, all.concat([toSave]));
+    toast('Asistencia guardada.', 'success');
+  };
+}
+
+/* --- Inspección · Disciplina --- */
+function nombreEstudiante(id){
+  var e = load(LS.ESTUDIANTES).find(function(x){ return x.id===id; });
+  return e ? (e.apellidos + ' ' + e.nombres) : '(estudiante eliminado)';
+}
+function blankIncidente(tipoInvolucrado){
+  return {
+    id: uid('inc'), fecha: todayISO(), hora:'', tipoInvolucrado: tipoInvolucrado || 'Estudiante',
+    estudianteId:'', personalNombre:'', personalCargo:'',
+    tipoFalta:'Leve', categoria: CATEGORIAS_INCIDENTE[0], categoriaManual:'',
+    descripcion:'', accionTomada:'', citacionRepresentante:false, derivadoDece:false,
+    estado:'Abierto', bitacora:[], registradoPor:'', createdAt:'', updatedAt:''
+  };
+}
+function renderInspDisciplina(){
+  var sub = state.inspDiscTab || 'estudiantes';
+  var view = state.inspDiscView || 'lista';
+  var subTabsHtml = ''
+    + '<div class="admin-tabs" style="margin-bottom:16px;">'
+    + '  <button class="'+(sub==='estudiantes'?'active':'')+'" data-discsub="estudiantes">Estudiantes</button>'
+    + '  <button class="'+(sub==='personal'?'active':'')+'" data-discsub="personal">Personal</button>'
+    + '</div>';
+  if(view === 'form') return subTabsHtml + renderInspIncidenteForm();
+  return subTabsHtml + renderInspIncidentesLista(sub);
+}
+function renderInspIncidentesLista(sub){
+  var todos = load(LS.INCIDENTES).filter(function(i){ return sub==='personal' ? i.tipoInvolucrado==='Personal' : i.tipoInvolucrado==='Estudiante'; })
+    .sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var rows = todos.map(function(i){
+    var nombre = i.tipoInvolucrado==='Estudiante' ? nombreEstudiante(i.estudianteId) : (i.personalNombre||'—');
+    var badgeClass = i.tipoFalta==='Muy grave' ? 'pill-muted' : (i.tipoFalta==='Grave' ? 'pill-gold' : 'pill-green');
+    return '<tr>'
+      + '<td class="tabular">' + fmtDate(i.fecha) + '</td>'
+      + '<td>' + escapeHtml(nombre) + '</td>'
+      + '<td><span class="pill '+badgeClass+'">' + escapeHtml(i.tipoFalta) + '</span></td>'
+      + '<td>' + escapeHtml(i.categoria==='Otro'?(i.categoriaManual||'Otro'):i.categoria) + '</td>'
+      + '<td>' + escapeHtml(i.estado) + '</td>'
+      + '<td><button class="btn btn-ghost btn-sm" data-inc-edit="'+i.id+'">Ver / Editar</button></td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">No hay incidentes registrados.</td></tr>';
+  return ''
+  + '<div class="card">'
+  + '  <h2>Incidentes de ' + (sub==='personal'?'personal':'estudiantes') + '</h2>'
+  + '  <button class="btn btn-primary btn-sm" id="btnNuevoIncidente" style="margin-bottom:14px;">+ Registrar incidente</button>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>' + (sub==='personal'?'Persona':'Estudiante') + '</th><th>Gravedad</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '</div>';
+}
+function renderInspIncidenteForm(){
+  var i = state.editingIncidente;
+  var isPersonal = i.tipoInvolucrado === 'Personal';
+  var estudiantesOpts = load(LS.ESTUDIANTES).filter(function(e){ return e.estado!=='Inactivo'; })
+    .sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+  var estSelectHtml = '<option value="">Elija un elemento…</option>' + estudiantesOpts.map(function(e){
+    return '<option value="'+e.id+'" '+(i.estudianteId===e.id?'selected':'')+'>'+escapeHtml(e.apellidos+' '+e.nombres)+' — '+escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso)+'</option>';
+  }).join('');
+  var bitacoraHtml = (i.bitacora||[]).map(function(n){
+    return '<div style="padding:8px 0; border-bottom:1px solid var(--line);"><div class="hint">' + fmtDate(n.fecha) + '</div><div>' + escapeHtml(n.nota) + '</div></div>';
+  }).join('') || '<div class="hint">Sin notas de seguimiento todavía.</div>';
+  return ''
+  + '<div class="card">'
+  + '  <h2>' + (isPersonal ? 'Incidente de personal' : 'Incidente de estudiante') + '</h2>'
+  + '  <div class="form-error" id="incError"></div>'
+  + '  <div class="field-row"><div class="field"><label>Fecha <span class="required">*</span></label><input class="cell-input" type="date" id="incFecha" value="'+escapeHtml(i.fecha)+'" /></div><div class="field"><label>Hora</label><input class="cell-input" type="time" id="incHora" value="'+escapeHtml(i.hora||'')+'" /></div></div>'
+  + (isPersonal
+      ? '  <div class="field-row"><div class="field"><label>Nombre <span class="required">*</span></label><input class="cell-input" id="incPersonalNombre" value="'+escapeHtml(i.personalNombre||'')+'" /></div><div class="field"><label>Cargo</label><input class="cell-input" id="incPersonalCargo" value="'+escapeHtml(i.personalCargo||'')+'" placeholder="Docente, Secretaría, Auxiliar de Servicios…" /></div></div>'
+      : '  <div class="field"><label>Estudiante <span class="required">*</span></label><select class="cell-select" id="incEstudiante">' + estSelectHtml + '</select></div>'
+    )
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Tipo de falta</label><select class="cell-select" id="incTipoFalta">' + optionsHtml(TIPOS_FALTA_DISCIPLINA, i.tipoFalta, null) + '</select></div>'
+  + '    <div class="field"><label>Categoría</label><select class="cell-select" id="incCategoria">' + optionsHtml(CATEGORIAS_INCIDENTE, i.categoria, null) + '</select>' + (i.categoria==='Otro' ? '<input class="cell-input" style="margin-top:6px;" id="incCategoriaManual" value="'+escapeHtml(i.categoriaManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
+  + '  </div>'
+  + '  <div class="field"><label>Descripción de lo ocurrido</label>' + richEditorHtml('descripcion', i.id, i.descripcion, 'Describe lo sucedido…') + '</div>'
+  + '  <div class="field" style="margin-top:10px;"><label>Acción tomada</label>' + richEditorHtml('accionTomada', i.id, i.accionTomada, 'Llamado de atención, citación, suspensión…') + '</div>'
+  + '  <div class="field-row" style="margin-top:10px;">'
+  + '    <label class="checkbox-pill"><input type="checkbox" id="incCitacion" '+(i.citacionRepresentante?'checked':'')+' /> Se citó al representante</label>'
+  + (isPersonal ? '' : '    <label class="checkbox-pill"><input type="checkbox" id="incDece" '+(i.derivadoDece?'checked':'')+' /> Derivado a DECE</label>')
+  + '  </div>'
+  + '  <div class="field" style="margin-top:10px;"><label>Estado del caso</label><select class="cell-select" id="incEstado" style="max-width:220px;">' + optionsHtml(ESTADOS_INCIDENTE, i.estado, null) + '</select></div>'
+  + '  <div class="pca-band band-section" style="margin:16px -22px 0;">Bitácora de seguimiento</div>'
+  + '  <div style="margin-top:12px;">' + bitacoraHtml + '</div>'
+  + '  <div class="field-row" style="margin-top:10px;"><div class="field" style="flex:1;"><input class="cell-input" id="incNuevaNota" placeholder="Agregar nota de seguimiento…" /></div><button class="btn btn-ghost btn-sm" id="btnAddNota" style="align-self:flex-end;">+ Agregar nota</button></div>'
+  + '  <div style="display:flex; gap:10px; margin-top:18px; align-items:center;">'
+  + '    <button class="btn btn-primary" id="btnGuardarIncidente">Guardar</button>'
+  + '    <button class="btn btn-ghost" id="btnCancelarIncidente">Cancelar</button>'
+  + (load(LS.INCIDENTES).some(function(x){return x.id===i.id;}) ? '<div class="spacer"></div><button class="btn btn-danger btn-sm" id="btnEliminarIncidente">Eliminar incidente</button>' : '')
+  + '  </div>'
+  + '</div>';
+}
+function bindInspDisciplinaEvents(){
+  document.querySelectorAll('[data-discsub]').forEach(function(btn){
+    btn.onclick = function(){ state.inspDiscTab = btn.getAttribute('data-discsub'); state.inspDiscView='lista'; render(); };
+  });
+  var view = state.inspDiscView || 'lista';
+  if(view === 'form') bindInspIncidenteFormEvents();
+  else bindInspIncidentesListaEvents();
+}
+function bindInspIncidentesListaEvents(){
+  var newBtn = document.getElementById('btnNuevoIncidente');
+  if(newBtn) newBtn.onclick = function(){
+    state.editingIncidente = blankIncidente(state.inspDiscTab==='personal' ? 'Personal' : 'Estudiante');
+    state.inspDiscView = 'form';
+    render();
+  };
+  document.querySelectorAll('[data-inc-edit]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.INCIDENTES).find(function(x){ return x.id===btn.getAttribute('data-inc-edit'); });
+      if(target){ state.editingIncidente = Object.assign({}, target, {bitacora: (target.bitacora||[]).slice()}); state.inspDiscView='form'; render(); }
+    };
+  });
+}
+function bindInspIncidenteFormEvents(){
+  var i = state.editingIncidente;
+  document.getElementById('incFecha').oninput = function(e){ i.fecha = e.target.value; };
+  document.getElementById('incHora').oninput = function(e){ i.hora = e.target.value; };
+  var pn = document.getElementById('incPersonalNombre'); if(pn) pn.oninput = function(e){ i.personalNombre = e.target.value; };
+  var pc = document.getElementById('incPersonalCargo'); if(pc) pc.oninput = function(e){ i.personalCargo = e.target.value; };
+  var es = document.getElementById('incEstudiante'); if(es) es.onchange = function(e){ i.estudianteId = e.target.value; };
+  document.getElementById('incTipoFalta').onchange = function(e){ i.tipoFalta = e.target.value; };
+  document.getElementById('incCategoria').onchange = function(e){ i.categoria = e.target.value; render(); };
+  var cm = document.getElementById('incCategoriaManual'); if(cm) cm.oninput = function(e){ i.categoriaManual = e.target.value; };
+  document.getElementById('incCitacion').onchange = function(e){ i.citacionRepresentante = e.target.checked; };
+  var dece = document.getElementById('incDece'); if(dece) dece.onchange = function(e){ i.derivadoDece = e.target.checked; };
+  document.getElementById('incEstado').onchange = function(e){ i.estado = e.target.value; };
+  document.querySelectorAll('.rte-editable').forEach(function(el){
+    var key = el.getAttribute('data-rte-field');
+    el.addEventListener('input', function(){ i[key] = el.innerHTML; });
+  });
+  bindRteToolbars(document.querySelector('.card'));
+  document.getElementById('btnAddNota').onclick = function(){
+    var input = document.getElementById('incNuevaNota');
+    var v = (input.value||'').trim();
+    if(!v) return;
+    i.bitacora = i.bitacora || [];
+    i.bitacora.push({fecha: todayISO(), nota: v});
+    render();
+  };
+  document.getElementById('btnGuardarIncidente').onclick = doSaveIncidente;
+  document.getElementById('btnCancelarIncidente').onclick = function(){ state.editingIncidente=null; state.inspDiscView='lista'; render(); };
+  var delBtn = document.getElementById('btnEliminarIncidente');
+  if(delBtn) delBtn.onclick = function(){
+    confirmDialog('¿Eliminar este incidente? Esta acción no se puede deshacer.', function(){
+      save(LS.INCIDENTES, load(LS.INCIDENTES).filter(function(x){ return x.id!==i.id; }));
+      state.editingIncidente=null; state.inspDiscView='lista'; render();
+      toast('Incidente eliminado.', 'success');
+    });
+  };
+}
+function doSaveIncidente(){
+  var i = state.editingIncidente;
+  var errEl = document.getElementById('incError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!i.fecha) return fail('Elige la fecha del incidente.');
+  if(i.tipoInvolucrado==='Personal' && !(i.personalNombre||'').trim()) return fail('Escribe el nombre de la persona.');
+  if(i.tipoInvolucrado==='Estudiante' && !i.estudianteId) return fail('Elige el estudiante.');
+  var d = currentDocente();
+  var toSave = Object.assign({}, i, {
+    descripcion: sanitizeRte(i.descripcion), accionTomada: sanitizeRte(i.accionTomada),
+    registradoPor: i.registradoPor || d.id, updatedAt: nowISO(), createdAt: i.createdAt || nowISO()
+  });
+  var all = load(LS.INCIDENTES);
+  var exists = all.some(function(x){ return x.id===i.id; });
+  save(LS.INCIDENTES, exists ? all.map(function(x){ return x.id===i.id?toSave:x; }) : all.concat([toSave]));
+  state.editingIncidente=null; state.inspDiscView='lista'; render();
+  toast('Incidente guardado correctamente.', 'success');
+}
+
+/* --- Inspección · Reportes (imprimibles A4 vertical) --- */
+var INSP_REPORT_TIPOS = [
+  {key:'diaria', label:'Asistencia diaria (por curso)'},
+  {key:'individual', label:'Historial de un estudiante'},
+  {key:'mensual', label:'Consolidado mensual por curso'},
+  {key:'incidentes', label:'Incidentes de disciplina'}
+];
+function repInstitucionalHead(titulo){
+  return '<div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+       + '<div class="pca-band band-title">' + escapeHtml(titulo) + '</div>';
+}
+function repFirmaInspeccion(){
+  return '<div class="signature-grid" style="grid-template-columns:1fr; max-width:320px;">'
+       + '  <div class="signature-box"><div class="role">Elaborado por</div><div style="font-weight:700; font-size:14px;">Inspección General</div></div>'
+       + '</div>';
+}
+function renderInspReportes(){
+  var tipo = state.inspReportTipo || 'diaria';
+  var selectorHtml = ''
+    + '<div class="card no-print">'
+    + '  <h2>Reportes</h2>'
+    + '  <div class="field"><label>Tipo de reporte</label><select class="cell-select" id="repTipo" style="max-width:380px;">' + INSP_REPORT_TIPOS.map(function(t){ return '<option value="'+t.key+'" '+(t.key===tipo?'selected':'')+'>'+escapeHtml(t.label)+'</option>'; }).join('') + '</select></div>'
+    + '</div>';
+  var body;
+  if(tipo==='individual') body = renderRepIndividual();
+  else if(tipo==='mensual') body = renderRepMensual();
+  else if(tipo==='incidentes') body = renderRepIncidentes();
+  else body = renderRepDiaria();
+  return selectorHtml + body;
+}
+function bindInspReportesEvents(){
+  document.getElementById('repTipo').onchange = function(e){ state.inspReportTipo = e.target.value; render(); };
+  var tipo = state.inspReportTipo || 'diaria';
+  if(tipo==='individual') bindRepIndividualEvents();
+  else if(tipo==='mensual') bindRepMensualEvents();
+  else if(tipo==='incidentes') bindRepIncidentesEvents();
+  else bindRepDiariaEvents();
+}
+function renderRepDiaria(){
+  var f = state.repDiariaFiltro || (state.repDiariaFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Nivel</label><select class="cell-select" id="rdNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="rdEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+    + '  </div>'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Curso</label><select class="cell-select" id="rdCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="rdFecha" value="'+escapeHtml(f.fecha)+'" /></div>'
+    + '  </div>'
+    + '</div>';
+  if(!f.nivel || !f.curso || !f.fecha) return selHtml;
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, f.fecha);
+  var a = load(LS.ASISTENCIA).find(function(x){ return x.id===docId; }) || {periodos:{}};
+  var headCells = PERIODOS.map(function(p){ return '<th class="tabular">H'+p.n+'</th>'; }).join('');
+  var rows = estudiantes.map(function(e){
+    var tot = {P:0,A:0,F:0};
+    var cells = PERIODOS.map(function(p){
+      var val = (a.periodos[p.n] && a.periodos[p.n][e.id]) || '';
+      if(val) tot[val]++;
+      return '<td class="tabular">' + (val||'—') + '</td>';
+    }).join('');
+    return '<tr><td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>' + cells + '<td class="tabular">' + tot.P + '</td><td class="tabular">' + tot.A + '</td><td class="tabular">' + tot.F + '</td></tr>';
+  }).join('') || '<tr><td colspan="15" class="hint">No hay estudiantes en este curso.</td></tr>';
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepDiaria">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repDiariaDoc">'
+  + repInstitucionalHead('Reporte de Asistencia Diaria')
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2"><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(f.nivel + (f.especialidad?' · '+f.especialidad:'') + ' · ' + f.curso)+'" /></div><div class="field"><label>Fecha</label><input class="cell-input" readonly value="'+escapeHtml(fmtDateLargo(f.fecha)||fmtDate(f.fecha))+'" /></div></div>'
+  + '    <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>P</th><th>A</th><th>F</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepDiariaEvents(){
+  var f = state.repDiariaFiltro;
+  var nivelSel = document.getElementById('rdNivel'); if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('rdEspecialidad'); if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('rdCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
+  var fechaInp = document.getElementById('rdFecha'); if(fechaInp) fechaInp.onchange = function(e){ f.fecha=e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepDiaria'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+function renderRepIndividual(){
+  var f = state.repIndividualFiltro || (state.repIndividualFiltro = {estudianteId:'', fechaInicio:'', fechaFin: todayISO()});
+  var estudiantes = load(LS.ESTUDIANTES).slice().sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+  var estOpts = '<option value="">Elija un elemento…</option>' + estudiantes.map(function(e){
+    return '<option value="'+e.id+'" '+(f.estudianteId===e.id?'selected':'')+'>'+escapeHtml(e.apellidos+' '+e.nombres)+'</option>';
+  }).join('');
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field"><label>Estudiante</label><select class="cell-select" id="riEstudiante">' + estOpts + '</select></div>'
+    + '  <div class="field-row" style="margin-top:8px;"><div class="field"><label>Desde</label><input class="cell-input" type="date" id="riInicio" value="'+escapeHtml(f.fechaInicio)+'" /></div><div class="field"><label>Hasta</label><input class="cell-input" type="date" id="riFin" value="'+escapeHtml(f.fechaFin)+'" /></div></div>'
+    + '</div>';
+  if(!f.estudianteId) return selHtml;
+  var e = estudiantes.find(function(x){ return x.id===f.estudianteId; });
+  if(!e) return selHtml;
+  var docs = load(LS.ASISTENCIA).filter(function(a){
+    return a.nivel===e.nivel && (a.especialidad||'')===(e.especialidad||'') && a.curso===e.curso
+      && (!f.fechaInicio || a.fecha >= f.fechaInicio) && (!f.fechaFin || a.fecha <= f.fechaFin);
+  }).sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+  var totales = {P:0,A:0,F:0};
+  var filas = [];
+  docs.forEach(function(a){
+    var marcasDia = [];
+    PERIODOS.forEach(function(p){
+      var val = a.periodos[p.n] && a.periodos[p.n][e.id];
+      if(val){ totales[val]++; if(val!=='P') marcasDia.push('H'+p.n+':'+val); }
+    });
+    if(marcasDia.length) filas.push('<tr><td class="tabular">'+fmtDate(a.fecha)+'</td><td>'+marcasDia.join(', ')+'</td><td>'+((a.justificativos[e.id]&&a.justificativos[e.id].recibido)?'Sí':'No')+'</td></tr>');
+  });
+  var filasHtml = filas.join('') || '<tr><td colspan="3" class="hint">Sin atrasos ni faltas registradas en el rango elegido.</td></tr>';
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepIndividual">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repIndividualDoc">'
+  + repInstitucionalHead('Historial de Asistencia — Estudiante')
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2"><div class="field"><label>Estudiante</label><input class="cell-input" readonly value="'+escapeHtml(e.apellidos+' '+e.nombres)+'" /></div><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(e.nivel+' · '+(e.curso==='Otro…'?e.cursoManual:e.curso))+'" /></div></div>'
+  + '    <div class="grid-3" style="margin-top:10px;"><div class="field"><label>Total Presente</label><input class="cell-input tabular" readonly value="'+totales.P+'" /></div><div class="field"><label>Total Atrasos</label><input class="cell-input tabular" readonly value="'+totales.A+'" /></div><div class="field"><label>Total Faltas</label><input class="cell-input tabular" readonly value="'+totales.F+'" /></div></div>'
+  + '    <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Fecha</th><th>Detalle (atrasos / faltas por período)</th><th>Justificado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepIndividualEvents(){
+  var f = state.repIndividualFiltro;
+  document.getElementById('riEstudiante').onchange = function(e){ f.estudianteId = e.target.value; render(); };
+  var i1 = document.getElementById('riInicio'); if(i1) i1.onchange = function(e){ f.fechaInicio = e.target.value; render(); };
+  var i2 = document.getElementById('riFin'); if(i2) i2.onchange = function(e){ f.fechaFin = e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepIndividual'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+function renderRepMensual(){
+  var f = state.repMensualFiltro || (state.repMensualFiltro = {nivel:'', especialidad:'', curso:'', mes: todayISO().slice(0,7)});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Nivel</label><select class="cell-select" id="rmNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="rmEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+    + '  </div>'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Curso</label><select class="cell-select" id="rmCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Mes</label><input class="cell-input" type="month" id="rmMes" value="'+escapeHtml(f.mes)+'" /></div>'
+    + '  </div>'
+    + '</div>';
+  if(!f.nivel || !f.curso || !f.mes) return selHtml;
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  var docs = load(LS.ASISTENCIA).filter(function(a){
+    return a.nivel===f.nivel && (a.especialidad||'')===(f.especialidad||'') && a.curso===f.curso && (a.fecha||'').indexOf(f.mes)===0;
+  });
+  var totalesPorEst = {};
+  estudiantes.forEach(function(e){ totalesPorEst[e.id] = {P:0,A:0,F:0}; });
+  docs.forEach(function(a){
+    PERIODOS.forEach(function(p){
+      var marcas = a.periodos[p.n] || {};
+      Object.keys(marcas).forEach(function(estId){
+        if(!totalesPorEst[estId]) return;
+        totalesPorEst[estId][marcas[estId]]++;
+      });
+    });
+  });
+  var rows = estudiantes.slice().sort(function(a,b){ return totalesPorEst[b.id].F - totalesPorEst[a.id].F; }).map(function(e){
+    var t = totalesPorEst[e.id];
+    return '<tr><td>'+escapeHtml(e.apellidos+' '+e.nombres)+'</td><td class="tabular">'+t.P+'</td><td class="tabular">'+t.A+'</td><td class="tabular">'+t.F+'</td></tr>';
+  }).join('') || '<tr><td colspan="4" class="hint">No hay estudiantes en este curso.</td></tr>';
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepMensual">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repMensualDoc">'
+  + repInstitucionalHead('Consolidado Mensual de Asistencia')
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2"><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(f.nivel+(f.especialidad?' · '+f.especialidad:'')+' · '+f.curso)+'" /></div><div class="field"><label>Mes</label><input class="cell-input" readonly value="'+escapeHtml(f.mes)+'" /></div></div>'
+  + '    <div class="hint" style="margin:8px 0;">Los totales suman las marcas de las 11 horas curriculares en cada día del mes (no días completos).</div>'
+  + '    <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Estudiante</th><th>Presente</th><th>Atrasos</th><th>Faltas</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepMensualEvents(){
+  var f = state.repMensualFiltro;
+  var nivelSel = document.getElementById('rmNivel'); if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('rmEspecialidad'); if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('rmCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
+  var mesInp = document.getElementById('rmMes'); if(mesInp) mesInp.onchange = function(e){ f.mes=e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepMensual'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+function renderRepIncidentes(){
+  var f = state.repIncidentesFiltro || (state.repIncidentesFiltro = {tipoInvolucrado:'', fechaInicio:'', fechaFin:''});
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Tipo</label><select class="cell-select" id="rcTipo">' + optionsHtml(['Estudiante','Personal'], f.tipoInvolucrado, 'Todos') + '</select></div>'
+    + '    <div class="field"></div>'
+    + '  </div>'
+    + '  <div class="field-row"><div class="field"><label>Desde</label><input class="cell-input" type="date" id="rcInicio" value="'+escapeHtml(f.fechaInicio)+'" /></div><div class="field"><label>Hasta</label><input class="cell-input" type="date" id="rcFin" value="'+escapeHtml(f.fechaFin)+'" /></div></div>'
+    + '</div>';
+  var incidentes = load(LS.INCIDENTES).filter(function(i){
+    if(f.tipoInvolucrado && i.tipoInvolucrado!==f.tipoInvolucrado) return false;
+    if(f.fechaInicio && i.fecha < f.fechaInicio) return false;
+    if(f.fechaFin && i.fecha > f.fechaFin) return false;
+    return true;
+  }).sort(function(a,b){ return (a.fecha||'').localeCompare(b.fecha||''); });
+  var rows = incidentes.map(function(i){
+    var nombre = i.tipoInvolucrado==='Estudiante' ? nombreEstudiante(i.estudianteId) : (i.personalNombre||'—');
+    return '<tr><td class="tabular">'+fmtDate(i.fecha)+'</td><td>'+escapeHtml(nombre)+'</td><td>'+escapeHtml(i.tipoInvolucrado)+'</td><td>'+escapeHtml(i.tipoFalta)+'</td><td>'+escapeHtml(i.categoria==='Otro'?(i.categoriaManual||'Otro'):i.categoria)+'</td><td>'+escapeHtml(i.estado)+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">No hay incidentes en este rango.</td></tr>';
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepIncidentes">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repIncidentesDoc">'
+  + repInstitucionalHead('Reporte de Incidentes de Disciplina')
+  + '  <div class="pca-section">'
+  + '    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Nombre</th><th>Tipo</th><th>Gravedad</th><th>Categoría</th><th>Estado</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepIncidentesEvents(){
+  var f = state.repIncidentesFiltro;
+  document.getElementById('rcTipo').onchange = function(e){ f.tipoInvolucrado = e.target.value; render(); };
+  document.getElementById('rcInicio').onchange = function(e){ f.fechaInicio = e.target.value; render(); };
+  document.getElementById('rcFin').onchange = function(e){ f.fechaFin = e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepIncidentes'); if(printBtn) printBtn.onclick = printAsPdf;
 }
 
 /* ============================= CARGA HORARIA ============================= */
