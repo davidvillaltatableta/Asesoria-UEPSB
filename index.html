@@ -158,6 +158,9 @@
   .sidebar nav button .ic{width:18px; text-align:center; opacity:.85;}
   .sidebar nav button:hover{background:rgba(255,255,255,.06); color:#fff;}
   .sidebar nav button.active{background:var(--gold-500); color:#3A2A00;}
+  .sidebar nav .nav-group{display:flex; flex-direction:column; gap:4px;}
+  .sidebar nav .nav-group + .nav-group{margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,.12);}
+  .sidebar nav .nav-group-label{font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#7E92C2; padding:0 12px 2px;}
   .sidebar .spacer{flex:1;}
   .sidebar .who{border-top:1px solid rgba(255,255,255,.14); padding-top:14px; display:flex; flex-direction:column; gap:8px;}
   .sidebar .who .who-name{font-size:13px; font-weight:700;}
@@ -397,13 +400,14 @@ var LS = {
   ESTUDIANTES: 'ESTUDIANTES',
   ASISTENCIA: 'ASISTENCIA',
   INCIDENTES: 'INCIDENTES',
-  OBSERVACIONES: 'OBSERVACIONES'
+  OBSERVACIONES: 'OBSERVACIONES',
+  DECE: 'DECE'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
-  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones'
+  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -473,14 +477,19 @@ var CURSOS = {
 var ASIGNATURAS = {
   'Iniciales y Preparatoria': ['Comprensión y Expresión de Lenguaje','Convivencia','Expresión Artística','Expresión Corporal y Motricidad','Identidad y Autonomía','Relación con el Medio Natural y Cultural','Relación Lógico-Matemática','Robótica','Inglés','Computación'],
   'Básica Elemental': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Computación','Robótica','Informática Aplicada (Programación)'],
-  'Básica Media': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Computación','Robótica','Informática Aplicada (Programación)'],
-  'Básica Superior': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)',
-    'Inglés A2(8vo-9no)',
-    'Inglés Grupo A1(7mo A y B)','Inglés Grupo A1(8vo-9no)','Inglés Grupo A1(2do´s Bach)','Inglés Grupo A1(3ero´s Bach)',
-    'Inglés Grupo A2(7mo A y B)','Inglés Grupo A2(8vo-9no)','Inglés Grupo A2(2do´s Bach)','Inglés Grupo A2(3ero´s Bach)',
-    'Inglés Grupo B1(7mo A y B)','Inglés Grupo B1(8vo-9no)','Inglés Grupo B1(2do´s Bach)','Inglés Grupo B1(3ero´s Bach)'
+  'Básica Media': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Computación','Robótica','Informática Aplicada (Programación)',
+    'ENGLISH (Grupo A1-7mo EGB "A y B")','ENGLISH (Grupo A2-7mo EGB "A y B")','ENGLISH (Grupo B1-7mo EGB "A y B")'
   ],
-  'Bachillerato': ['Matemática','Lengua y Literatura','Física','Química','Biología','Historia','Educación para la Ciudadanía','Filosofía','Inglés','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)']
+  'Básica Superior': ['Matemática','Lengua y Literatura','Ciencias Naturales','Estudios Sociales','Inglés','Educación Cultural y Artística','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)',
+    'ENGLISH (Grupo A1-8vo y 9no EGB)','ENGLISH (Grupo A1-10mo EGB y 1ero´s BACH)',
+    'ENGLISH (Grupo A2-8vo y 9no EGB)','ENGLISH (Grupo A2-10mo EGB y 1ero´s BACH)',
+    'ENGLISH (Grupo B1-8vo y 9no EGB)','ENGLISH (Grupo B1-10mo EGB y 1ero´s BACH)'
+  ],
+  'Bachillerato': ['Matemática','Lengua y Literatura','Física','Química','Biología','Historia','Educación para la Ciudadanía','Filosofía','Inglés','Educación Física','Emprendimiento y Gestión','Computación','Robótica','Informática Aplicada (Programación)',
+    'ENGLISH (Grupo A1-2do´s BACH)','ENGLISH (Grupo A1-3ero´s BACH)',
+    'ENGLISH (Grupo A2-2do´s BACH)','ENGLISH (Grupo A2-3ero´s BACH)',
+    'ENGLISH (Grupo B1-2do´s BACH)','ENGLISH (Grupo B1-3ero´s BACH)'
+  ]
 };
 var ASIGNATURAS_ESP = {
   'Diseño Gráfico': [
@@ -1052,29 +1061,62 @@ async function doRegister(){
   /* onAuthStateChanged toma el control desde aquí (perfil ya escrito arriba antes de que llegue). */
 }
 
+/* ============================= ROLES ============================= */
+/* Además de 'docente', hay tres roles con acceso administrativo pleno y equivalente entre sí
+   (Administrador, Directivo, DECE): todos ven Administración, Inspección General, Base de Datos
+   y el módulo DECE. Se mantienen como valores de rol distintos (no fusionados) para identificar
+   correctamente quién hizo qué (p.ej. "Atendido por" en un caso DECE), aunque hoy sus permisos
+   sean idénticos. */
+var STAFF_ROLES = ['admin','directivo','dece'];
+function isStaffRole(role){ return STAFF_ROLES.indexOf(role) !== -1; }
+var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', docente:'Docente' };
+function rolePillHtml(role){
+  if(role==='admin') return '<span class="pill pill-gold">Administrador</span>';
+  if(role==='directivo') return '<span class="pill pill-blue">Directivo</span>';
+  if(role==='dece') return '<span class="pill pill-green">DECE</span>';
+  return '<span class="pill pill-muted">Docente</span>';
+}
+
 /* ============================= APP SHELL ============================= */
-var NAV_ITEMS = [
-  {key:'dashboard', label:'Inicio', ic:'🏠'},
-  {key:'perfil', label:'Mi Perfil', ic:'👤'},
-  {key:'cargahoraria', label:'Mi Carga Horaria', ic:'🗂️'},
-  {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
-  {key:'semanallist', label:'Planes Semanales', ic:'📅'},
-  {key:'observacion', label:'Observación de Clases', ic:'📋'},
-  {key:'database', label:'Base de Datos', ic:'💾'}
+var NAV_GROUPS = [
+  {label:'Perfil y Datos del Docente', items:[
+    {key:'dashboard', label:'Inicio', ic:'🏠'},
+    {key:'perfil', label:'Mi Perfil', ic:'👤'},
+    {key:'cargahoraria', label:'Mi Carga Horaria', ic:'🗂️'}
+  ]},
+  {label:'Lo Pedagógico', items:[
+    {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
+    {key:'semanallist', label:'Planes Semanales', ic:'📅'},
+    {key:'observacion', label:'Observación de Clases', ic:'📋'}
+  ]},
+  {label:'Inspección', items:[
+    {key:'inspeccion', label:'Inspección General', ic:'🧭', adminOnly:true}
+  ]},
+  {label:'Departamento de Consejería Estudiantil (DECE)', items:[
+    {key:'dece', label:'Casos DECE', ic:'🧑‍⚕️', adminOnly:true}
+  ]},
+  {label:'Administración y Base de Datos', items:[
+    {key:'admin', label:'Administración', ic:'🛡️', adminOnly:true},
+    {key:'database', label:'Base de Datos', ic:'💾'}
+  ]}
 ];
 
 function renderShell(){
   var d = currentDocente();
-  var isAdmin = d.role === 'admin';
-  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion')) state.subview = 'dashboard';
-  var items = NAV_ITEMS.concat(isAdmin ? [{key:'admin', label:'Administración', ic:'🛡️'}, {key:'inspeccion', label:'Inspección General', ic:'🧭'}] : []);
-  var navHtml = items.map(function(item){
-    var active = (state.subview === item.key
-      || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
-      || (state.subview==='semanalform' && item.key==='semanallist' && state.semanalReturnTo!=='admin')
-      || ((state.subview==='pcaform'||state.subview==='semanalform') && item.key==='admin' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'))
-      || ((state.subview==='adminEditDocente'||state.subview==='adminNewDocente') && item.key==='admin'));
-    return '<button data-nav="'+item.key+'" class="'+(active?'active':'')+'"><span class="ic">'+item.ic+'</span>'+item.label+'</button>';
+  var isAdmin = isStaffRole(d.role);
+  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion' || state.subview === 'dece')) state.subview = 'dashboard';
+  var navHtml = NAV_GROUPS.map(function(group){
+    var visibleItems = group.items.filter(function(item){ return !item.adminOnly || isAdmin; });
+    if(!visibleItems.length) return '';
+    var itemsHtml = visibleItems.map(function(item){
+      var active = (state.subview === item.key
+        || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
+        || (state.subview==='semanalform' && item.key==='semanallist' && state.semanalReturnTo!=='admin')
+        || ((state.subview==='pcaform'||state.subview==='semanalform') && item.key==='admin' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'))
+        || ((state.subview==='adminEditDocente'||state.subview==='adminNewDocente') && item.key==='admin'));
+      return '<button data-nav="'+item.key+'" class="'+(active?'active':'')+'"><span class="ic">'+item.ic+'</span>'+item.label+'</button>';
+    }).join('');
+    return '<div class="nav-group"><div class="nav-group-label">' + group.label + '</div>' + itemsHtml + '</div>';
   }).join('');
 
   var sub;
@@ -1092,6 +1134,7 @@ function renderShell(){
   else if(state.subview === 'manualadmin') sub = renderManualAdmin();
   else if(state.subview === 'inspeccion') sub = renderInspeccion(d);
   else if(state.subview === 'observacion') sub = renderObservacion(d);
+  else if(state.subview === 'dece') sub = renderDece(d);
   else sub = renderDashboard(d);
 
   return ''
@@ -1102,7 +1145,7 @@ function renderShell(){
   + '    <div class="brand"><img src="data:image/jpeg;base64,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" alt="Logo" /><div><div class="name">UEP “Simón Bolívar”</div><div class="year">Año lectivo 2026-2027</div></div></div>'
   + '    <nav>' + navHtml + '</nav>'
   + '    <div class="spacer"></div>'
-  + '    <div class="who"><div class="who-name">' + escapeHtml(d.nombres) + ' ' + escapeHtml(d.apellidos) + '</div><div class="who-role">' + escapeHtml(misAsignaturas(d.id).join(' · ') || 'Docente') + '</div><button id="btnLogout">Cerrar sesión</button></div>'
+  + '    <div class="who"><div class="who-name">' + escapeHtml(d.nombres) + ' ' + escapeHtml(d.apellidos) + '</div><div class="who-role">' + escapeHtml(misAsignaturas(d.id).join(' · ') || ROLE_LABELS[d.role] || 'Docente') + '</div><button id="btnLogout">Cerrar sesión</button></div>'
   + '  </aside>'
   + '  <main class="content">' + sub + '</main>'
   + '</div>';
@@ -1137,6 +1180,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'manualadmin') bindManualEvents();
   else if(state.subview === 'inspeccion') bindInspeccionEvents();
   else if(state.subview === 'observacion') bindObservacionEvents();
+  else if(state.subview === 'dece') bindDeceEvents();
   else bindDashboardEvents();
 }
 
@@ -1194,7 +1238,7 @@ function bindPerfilEvents(){
 
 /* ============================= DASHBOARD ============================= */
 function renderDashboard(d){
-  var isAdmin = d.role === 'admin';
+  var isAdmin = isStaffRole(d.role);
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
   + '<div class="grid-4">'
@@ -1543,7 +1587,7 @@ var INSPECCION_TABS = [
   {key:'reportes', label:'Reportes'}
 ];
 function renderInspeccion(d){
-  if(d.role !== 'admin') return renderDashboard(d);
+  if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.inspeccionTab || 'estudiantes';
   var tabsHtml = INSPECCION_TABS.map(function(t){
     return '<button class="'+(tab===t.key?'active':'')+'" data-insptab="'+t.key+'">'+t.label+'</button>';
@@ -2680,7 +2724,7 @@ function bindObservacionEvents(){
   else bindObsListaEvents();
 }
 function renderObsLista(d){
-  var isAdmin = d.role === 'admin';
+  var isAdmin = isStaffRole(d.role);
   var docentes = allDocentes();
   var todos = load(LS.OBSERVACIONES).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
   var rows = todos.map(function(o){
@@ -2740,7 +2784,7 @@ function obsGrupoRowsHtml(grupo, o){
 }
 function renderObsForm(d){
   var o = state.editingObservacion;
-  var editable = d.role === 'admin';
+  var editable = isStaffRole(d.role);
   var docentesDelNivel = o.nivel ? docentesPorNivel(o.nivel) : [];
   var docOpts = '<option value="">' + (o.nivel ? 'Elija un elemento…' : 'Elija primero el nivel educativo') + '</option>' + docentesDelNivel.map(function(x){
     return '<option value="'+x.id+'" '+(o.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
@@ -2790,7 +2834,7 @@ function renderObsForm(d){
 }
 function bindObsFormEvents(){
   var o = state.editingObservacion;
-  var editable = currentDocente().role === 'admin';
+  var editable = isStaffRole(currentDocente().role);
 
   document.getElementById('btnObsVolver').onclick = function(){ state.editingObservacion=null; state.obsView='lista'; render(); };
   document.getElementById('btnObsPrint').onclick = printAsPdf;
@@ -2843,6 +2887,273 @@ function doSaveObservacion(){
   save(LS.OBSERVACIONES, exists ? all.map(function(x){ return x.id===o.id?toSave:x; }) : all.concat([toSave]));
   state.editingObservacion=null; state.obsView='lista'; render();
   toast('Observación guardada correctamente.', 'success');
+}
+
+/* ============================= DECE (Consejería Estudiantil) =============================
+   Módulo exclusivo de los roles con acceso administrativo (admin/directivo/dece), nunca visible
+   a docentes: casos de consejería vinculados a los estudiantes ya registrados en Inspección
+   General (o a un nombre manual si el estudiante aún no está registrado), con bitácora de
+   seguimientos y datos sensibles/confidenciales. */
+var DECE_TIPOS = ['Académico','Conductual','Emocional / Psicológico','Familiar','Vocacional / Orientación','Salud','Otro'];
+var DECE_ESTADOS = ['Abierto','En seguimiento','Cerrado','Derivado'];
+
+function blankDeceCaso(){
+  return {
+    id: uid('dece'), fecha: todayISO(),
+    estudianteId: '', estudianteManual: '',
+    nivel: '', curso: '',
+    tipo: '', descripcion: '', accionesTomadas: '',
+    seguimientos: [],
+    estado: 'Abierto',
+    derivacionActiva: false, derivacionInstitucion: '',
+    atendidoPor: nombreFormal(currentDocente()),
+    registradoPor: '', createdAt: '', updatedAt: ''
+  };
+}
+function cursosConEstudiantes(nivel){
+  var set = {};
+  load(LS.ESTUDIANTES).filter(function(e){ return e.nivel===nivel; }).forEach(function(e){
+    var c = e.curso==='Otro…' ? (e.cursoManual||'') : e.curso;
+    if(c) set[c]=1;
+  });
+  return Object.keys(set).sort();
+}
+function estudiantesPorNivelCurso(nivel, curso){
+  return load(LS.ESTUDIANTES).filter(function(e){
+    if(e.nivel!==nivel) return false;
+    var c = e.curso==='Otro…' ? (e.cursoManual||'') : e.curso;
+    return c===curso;
+  }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+}
+function deceNombreEstudiante(caso){
+  if(caso.estudianteId){
+    var e = load(LS.ESTUDIANTES).find(function(x){ return x.id===caso.estudianteId; });
+    if(e) return e.apellidos + ' ' + e.nombres;
+  }
+  return caso.estudianteManual || '—';
+}
+function deceEstadoPillHtml(estado){
+  if(estado==='Cerrado') return '<span class="pill pill-green">Cerrado</span>';
+  if(estado==='En seguimiento') return '<span class="pill pill-blue">En seguimiento</span>';
+  if(estado==='Derivado') return '<span class="pill pill-gold">Derivado</span>';
+  return '<span class="pill pill-muted">Abierto</span>';
+}
+
+function renderDece(d){
+  return (state.deceView === 'form') ? renderDeceForm(d) : renderDeceLista(d);
+}
+function bindDeceEvents(){
+  if(state.deceView === 'form') bindDeceFormEvents();
+  else bindDeceListaEvents();
+}
+
+function renderDeceLista(){
+  var f = state.deceFiltro || (state.deceFiltro = {nivel:'', estado:'', q:''});
+  var todos = load(LS.DECE).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var filtrados = todos.filter(function(c){
+    if(f.nivel && c.nivel !== f.nivel) return false;
+    if(f.estado && c.estado !== f.estado) return false;
+    return true;
+  });
+  var rows = filtrados.map(function(c){
+    var nombre = deceNombreEstudiante(c);
+    return '<tr data-searchable="' + escapeHtml(nombre.toLowerCase()) + '">'
+      + '<td class="tabular">' + fmtDate(c.fecha) + '</td>'
+      + '<td>' + escapeHtml(nombre) + '</td>'
+      + '<td>' + escapeHtml(c.nivel||'—') + (c.curso?' · '+escapeHtml(c.curso):'') + '</td>'
+      + '<td>' + escapeHtml((c.tipo||'').split(';').map(function(x){return x.trim();}).filter(Boolean).join(', ') || '—') + '</td>'
+      + '<td>' + deceEstadoPillHtml(c.estado) + '</td>'
+      + '<td>' + escapeHtml(c.atendidoPor||'—') + '</td>'
+      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-dece-open="'+c.id+'">Abrir</button> <button class="btn btn-danger btn-sm" data-dece-delete="'+c.id+'">Eliminar</button></td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="7" class="hint">Todavía no hay casos registrados con este filtro.</td></tr>';
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>Casos DECE</h1><p>Seguimiento confidencial de casos de consejería estudiantil. Visible solo para Administración, Directivos y DECE.</p></div></div>'
+  + '<div class="card">'
+  + '  <div class="field-row" style="margin-bottom:14px;">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="dcFNivel">' + optionsHtml(NIVELES, f.nivel, 'Todos') + '</select></div>'
+  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcFEstado">' + optionsHtml(DECE_ESTADOS, f.estado, 'Todos') + '</select></div>'
+  + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido…" /></div>'
+  + '  </div>'
+  + '  <button class="btn btn-primary btn-sm" id="btnDeceNuevo" style="margin-bottom:14px;">+ Nuevo caso</button>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Estudiante</th><th>Nivel / Curso</th><th>Tipo</th><th>Estado</th><th>Atendido por</th><th>Acciones</th></tr></thead><tbody id="dcTableBody">' + rows + '</tbody></table></div>'
+  + '</div>';
+}
+function bindDeceListaEvents(){
+  var f = state.deceFiltro;
+  document.getElementById('dcFNivel').onchange = function(e){ f.nivel = e.target.value; render(); };
+  document.getElementById('dcFEstado').onchange = function(e){ f.estado = e.target.value; render(); };
+  document.getElementById('dcFBuscar').oninput = function(e){
+    f.q = e.target.value;
+    var qLower = f.q.toLowerCase();
+    document.querySelectorAll('#dcTableBody tr[data-searchable]').forEach(function(tr){
+      var name = tr.getAttribute('data-searchable');
+      tr.style.display = (!qLower || name.indexOf(qLower)>=0) ? '' : 'none';
+    });
+  };
+  document.getElementById('btnDeceNuevo').onclick = function(){ state.editingDece = blankDeceCaso(); state.deceView='form'; render(); };
+  document.querySelectorAll('[data-dece-open]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.DECE).find(function(x){ return x.id===btn.getAttribute('data-dece-open'); });
+      if(target){ state.editingDece = Object.assign({}, target, {seguimientos: (target.seguimientos||[]).map(function(x){ return Object.assign({}, x); })}); state.deceView='form'; render(); }
+    };
+  });
+  document.querySelectorAll('[data-dece-delete]').forEach(function(btn){
+    btn.onclick = function(){
+      confirmDialog('¿Eliminar este caso DECE? Esta acción no se puede deshacer.', function(){
+        save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==btn.getAttribute('data-dece-delete'); }));
+        toast('Caso eliminado.', 'success');
+        render();
+      });
+    };
+  });
+}
+function renderDeceForm(){
+  var c = state.editingDece || blankDeceCaso();
+  state.editingDece = c;
+  var existsInDb = load(LS.DECE).some(function(x){ return x.id===c.id; });
+  var cursoOpts = c.nivel ? cursosConEstudiantes(c.nivel) : [];
+  var estudiantesOpts = (c.nivel && c.curso && c.curso!=='Otro…') ? estudiantesPorNivelCurso(c.nivel, c.curso) : [];
+  var estudianteOptsHtml = '<option value="">' + (estudiantesOpts.length ? 'Elija un elemento…' : (c.curso ? 'No hay estudiantes en este curso' : 'Elija primero el curso')) + '</option>' + estudiantesOpts.map(function(e){
+    return '<option value="'+e.id+'" '+(c.estudianteId===e.id?'selected':'')+'>'+escapeHtml(e.apellidos+' '+e.nombres)+'</option>';
+  }).join('');
+
+  var tipoSel = (c.tipo||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var tipoHtml = '<div class="checkbox-grid">' + DECE_TIPOS.map(function(t){
+    return '<label class="checkbox-pill"><input type="checkbox" class="dece-tipo-cb" value="'+escapeHtml(t)+'" '+(tipoSel.indexOf(t)!==-1?'checked':'')+' />'+escapeHtml(t)+'</label>';
+  }).join('') + '</div>';
+
+  var seguimientosHtml = (c.seguimientos||[]).map(function(s){
+    return '<div data-segrow="'+s.id+'" style="display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;">'
+      + '<div class="field" style="max-width:170px;"><label>Fecha</label><input class="cell-input" type="date" data-seg-fecha="'+s.id+'" value="'+escapeHtml(s.fecha||'')+'" /></div>'
+      + '<div class="field"><label>Nota de seguimiento</label><textarea class="cell-input" rows="2" data-seg-nota="'+s.id+'">'+escapeHtml(s.nota||'')+'</textarea></div>'
+      + '<button class="row-remove" data-seg-remove="'+s.id+'" style="margin-top:26px;">✕</button>'
+      + '</div>';
+  }).join('') || '<div class="hint" style="padding:6px 0 14px;">Todavía no hay seguimientos registrados.</div>';
+
+  return ''
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
+  + '<div class="form-error no-print" id="dcError" style="margin-bottom:10px;"></div>'
+  + '<div class="card">'
+  + '  <h2>Caso de Consejería Estudiantil</h2>'
+  + '  <div class="card-sub">La información de este caso es confidencial. Solo la puede ver personal de Administración, Directivos y DECE.</div>'
+  + '  <div class="pca-band band-section" style="margin:16px -22px 14px;">Datos del estudiante</div>'
+  + '  <div class="grid-3">'
+  + '    <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="dcNivel">' + optionsHtml(NIVELES, c.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Curso</label><select class="cell-select" id="dcCurso" '+(c.nivel?'':'disabled')+'>' + optionsHtml(cursoOpts.concat(['Otro…']), c.curso, c.nivel?'Elija un elemento…':'Elija primero el nivel') + '</select></div>'
+  + '    <div class="field"><label>Estudiante</label>' + (c.curso==='Otro…'
+        ? '<input class="cell-input" id="dcEstudianteManual" value="'+escapeHtml(c.estudianteManual||'')+'" placeholder="Nombre del estudiante" />'
+        : '<select class="cell-select" id="dcEstudiante" '+(estudiantesOpts.length?'':'disabled')+'>' + estudianteOptsHtml + '</select>') + '</div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Datos del caso</div>'
+  + '  <div class="grid-3">'
+  + '    <div class="field"><label>Fecha de apertura</label><input class="cell-input" type="date" id="dcFecha" value="'+escapeHtml(c.fecha)+'" /></div>'
+  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcEstado">' + optionsHtml(DECE_ESTADOS, c.estado, null) + '</select></div>'
+  + '    <div class="field"><label>Atendido por</label><input class="cell-input" id="dcAtendidoPor" value="'+escapeHtml(c.atendidoPor||'')+'" /></div>'
+  + '  </div>'
+  + '  <div class="field" style="margin-top:14px;"><label>Tipo de caso</label>' + tipoHtml + '</div>'
+  + '  <div class="field" style="margin-top:14px;"><label>Descripción / motivo (confidencial)</label>' + richEditorHtml('descripcion', c.id, c.descripcion, 'Describe la situación del caso…') + '</div>'
+  + '  <div class="field" style="margin-top:14px;"><label>Acciones tomadas</label>' + richEditorHtml('accionesTomadas', c.id, c.accionesTomadas, 'Registra las acciones realizadas…') + '</div>'
+  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Bitácora de seguimientos</div>'
+  + '  <div id="dcSeguimientosWrap">' + seguimientosHtml + '</div>'
+  + '  <button class="btn btn-ghost btn-sm" id="btnDeceAddSeguimiento">+ Agregar seguimiento</button>'
+  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Derivación externa</div>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label class="checkbox-pill" style="display:inline-flex;"><input type="checkbox" id="dcDerivActiva" ' + (c.derivacionActiva?'checked':'') + ' /> Este caso fue derivado a una institución externa</label></div>'
+  + '  </div>'
+  + (c.derivacionActiva ? '  <div class="field"><label>Institución / profesional de derivación</label><input class="cell-input" id="dcDerivInstitucion" value="'+escapeHtml(c.derivacionInstitucion||'')+'" /></div>' : '')
+  + '  <div style="display:flex; gap:10px; margin-top:20px; align-items:center;">'
+  + (existsInDb ? '<button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar caso</button>' : '')
+  + '  </div>'
+  + '</div>';
+}
+function bindDeceFormEvents(){
+  var c = state.editingDece;
+  document.getElementById('btnDeceVolver').onclick = function(){ state.editingDece=null; state.deceView='lista'; render(); };
+  document.getElementById('btnDeceGuardar').onclick = doSaveDeceCaso;
+
+  document.getElementById('dcNivel').onchange = function(e){ c.nivel = e.target.value; c.curso=''; c.estudianteId=''; c.estudianteManual=''; render(); };
+  document.getElementById('dcCurso').onchange = function(e){ c.curso = e.target.value; c.estudianteId=''; c.estudianteManual=''; render(); };
+  var estSel = document.getElementById('dcEstudiante');
+  if(estSel) estSel.onchange = function(e){ c.estudianteId = e.target.value; };
+  var estManual = document.getElementById('dcEstudianteManual');
+  if(estManual) estManual.oninput = function(e){ c.estudianteManual = e.target.value; };
+
+  document.getElementById('dcFecha').oninput = function(e){ c.fecha = e.target.value; };
+  document.getElementById('dcEstado').onchange = function(e){ c.estado = e.target.value; };
+  document.getElementById('dcAtendidoPor').oninput = function(e){ c.atendidoPor = e.target.value; };
+
+  document.querySelectorAll('.dece-tipo-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var seleccion = Array.from(document.querySelectorAll('.dece-tipo-cb:checked')).map(function(x){ return x.value; });
+      c.tipo = seleccion.join('; ');
+    });
+  });
+
+  document.querySelectorAll('.rte-editable').forEach(function(el){
+    var key = el.getAttribute('data-rte-field');
+    el.addEventListener('input', function(){ c[key] = el.innerHTML; });
+  });
+  bindRteToolbars(document.querySelector('.card'));
+
+  document.querySelectorAll('[data-seg-fecha]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var s = c.seguimientos.find(function(x){ return x.id===el.getAttribute('data-seg-fecha'); });
+      if(s) s.fecha = el.value;
+    });
+  });
+  document.querySelectorAll('[data-seg-nota]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var s = c.seguimientos.find(function(x){ return x.id===el.getAttribute('data-seg-nota'); });
+      if(s) s.nota = el.value;
+    });
+  });
+  document.querySelectorAll('[data-seg-remove]').forEach(function(btn){
+    btn.onclick = function(){
+      c.seguimientos = c.seguimientos.filter(function(x){ return x.id!==btn.getAttribute('data-seg-remove'); });
+      render();
+    };
+  });
+  document.getElementById('btnDeceAddSeguimiento').onclick = function(){
+    c.seguimientos = (c.seguimientos||[]).concat([{id: uid('seg'), fecha: todayISO(), nota:''}]);
+    render();
+  };
+
+  var derivChk = document.getElementById('dcDerivActiva');
+  derivChk.addEventListener('change', function(){ c.derivacionActiva = derivChk.checked; render(); });
+  var derivInst = document.getElementById('dcDerivInstitucion');
+  if(derivInst) derivInst.oninput = function(e){ c.derivacionInstitucion = e.target.value; };
+
+  var delBtn = document.getElementById('btnDeceEliminar');
+  if(delBtn) delBtn.onclick = function(){
+    confirmDialog('¿Eliminar este caso DECE? Esta acción no se puede deshacer.', function(){
+      save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==c.id; }));
+      state.editingDece=null; state.deceView='lista'; render();
+      toast('Caso eliminado.', 'success');
+    });
+  };
+
+  document.getElementById('dcError').classList.remove('show');
+}
+function doSaveDeceCaso(){
+  var c = state.editingDece;
+  var errEl = document.getElementById('dcError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!c.fecha || !c.nivel || !c.curso) return fail('Completa la fecha, el nivel y el curso.');
+  if(c.curso==='Otro…' && !(c.estudianteManual||'').trim()) return fail('Escribe el nombre del estudiante.');
+  if(c.curso!=='Otro…' && !c.estudianteId) return fail('Elige el estudiante.');
+  var d = currentDocente();
+  var toSave = Object.assign({}, c, {
+    descripcion: sanitizeRte(c.descripcion), accionesTomadas: sanitizeRte(c.accionesTomadas),
+    seguimientos: (c.seguimientos||[]).map(function(s){ return Object.assign({}, s); }),
+    registradoPor: c.registradoPor || d.id, createdAt: c.createdAt || nowISO(), updatedAt: nowISO()
+  });
+  var all = load(LS.DECE);
+  var exists = all.some(function(x){ return x.id===c.id; });
+  save(LS.DECE, exists ? all.map(function(x){ return x.id===c.id?toSave:x; }) : all.concat([toSave]));
+  state.editingDece=null; state.deceView='lista'; render();
+  toast('Caso guardado correctamente.', 'success');
 }
 
 /* ============================= CARGA HORARIA ============================= */
@@ -3212,7 +3523,7 @@ function renderPcaList(d){ return renderPcaListInner(d, false); }
 function renderAdminPca(){ return renderPcaListInner(currentDocente(), true); }
 
 function renderPcaListInner(d, scopeAll){
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.PCA);
   var pcas = (scopeAll ? all : all.filter(function(p){ return p.docenteId === d.id; })).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
   var docentesById = {};
@@ -3339,7 +3650,8 @@ function openPcaForm(pcaId, returnTo){
    en inglés — el resto del sistema (Carga Horaria, Plan Semanal, Administración) sigue en
    español; esto es exclusivo del formulario de PCA. */
 function pcaEsIngles(p){
-  return /inglés/i.test(p.asignatura||'') || /inglés/i.test(p.asignaturaManual||'');
+  var re = /inglés|english/i;
+  return re.test(p.asignatura||'') || re.test(p.asignaturaManual||'');
 }
 var PCA_EN = {
   'Plan Curricular Anual': 'Annual Curriculum Plan',
@@ -3400,7 +3712,7 @@ var PCA_EN = {
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
   var isIngles = pcaEsIngles(p);
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var existsInDb = load(LS.PCA).some(function(x){ return x.id===p.id; });
   var locked = !!p.locked && !isAdmin;
   var lockToggle = (isAdmin && existsInDb)
@@ -3423,7 +3735,7 @@ function renderPcaForm(d){
   var p = state.editingPca || blankPca(d);
   state.editingPca = p;
   var isIngles = pcaEsIngles(p);
-  var isAdminViewer = d.role === 'admin';
+  var isAdminViewer = isStaffRole(d.role);
   var espOpts = especialidadesFor(p.nivel);
   var misCursos = misCursosPara(d.id, p.nivel, p.especialidad);
   var cursoOpts = misCursos.length ? misCursos : cursosFor(p.nivel, p.especialidad);
@@ -3516,7 +3828,7 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
 
 function bindPcaFormEvents(){
   var p = state.editingPca;
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var locked = !!p.locked && !isAdmin;
 
   document.getElementById('btnBackToList').onclick = function(){ go(state.pcaReturnTo || 'pcalist'); };
@@ -3685,7 +3997,7 @@ function savePca(p, silent){
   });
   save(LS.CONT, cont);
   if(!silent){
-    if(isNew && d.role !== 'admin') toast('Plan guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
+    if(isNew && !isStaffRole(d.role)) toast('Plan guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
     else toast('Plan curricular guardado correctamente.', 'success');
   }
 }
@@ -3846,7 +4158,7 @@ function trimestreYMesDe(fechaIso){
 
 var TRIMESTRE_LABELS = {1:'1er Trimestre', 2:'2do Trimestre', 3:'3er Trimestre'};
 function renderSemanalListInner(d, scopeAll){
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.SEMANAL);
   var planes = scopeAll ? all : all.filter(function(s){ return s.docenteId===d.id; });
   var docentesById = {};
@@ -4066,7 +4378,7 @@ function openSemanalForm(semId, returnTo){
 }
 
 function semanalToolbarHtml(s){
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var existsInDb = load(LS.SEMANAL).some(function(x){ return x.id===s.id; });
   var locked = !!s.locked && !isAdmin;
   var lockToggle = (isAdmin && existsInDb)
@@ -4131,7 +4443,7 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoS
 function renderSemanalForm(d){
   var s = state.editingSemanal || blankSemanal(d);
   state.editingSemanal = s;
-  var isAdminViewer = d.role === 'admin';
+  var isAdminViewer = isStaffRole(d.role);
 
   var niveles = misNiveles(d.id); if(!niveles.length) niveles = NIVELES;
   var especialidades = misEspecialidadesPara(d.id, s.nivel); if(!especialidades.length) especialidades = especialidadesFor(s.nivel);
@@ -4246,7 +4558,7 @@ function renderSemanalForm(d){
 
 function bindSemanalFormEvents(){
   var s = state.editingSemanal;
-  var isAdmin = currentDocente().role === 'admin';
+  var isAdmin = isStaffRole(currentDocente().role);
   var locked = !!s.locked && !isAdmin;
 
   document.getElementById('btnBackToSemanalList').onclick = function(){ go(state.semanalReturnTo || 'semanallist'); };
@@ -4369,7 +4681,7 @@ function saveSemanal(s, silent){
   save(LS.SEMANAL, all);
   state.editingSemanal = Object.assign({}, record, { dias: record.dias.map(function(x){ return Object.assign({}, x); }) });
   if(!silent){
-    if(isNew && d.role !== 'admin') toast('Plan semanal guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
+    if(isNew && !isStaffRole(d.role)) toast('Plan semanal guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
     else toast('Plan semanal guardado correctamente.', 'success');
   }
 }
@@ -5031,7 +5343,7 @@ var ADMIN_TABS = [
 ];
 
 function renderAdmin(d){
-  if(d.role !== 'admin') return renderDashboard(d);
+  if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.adminTab || 'docentes';
   var tabsHtml = ADMIN_TABS.map(function(t){
     return '<button class="'+(tab===t.key?'active':'')+'" data-admintab="'+t.key+'">'+t.label+'</button>';
@@ -5078,7 +5390,7 @@ function renderAdminDocentes(){
     + '  <td class="tabular">' + escapeHtml(x.ci) + '</td>'
     + '  <td>' + escapeHtml(x.email) + '</td>'
     + '  <td class="tabular">' + escapeHtml(x.usuarioId) + '</td>'
-    + '  <td>' + (x.role==='admin' ? '<span class="pill pill-gold">Administrador</span>' : '<span class="pill pill-muted">Docente</span>') + '</td>'
+    + '  <td>' + rolePillHtml(x.role) + '</td>'
     + '  <td><button class="btn btn-ghost btn-sm" data-admin-edit-docente="' + x.id + '">Editar</button></td>'
     + '</tr>';
   }).join('');
@@ -5136,7 +5448,7 @@ function renderAdminEditDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="adTCI" maxlength="10" value="' + escapeHtml(target.ci) + '" /></div><div class="field"><label>Teléfono</label><input type="text" id="adTTelefono" value="' + escapeHtml(target.telefono||'') + '" /></div></div>'
   + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" disabled /><div class="hint">El correo de acceso no se puede cambiar desde aquí una vez creada la cuenta.</div></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="adTUserId" value="' + escapeHtml(target.usuarioId) + '" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol"><option value="docente" ' + (target.role!=='admin'?'selected':'') + '>Docente</option><option value="admin" ' + (target.role==='admin'?'selected':'') + '>Administrador</option></select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','admin','directivo','dece'], target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña</label><button type="button" class="btn btn-ghost btn-sm" id="btnResetPwAdminDocente">Enviar correo para restablecer contraseña</button></div>'
   + '  <div style="display:flex; gap:10px; margin-top:10px;">'
   + '    <button class="btn btn-primary" id="btnSaveAdminDocente">Guardar cambios</button>'
@@ -5163,9 +5475,9 @@ async function doSaveAdminDocente(){
   if(!/^\d{10}$/.test(ci)) return fail('La cédula debe tener 10 dígitos numéricos.');
   var all = allDocentes();
   if(all.some(function(x){ return x.id!==target.id && x.usuarioId.toLowerCase()===usuarioId.toLowerCase(); })) return fail('Ese ID de usuario ya existe. Elige otro.');
-  if(original.role==='admin' && role!=='admin'){
-    var otherAdmins = all.filter(function(x){ return x.role==='admin' && x.id!==target.id; });
-    if(otherAdmins.length===0) return fail('No puedes quitar el rol de administrador: es el único administrador del sistema.');
+  if(isStaffRole(original.role) && !isStaffRole(role)){
+    var otherStaff = all.filter(function(x){ return isStaffRole(x.role) && x.id!==target.id; });
+    if(otherStaff.length===0) return fail('No puedes quitar este rol: es el único usuario con acceso administrativo del sistema.');
   }
 
   target.titulo=titulo; target.nombres=nombres; target.apellidos=apellidos; target.ci=ci; target.telefono=telefono;
@@ -5198,9 +5510,9 @@ function bindAdminEditDocenteEvents(){
   };
   var delBtn = document.getElementById('btnDeleteAdminDocente');
   if(delBtn) delBtn.onclick = function(){
-    if(target.role==='admin'){
-      var otherAdmins = allDocentes().filter(function(x){ return x.role==='admin' && x.id!==target.id; });
-      if(otherAdmins.length===0){ toast('No puedes eliminar al único administrador del sistema.', 'error'); return; }
+    if(isStaffRole(target.role)){
+      var otherStaff = allDocentes().filter(function(x){ return isStaffRole(x.role) && x.id!==target.id; });
+      if(otherStaff.length===0){ toast('No puedes eliminar al único usuario con acceso administrativo del sistema.', 'error'); return; }
     }
     confirmDialog('¿Eliminar a ' + target.nombres + ' ' + target.apellidos + ' y TODOS sus datos (carga horaria, planes curriculares, contenidos y planes semanales)? Su cuenta de acceso quedará sin ningún dato ni permiso. Esta acción no se puede deshacer.', function(){
       save(LS.DOCENTES, allDocentes().filter(function(x){ return x.id!==target.id; }));
@@ -5219,7 +5531,7 @@ function bindAdminEditDocenteEvents(){
 
 function renderAdminNewDocente(){
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Administración · Docentes</div><h1>Nuevo usuario</h1><p>Crea una cuenta de docente o administrador manualmente.</p></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Administración · Docentes</div><h1>Nuevo usuario</h1><p>Crea una cuenta manualmente (Docente, Administrador, Directivo o DECE).</p></div>'
   + '  <div style="display:flex; gap:8px; flex-wrap:wrap;">'
   + '    <button class="btn btn-ghost btn-sm" id="btnBackToAdminDocentesNew">← Volver a la lista</button>'
   + '  </div>'
@@ -5231,7 +5543,7 @@ function renderAdminNewDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="anCI" maxlength="10" placeholder="10 dígitos" /></div><div class="field"><label>Teléfono</label><input type="text" id="anTelefono" placeholder="09xxxxxxxx" /></div></div>'
   + '  <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="anEmail" placeholder="nombre.apellido@simonbolivar-ec.com" /></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="anUserId" placeholder="ID de acceso" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol"><option value="docente" selected>Docente</option><option value="admin">Administrador</option></select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol">' + optionsHtml(['docente','admin','directivo','dece'], 'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña <span class="required">*</span></label><input type="password" id="anPw" /></div>'
   + '  <button class="btn btn-primary" id="btnCreateAdminDocente">Crear usuario</button>'
   + '</div>';
@@ -5938,7 +6250,7 @@ async function attachRealtimeListeners(){
   var soyAdmin = false;
   try{
     var docentesSnap = await window.FB.getDocs(window.FB.collection(window.FB.db, FS_COLLECTION.DOCENTES));
-    docentesSnap.forEach(function(d){ if(d.id === CURRENT_UID && d.data().role === 'admin') soyAdmin = true; });
+    docentesSnap.forEach(function(d){ if(d.id === CURRENT_UID && isStaffRole(d.data().role)) soyAdmin = true; });
   }catch(e){ console.error('No se pudo determinar el rol antes de sincronizar', e); }
 
   Object.keys(FS_COLLECTION).forEach(function(key){
