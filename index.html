@@ -150,16 +150,21 @@
   .sidebar .brand img{width:38px; height:38px; border-radius:50%; object-fit:cover; background:#fff;}
   .sidebar .brand .name{font-family:var(--serif); font-weight:700; font-size:13.5px; line-height:1.25;}
   .sidebar .brand .year{font-size:10.5px; opacity:.7;}
-  .sidebar nav{display:flex; flex-direction:column; gap:6px;}
-  .sidebar nav .nav-group{border-radius:12px; background:rgba(255,255,255,.025); transition:background .15s ease;}
-  .sidebar nav .nav-group.expanded{background:rgba(255,255,255,.05);}
+  .sidebar nav{display:flex; flex-direction:column; gap:8px;}
+  .nav-hue-blue{--hue-rgb:140,190,255;}
+  .nav-hue-green{--hue-rgb:130,225,190;}
+  .nav-hue-peach{--hue-rgb:255,180,130;}
+  .nav-hue-purple{--hue-rgb:205,170,255;}
+  .nav-hue-rose{--hue-rgb:255,155,195;}
+  .sidebar nav .nav-group{border-radius:14px; background:rgba(var(--hue-rgb,255,255,255),.08); transition:background .15s ease;}
+  .sidebar nav .nav-group.expanded{background:rgba(var(--hue-rgb,255,255,255),.16);}
   .sidebar nav .nav-group-header{
     display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
-    background:none; border:none; cursor:pointer; padding:11px 12px; color:#93A8D6;
+    background:none; border:none; cursor:pointer; padding:12px 14px; color:rgb(var(--hue-rgb,147,168,214));
   }
-  .sidebar nav .nav-group-header:hover{color:#fff;}
-  .sidebar nav .nav-group-label{font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; text-align:left;}
-  .sidebar nav .nav-group-chevron{font-size:14px; line-height:1; opacity:.75; transition:transform .18s ease; flex-shrink:0;}
+  .sidebar nav .nav-group-header:hover{filter:brightness(1.2);}
+  .sidebar nav .nav-group-label{font-size:12.5px; font-weight:700; letter-spacing:.005em; text-align:left;}
+  .sidebar nav .nav-group-chevron{font-size:14px; line-height:1; opacity:.85; transition:transform .18s ease; flex-shrink:0;}
   .sidebar nav .nav-group.expanded .nav-group-chevron{transform:rotate(90deg);}
   .sidebar nav .nav-group-items{display:none; flex-direction:column; gap:2px; padding:0 6px 8px;}
   .sidebar nav .nav-group.expanded .nav-group-items{display:flex;}
@@ -287,6 +292,9 @@
   .checkbox-pill{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--line); border-radius:99px; padding:5px 10px 5px 8px; font-size:12px; font-weight:600; color:var(--ink); cursor:pointer; user-select:none; white-space:nowrap;}
   .checkbox-pill:has(input:checked){background:var(--blue-100); border-color:var(--blue-500); color:var(--blue-700);}
   .checkbox-pill input{accent-color:var(--blue-600); cursor:pointer; margin:0;}
+  .nivel-logro-pill{display:flex; align-items:flex-start; justify-content:flex-start; height:auto; white-space:normal; padding:10px 12px; width:100%; text-align:left; gap:10px;}
+  .nivel-logro-pill input{margin-top:3px; flex-shrink:0;}
+  .nivel-logro-pill span{flex:1; min-width:0; text-align:justify;}
   .obs-opts{display:flex; flex-wrap:wrap; gap:6px;}
   .obs-table{table-layout:fixed;}
   .obs-table td, .obs-table th{vertical-align:middle;}
@@ -1089,23 +1097,23 @@ function rolePillHtml(role){
 
 /* ============================= APP SHELL ============================= */
 var NAV_GROUPS = [
-  {label:'Perfil y Datos del Docente', items:[
+  {label:'Perfil y Datos del Docente', hue:'blue', items:[
     {key:'dashboard', label:'Inicio', ic:'🏠'},
     {key:'perfil', label:'Mi Perfil', ic:'👤'},
     {key:'cargahoraria', label:'Mi Carga Horaria', ic:'🗂️'}
   ]},
-  {label:'Lo Pedagógico', items:[
+  {label:'Lo Pedagógico', hue:'green', items:[
     {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
     {key:'semanallist', label:'Planes Semanales', ic:'📅'},
     {key:'observacion', label:'Observación de Clases', ic:'📋'}
   ]},
-  {label:'Inspección', items:[
+  {label:'Inspección', hue:'peach', items:[
     {key:'inspeccion', label:'Inspección General', ic:'🧭', adminOnly:true}
   ]},
-  {label:'Departamento de Consejería Estudiantil (DECE)', items:[
+  {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
     {key:'dece', label:'Casos DECE', ic:'🧑‍⚕️', adminOnly:true}
   ]},
-  {label:'Administración y Base de Datos', items:[
+  {label:'Administración y Base de Datos', hue:'rose', items:[
     {key:'admin', label:'Administración', ic:'🛡️', adminOnly:true},
     {key:'database', label:'Base de Datos', ic:'💾'}
   ]}
@@ -1134,7 +1142,7 @@ function renderShell(){
       return '<button data-nav="'+item.key+'" class="'+(active?'active':'')+'"><span class="ic">'+item.ic+'</span>'+item.label+'</button>';
     }).join('');
     return ''
-    + '<div class="nav-group' + (collapsed?'':' expanded') + '">'
+    + '<div class="nav-group nav-hue-' + (group.hue||'blue') + (collapsed?'':' expanded') + '">'
     + '  <button type="button" class="nav-group-header" data-navgroup="' + escapeHtml(group.label) + '" aria-expanded="' + (!collapsed) + '">'
     + '    <span class="nav-group-label">' + escapeHtml(group.label) + '</span>'
     + '    <span class="nav-group-chevron">›</span>'
@@ -4514,7 +4522,7 @@ function renderSemanalForm(d){
     nivelLogroHtml = ['basico','intermedio','avanzado'].map(function(grupo){
       if(!nivelLogroTiers[grupo]) return '';
       var value = NIVEL_LOGRO_LABELS[grupo] + ': ' + nivelLogroTiers[grupo];
-      return '<label class="checkbox-pill" style="display:flex; align-items:flex-start; height:auto; white-space:normal; padding:8px 10px;"><input type="checkbox" class="nivel-logro-cb" style="margin-top:3px;" value="' + escapeHtml(value) + '" ' + (nivelLogroSeleccion.indexOf(value)!==-1?'checked':'') + ' /><span><strong>' + NIVEL_LOGRO_LABELS[grupo] + '</strong><br/>' + escapeHtml(nivelLogroTiers[grupo]) + '</span></label>';
+      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivel-logro-cb" value="' + escapeHtml(value) + '" ' + (nivelLogroSeleccion.indexOf(value)!==-1?'checked':'') + ' /><span><strong>' + NIVEL_LOGRO_LABELS[grupo] + '</strong><br/>' + escapeHtml(nivelLogroTiers[grupo]) + '</span></label>';
     }).join('');
     nivelLogroHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + nivelLogroHtml + '</div>';
   }
