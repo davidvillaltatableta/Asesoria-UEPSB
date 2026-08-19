@@ -611,11 +611,16 @@ function parseNivelesLogroTiers(html){
 }
 var DIAS_LARGO = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 var MESES_LARGO = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-function fmtDateLargo(iso){
+var DIAS_LARGO_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MESES_LARGO_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+/* isIngles es opcional (por defecto español) — solo el Plan Semanal en modo inglés lo pasa en
+   true; el resto de usos (Disciplina, Consultas) siguen en español sin tocarlos. */
+function fmtDateLargo(iso, isIngles){
   if(!iso) return '';
   var p = iso.split('-');
   var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
   if(isNaN(d.getTime())) return '';
+  if(isIngles) return MESES_LARGO_EN[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() + ' (' + DIAS_LARGO_EN[d.getDay()] + ')';
   return DIAS_LARGO[d.getDay()] + ', ' + d.getDate() + ' de ' + MESES_LARGO[d.getMonth()] + ' ' + d.getFullYear();
 }
 function addDays(iso, n){
@@ -4226,7 +4231,47 @@ var PCA_EN = {
   '+ Agregar semana': '+ Add week',
   'Eliminar unidad': 'Delete unit',
   'Otro…': 'Other…',
-  'Otra…': 'Other…'
+  'Otra…': 'Other…',
+  /* --- Plan Semanal (traducción completa al inglés cuando la asignatura es Inglés) --- */
+  'Plan Semanal de Clase': 'Weekly Class Plan',
+  ' — N.º ': ' — No. ',
+  'Nivel, especialidad, curso y asignatura se enlistan según tu Carga Horaria. La semana se enlaza a tu Plan Curricular Anual (PCA).':
+    'Level, specialization, course and subject are listed based on your Teaching Load. The week is linked to your Annual Curriculum Plan (PCA).',
+  'Docente': 'Teacher',
+  'Datos Curriculares': 'Curricular Data',
+  'Unidad Didáctica': 'Teaching Unit',
+  'Se completa según la semana del PCA': 'Filled in automatically based on the PCA week',
+  'Bloque Curricular': 'Curricular Block',
+  'Desarrollo de las Clases': 'Class Development',
+  '+ Agregar otro día de clase': '+ Add another class day',
+  'Firmas de Responsabilidad': 'Signatures of Responsibility',
+  'Contenidos Esenciales': 'Essential Content',
+  'Actividades de Aprendizaje': 'Learning Activities',
+  'Recursos': 'Resources',
+  'Evaluación': 'Assessment',
+  'Escribe las actividades de aprendizaje…': 'Write the learning activities…',
+  'Escribe los recursos…': 'Write the resources…',
+  'Escribe la evaluación…': 'Write the assessment…',
+  'No hay más temas disponibles: ya fueron asignados a otro día, o el PCA no tiene temas para esta semana.':
+    'No more topics available: they were already assigned to another day, or the PCA has no topics for this week.',
+  'Temas de esta semana': 'This week’s topics',
+  'De esta semana': 'This week',
+  'Pendientes de la semana anterior': 'Pending from the previous week',
+  'Elige una fecha': 'Choose a date',
+  'Día': 'Day',
+  'Eliminar día': 'Delete day',
+  'Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.':
+    'This plan was locked by an administrator and cannot be edited. If you need a correction, contact an administrator.',
+  'Ya pasó la fecha y hora límite de entrega, así que este plan no puede editarse. Si necesitas una corrección, contacta a un administrador.':
+    'The submission deadline has already passed, so this plan can no longer be edited. If you need a correction, contact an administrator.',
+  'El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.':
+    'The linked Annual Curriculum Plan (PCA) does not have any weeks registered in Contents yet.',
+  'La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.':
+    'The date entered does not match the Start/End date range of any week in the PCA. Check those dates in the PCA, or correct the date here.',
+  'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".':
+    'No Annual Curriculum Plan (PCA) was found for this level, course and subject. Create it first under "Annual Curriculum Plans".',
+  'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.':
+    'There is no PCA week whose date matches the date set in this weekly plan.'
 };
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
@@ -4936,32 +4981,32 @@ function openSemanalForm(semId, returnTo){
 }
 
 function semanalToolbarHtml(s){
+  var isIngles = semanalEsIngles(s);
   var isAdmin = isStaffRole(currentDocente().role);
   var existsInDb = load(LS.SEMANAL).some(function(x){ return x.id===s.id; });
   var locked = !!s.locked && !isAdmin;
   var lockToggle = (isAdmin && existsInDb)
-    ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="sfLockToggle" ' + (s.locked?'checked':'') + ' /> Bloqueado para el docente</label>'
+    ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="sfLockToggle" ' + (s.locked?'checked':'') + ' /> ' + te('Bloqueado para el docente', isIngles) + '</label>'
     : '';
   return ''
     + '<div class="pca-toolbar no-print">'
-    + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">← Volver a la lista</button>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
     + lockToggle
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
-    + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">Exportar Word</button>'
-    + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">Exportar Excel</button>'
-    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">Guardar plan</button>')
+    + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
+    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.</div>' : '');
+    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
 }
 
 /* Campo (día) donde se guarda la selección de cada nivel de logro, y etiqueta visible de cada
    columna — usados tanto para armar el HTML como para leer/guardar la selección del docente. */
 var NIVEL_LOGRO_DIA_FIELD = {basico:'nivelLogroBasico', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
 var NIVEL_LOGRO_DIA_LABEL = {basico:'Básico', intermedio:'Intermedio', avanzado:'Avanzado'};
-var NIVEL_LOGRO_DIA_LABEL_EN = {basico:'Close to reach', intermedio:'Achieves the required learning outcomes', avanzado:'Masters the required learning'};
 function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
-  var tituloCategoria = isIngles ? 'Learning Standards' : 'Niveles de Logro';
+  var tituloCategoria = te('Niveles de Logro', isIngles);
   function grupoHtml(tier, items, seleccion){
     return '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(it){
       return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivellogro-dia-cb" data-tier="' + tier + '" value="' + escapeHtml(it) + '" ' + (seleccion.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
@@ -4971,16 +5016,18 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
     var itemsEstaSemana = (nivelLogroItems[tier] && nivelLogroItems[tier].estaSemana) || [];
     var itemsPendientes = (nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || [];
     var seleccion = (dia[NIVEL_LOGRO_DIA_FIELD[tier]]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-    var etiqueta = isIngles ? NIVEL_LOGRO_DIA_LABEL_EN[tier] : NIVEL_LOGRO_DIA_LABEL[tier];
+    var etiqueta = te(NIVEL_LOGRO_DIA_LABEL[tier], isIngles);
     var body;
     if(nivelLogroMotivo){
       body = '<div class="hint">' + escapeHtml(nivelLogroMotivo) + '</div>';
     } else if(!itemsEstaSemana.length && !itemsPendientes.length){
-      body = '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + etiqueta + ' para esta semana.</div>';
+      body = isIngles
+        ? '<div class="hint">The PCA has no ' + etiqueta + ' items for this week.</div>'
+        : '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + etiqueta + ' para esta semana.</div>';
     } else {
       body = ''
-        + (itemsEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">De esta semana</div>' + grupoHtml(tier, itemsEstaSemana, seleccion) : '')
-        + (itemsPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">Pendientes de la semana anterior</div>' + grupoHtml(tier, itemsPendientes, seleccion) : '');
+        + (itemsEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">' + te('De esta semana', isIngles) + '</div>' + grupoHtml(tier, itemsEstaSemana, seleccion) : '')
+        + (itemsPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">' + te('Pendientes de la semana anterior', isIngles) + '</div>' + grupoHtml(tier, itemsPendientes, seleccion) : '');
     }
     return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + etiqueta + '</div>' + body + '</div>';
   }).join('');
@@ -5006,26 +5053,26 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoS
   if(motivoSinSemana){
     contenidosHtml = '<div class="hint">' + escapeHtml(motivoSinSemana) + '</div>';
   } else if(!opcionesEstaSemana.length && !opcionesPendientes.length){
-    contenidosHtml = '<div class="hint">No hay más temas disponibles: ya fueron asignados a otro día, o el PCA no tiene temas para esta semana.</div>';
+    contenidosHtml = '<div class="hint">' + te('No hay más temas disponibles: ya fueron asignados a otro día, o el PCA no tiene temas para esta semana.', isIngles) + '</div>';
   } else {
     contenidosHtml = ''
-      + (opcionesEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">Temas de esta semana</div>' + grupoHtml(opcionesEstaSemana) : '')
-      + (opcionesPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">Pendientes de la semana anterior</div>' + grupoHtml(opcionesPendientes) : '');
+      + (opcionesEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">' + te('Temas de esta semana', isIngles) + '</div>' + grupoHtml(opcionesEstaSemana) : '')
+      + (opcionesPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">' + te('Pendientes de la semana anterior', isIngles) + '</div>' + grupoHtml(opcionesPendientes) : '');
   }
 
-  var fechaLarga = dia.fecha ? fmtDateLargo(dia.fecha) : 'Elige una fecha';
+  var fechaLarga = dia.fecha ? fmtDateLargo(dia.fecha, isIngles) : te('Elige una fecha', isIngles);
   return ''
   + '<div class="semanal-day" data-day="' + dia.id + '">'
-  + '  <div class="day-head"><strong>Día ' + (i+1) + ' — ' + escapeHtml(fechaLarga) + '</strong>'
+  + '  <div class="day-head"><strong>' + te('Día', isIngles) + ' ' + (i+1) + ' — ' + escapeHtml(fechaLarga) + '</strong>'
   + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
-  + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">Eliminar día</button>' : '')
+  + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">' + te('Eliminar día', isIngles) + '</button>' : '')
   + '  </div>'
   + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles)
-  + '  <div class="field" style="margin-top:12px;"><label>Contenidos Esenciales</label>' + contenidosHtml + '</div>'
+  + '  <div class="field" style="margin-top:12px;"><label>' + te('Contenidos Esenciales', isIngles) + '</label>' + contenidosHtml + '</div>'
   + '  <div class="grid-3" style="margin-top:12px; align-items:start;">'
-  + '    <div class="field"><label>Actividades de Aprendizaje</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', 'Escribe las actividades de aprendizaje…') + '</div>'
-  + '    <div class="field"><label>Recursos</label>' + richEditorHtml('recursos', dia.id, dia.recursos||'', 'Escribe los recursos…') + '</div>'
-  + '    <div class="field"><label>Evaluación</label>' + richEditorHtml('evaluacion', dia.id, dia.evaluacion||'', 'Escribe la evaluación…') + '</div>'
+  + '    <div class="field"><label>' + te('Actividades de Aprendizaje', isIngles) + '</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', te('Escribe las actividades de aprendizaje…', isIngles)) + '</div>'
+  + '    <div class="field"><label>' + te('Recursos', isIngles) + '</label>' + richEditorHtml('recursos', dia.id, dia.recursos||'', te('Escribe los recursos…', isIngles)) + '</div>'
+  + '    <div class="field"><label>' + te('Evaluación', isIngles) + '</label>' + richEditorHtml('evaluacion', dia.id, dia.evaluacion||'', te('Escribe la evaluación…', isIngles)) + '</div>'
   + '  </div>'
   + '</div>';
 }
@@ -5047,9 +5094,9 @@ function renderSemanalForm(d){
   // en vez de un solo mensaje genérico de "ingresa una fecha").
   var motivoSinSemana = s.pcaId
     ? (!semanasDelPca.length
-        ? 'El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.'
-        : (!semanaActual ? 'La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.' : null))
-    : 'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".';
+        ? te('El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.', isIngles)
+        : (!semanaActual ? te('La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.', isIngles) : null))
+    : te('No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".', isIngles);
 
   // La semana vinculada (semanaRowId) se conserva a propósito aunque la fecha actual ya no
   // encaje exactamente en su rango (para no perder el enlace por un simple desajuste — ver
@@ -5073,7 +5120,7 @@ function renderSemanalForm(d){
     : {basico:{estaSemana:[],pendientes:[]}, intermedio:{estaSemana:[],pendientes:[]}, avanzado:{estaSemana:[],pendientes:[]}};
   var nivelLogroMotivo = motivoSinSemana
     ? motivoSinSemana
-    : (!semanaCoincide ? 'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.' : null);
+    : (!semanaCoincide ? te('No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.', isIngles) : null);
 
   var bloqueOpts = bloquesFor(s.nivel, s.asignatura);
   var bloqueSeleccion = (s.bloqueCurricular||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
@@ -5085,6 +5132,26 @@ function renderSemanalForm(d){
 
   var temasSemana = semanaActual ? parseLinesList(semanaActual.temas) : [];
   var temasPendientes = semanaActual ? temasPendientesAnteriores(s.pcaId, semanaActual.id) : [];
+  // Igual que con los temas de Contenidos Esenciales: un ítem de Nivel de Logro ya marcado en OTRO
+  // día de esta misma semana desaparece de la lista de los demás días (pero se conserva en el día
+  // donde sí está marcado), para que no quede seleccionable dos veces la misma semana.
+  function nivelLogroParaDia(dia){
+    var resultado = {};
+    ['basico','intermedio','avanzado'].forEach(function(tier){
+      var campo = NIVEL_LOGRO_DIA_FIELD[tier];
+      var usadosEnOtrosDias = {};
+      (s.dias||[]).forEach(function(d2){
+        if(d2.id===dia.id) return;
+        (d2[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ usadosEnOtrosDias[t]=1; });
+      });
+      var base = nivelLogroItems[tier] || {estaSemana:[], pendientes:[]};
+      resultado[tier] = {
+        estaSemana: base.estaSemana.filter(function(t){ return !usadosEnOtrosDias[t]; }),
+        pendientes: base.pendientes.filter(function(t){ return !usadosEnOtrosDias[t]; })
+      };
+    });
+    return resultado;
+  }
   var diasHtml = (s.dias||[]).map(function(dia, i){
     var usadosEnOtrosDias = {};
     (s.dias||[]).forEach(function(d2){
@@ -5093,52 +5160,52 @@ function renderSemanalForm(d){
     });
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
-    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles);
+    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles);
   }).join('');
 
   return ''
   + semanalToolbarHtml(s)
   + '<div class="pca-doc" id="semanalDoc">'
   + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
-  + '  <div class="pca-band band-title">Plan Semanal de Clase' + (s.numero ? ' — N.º ' + s.numero : '') + '</div>'
+  + '  <div class="pca-band band-title">' + te('Plan Semanal de Clase', isIngles) + (s.numero ? te(' — N.º ', isIngles) + s.numero : '') + '</div>'
   + '  <div style="text-align:center; padding:10px 20px; background:var(--surface-2); border-bottom:1px solid var(--line-strong);">'
-  + '    <div class="hint" style="margin-bottom:4px;">Fecha y hora límite de entrega' + (isAdminViewer ? '' : ' (definida por el administrador)') + '</div>'
+  + '    <div class="hint" style="margin-bottom:4px;">' + te('Fecha y hora límite de entrega', isIngles) + (isAdminViewer ? '' : te(' (definida por el administrador)', isIngles)) + '</div>'
   + (isAdminViewer
       ? '    <input class="cell-input no-print" type="datetime-local" id="sfFechaHoraLimite" style="max-width:260px; margin:0 auto; text-align:center;" value="' + escapeHtml(s.fechaHoraLimite||'') + '" />'
         + '<div class="only-print" style="display:none; font-weight:700;">' + escapeHtml(fmtDateTimeLocal(s.fechaHoraLimite)) + '</div>'
       : '    <strong>' + escapeHtml(fmtDateTimeLocal(s.fechaHoraLimite)) + '</strong>')
   + '  </div>'
-  + '  <div class="pca-band band-section">Datos Informativos</div>'
+  + '  <div class="pca-band band-section">' + te('Datos Informativos', isIngles) + '</div>'
   + '  <div class="pca-section">'
-  + '    <div class="hint" style="margin-bottom:10px;">Nivel, especialidad, curso y asignatura se enlistan según tu Carga Horaria. La semana se enlaza a tu Plan Curricular Anual (PCA).</div>'
+  + '    <div class="hint" style="margin-bottom:10px;">' + te('Nivel, especialidad, curso y asignatura se enlistan según tu Carga Horaria. La semana se enlaza a tu Plan Curricular Anual (PCA).', isIngles) + '</div>'
   + '    <div class="grid-4">'
-  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="sfNivel">' + optionsHtml(niveles, s.nivel, 'Elija un elemento…') + '</select></div>'
-  + '      <div class="field"><label>Especialidad</label><select class="cell-select" id="sfEspecialidad" ' + (especialidades.length?'':'disabled') + '>' + optionsHtml(especialidades, s.especialidad, especialidades.length?'Elija un elemento…':'No aplica') + '</select></div>'
-  + '      <div class="field"><label>Curso / Grado</label><select class="cell-select" id="sfCurso">' + optionsHtml(cursos, s.curso, 'Elija un elemento…') + '</select></div>'
-  + '      <div class="field"><label>Asignatura</label><select class="cell-select" id="sfAsignatura">' + optionsHtml(asignaturas, s.asignatura, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>' + te('Nivel Educativo', isIngles) + '</label><select class="cell-select" id="sfNivel">' + optionsHtml(niveles, s.nivel, te('Elija un elemento…', isIngles)) + '</select></div>'
+  + '      <div class="field"><label>' + te('Especialidad', isIngles) + '</label><select class="cell-select" id="sfEspecialidad" ' + (especialidades.length?'':'disabled') + '>' + optionsHtml(especialidades, s.especialidad, especialidades.length?te('Elija un elemento…', isIngles):te('No aplica', isIngles)) + '</select></div>'
+  + '      <div class="field"><label>' + te('Curso / Grado', isIngles) + '</label><select class="cell-select" id="sfCurso">' + optionsHtml(cursos, s.curso, te('Elija un elemento…', isIngles)) + '</select></div>'
+  + '      <div class="field"><label>' + te('Asignatura', isIngles) + '</label><select class="cell-select" id="sfAsignatura">' + optionsHtml(asignaturas, s.asignatura, te('Elija un elemento…', isIngles)) + '</select></div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
-  + '      <div class="field"><label>Docente</label><input class="cell-input" value="' + escapeHtml(nombreFormal(d)) + '" readonly /></div>'
-  + '      <div class="field"><label>Fecha</label><div style="display:flex; align-items:center; gap:6px;"><input class="cell-input" type="date" id="sfFechaInicio" value="' + escapeHtml(s.fechaInicio||'') + '" /><span class="hint">al</span><input class="cell-input" type="date" id="sfFechaFin" value="' + escapeHtml(s.fechaFin||'') + '" /></div></div>'
+  + '      <div class="field"><label>' + te('Docente', isIngles) + '</label><input class="cell-input" value="' + escapeHtml(nombreFormal(d)) + '" readonly /></div>'
+  + '      <div class="field"><label>' + te('Fecha', isIngles) + '</label><div style="display:flex; align-items:center; gap:6px;"><input class="cell-input" type="date" id="sfFechaInicio" value="' + escapeHtml(s.fechaInicio||'') + '" /><span class="hint">' + te('al', isIngles) + '</span><input class="cell-input" type="date" id="sfFechaFin" value="' + escapeHtml(s.fechaFin||'') + '" /></div></div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Datos Curriculares</div>'
+  + '  <div class="pca-band band-section">' + te('Datos Curriculares', isIngles) + '</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-2">'
-  + '      <div class="field"><label>Unidad Didáctica</label><input class="cell-input" id="sfUnidad" value="' + escapeHtml(s.unidadDidactica||'') + '" placeholder="Se completa según la semana del PCA" /></div>'
-  + '      <div class="field"><label>Bloque Curricular</label>' + bloqueHtml + '</div>'
+  + '      <div class="field"><label>' + te('Unidad Didáctica', isIngles) + '</label><input class="cell-input" id="sfUnidad" value="' + escapeHtml(s.unidadDidactica||'') + '" placeholder="' + te('Se completa según la semana del PCA', isIngles) + '" /></div>'
+  + '      <div class="field"><label>' + te('Bloque Curricular', isIngles) + '</label>' + bloqueHtml + '</div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Desarrollo de las Clases</div>'
+  + '  <div class="pca-band band-section">' + te('Desarrollo de las Clases', isIngles) + '</div>'
   + '  <div class="pca-section">'
   + '    <div id="diasWrap">' + diasHtml + '</div>'
-  + '    <button class="btn btn-ghost btn-sm no-print" id="btnAddDia">+ Agregar otro día de clase</button>'
+  + '    <button class="btn btn-ghost btn-sm no-print" id="btnAddDia">' + te('+ Agregar otro día de clase', isIngles) + '</button>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Firmas de Responsabilidad</div>'
+  + '  <div class="pca-band band-section">' + te('Firmas de Responsabilidad', isIngles) + '</div>'
   + '  <div class="signature-grid">'
-  + '    <div class="signature-box"><div class="role">Elaborado por · Docente</div><input class="cell-input" value="' + escapeHtml(nombreFormal(d)) + '" readonly /></div>'
-  + '    <div class="signature-box"><div class="role">Revisado por · Asesor Pedagógico</div><input class="cell-input" id="sfRevisado" value="' + escapeHtml(s.revisadoPor||'') + '" /></div>'
-  + '    <div class="signature-box"><div class="role">Aprobado por · Vicerrector</div><input class="cell-input" id="sfAprobado" value="' + escapeHtml(s.aprobadoPor||'') + '" /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Elaborado por · Docente', isIngles) + '</div><input class="cell-input" value="' + escapeHtml(nombreFormal(d)) + '" readonly /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Revisado por · Asesor Pedagógico', isIngles) + '</div><input class="cell-input" id="sfRevisado" value="' + escapeHtml(s.revisadoPor||'') + '" /></div>'
+  + '    <div class="signature-box"><div class="role">' + te('Aprobado por · Vicerrector', isIngles) + '</div><input class="cell-input" id="sfAprobado" value="' + escapeHtml(s.aprobadoPor||'') + '" /></div>'
   + '  </div>'
   + '</div>';
 }
@@ -5218,6 +5285,7 @@ function bindSemanalFormEvents(){
         cb.addEventListener('change', function(){
           var seleccion = Array.from(box.querySelectorAll('.nivellogro-dia-cb[data-tier="'+tier+'"]:checked')).map(function(x){ return x.value; });
           dia[field] = seleccion.join('; ');
+          renderSemanalFormAgain();
         });
       });
     });
