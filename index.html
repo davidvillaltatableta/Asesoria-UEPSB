@@ -578,18 +578,27 @@ function parseLinesList(html){
   if(!plain) return [];
   return plain.split('\n').map(function(l){ return l.replace(/^•\s*/, '').trim(); }).filter(Boolean);
 }
-/* El campo Nivel de Logro del PCA (para una sola semana) puede traer, línea por línea, la
-   descripción de cada nivel (p.ej. "Básico: ...", "Intermedio: ...", "Avanzado: ..."). Esta
-   función detecta esas líneas por palabra clave y devuelve las 3 descripciones por separado
-   (recortando el marcador inicial), dejando vacía la que no esté presente. */
+/* El campo Nivel de Logro del PCA (para una sola semana) puede traer, línea por línea (un ítem
+   por cada Enter que dio el docente), la descripción de cada nivel: una línea de encabezado
+   (p.ej. "Básico:", "Intermedio: ...", "Avanzado ...") seguida de una o varias líneas de detalle
+   sin palabra clave, que pertenecen a ese mismo nivel hasta que aparezca el encabezado del
+   siguiente. Esta función devuelve, para cada nivel, la LISTA completa de ítems (sin mezclar
+   niveles entre sí), no solo el último renglón. */
 function parseNivelesLogroTiers(html){
-  var out = {basico:'', intermedio:'', avanzado:''};
+  var out = {basico:[], intermedio:[], avanzado:[]};
+  var tierActual = '';
   parseLinesList(html).forEach(function(line){
     var t = line.toLowerCase();
-    var limpio = line.replace(/^(nivel\s+)?(básico|basico|intermedio|avanzado)\s*[:\-–]?\s*/i, '').trim() || line;
-    if(t.indexOf('avanzado')!==-1) out.avanzado = limpio;
-    else if(t.indexOf('intermedio')!==-1) out.intermedio = limpio;
-    else if(t.indexOf('básico')!==-1 || t.indexOf('basico')!==-1) out.basico = limpio;
+    var tierLinea = t.indexOf('avanzado')!==-1 ? 'avanzado'
+      : t.indexOf('intermedio')!==-1 ? 'intermedio'
+      : (t.indexOf('básico')!==-1 || t.indexOf('basico')!==-1) ? 'basico' : '';
+    if(tierLinea){
+      tierActual = tierLinea;
+      var limpio = line.replace(/^(nivel\s+)?(básico|basico|intermedio|avanzado)\s*[:\-–]?\s*/i, '').trim();
+      if(limpio) out[tierActual].push(limpio);
+    } else if(tierActual){
+      out[tierActual].push(line);
+    }
   });
   return out;
 }
@@ -3976,7 +3985,7 @@ function renderPcaListInner(d, scopeAll){
     + '    <button class="btn btn-gold btn-sm" data-export-pca-pdf="' + p.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-word="' + p.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-excel="' + p.id + '">Excel</button> '
-    + (isAdmin ? '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>' : '')
+    + (isAdmin || !bloqueado ? '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>' : '')
     + '  </td>'
     + '</tr>';
   }
@@ -4637,7 +4646,7 @@ function renderSemanalListInner(d, scopeAll){
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-excel="' + s.id + '">Excel</button> '
-    + (isAdmin ? '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>' : '')
+    + (isAdmin || !lockedForViewer ? '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>' : '')
     + '  </td>'
     + '</tr>';
   }
@@ -4834,7 +4843,7 @@ function semanalToolbarHtml(s){
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">Exportar Excel</button>'
     + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">Guardar plan</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 Este plan ya fue guardado y no puede editarse. Si necesitas una corrección, contacta a un administrador.</div>' : '');
+    + (locked ? '<div class="lock-banner no-print">🔒 Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.</div>' : '');
 }
 
 function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana){
@@ -4908,7 +4917,7 @@ function renderSemanalForm(d){
   var semanaCoincide = !!(semanaActual && semanaActual.fechaInicio && semanaActual.fechaFin
     && s.fechaInicio >= semanaActual.fechaInicio && s.fechaInicio <= semanaActual.fechaFin);
 
-  var nivelLogroTiers = semanaCoincide ? parseNivelesLogroTiers(semanaActual.destreza) : {basico:'', intermedio:'', avanzado:''};
+  var nivelLogroTiers = semanaCoincide ? parseNivelesLogroTiers(semanaActual.destreza) : {basico:[], intermedio:[], avanzado:[]};
   var nivelLogroSeleccion = (s.nivelLogro||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   var NIVEL_LOGRO_LABELS = {basico:'Nivel Básico', intermedio:'Nivel Intermedio', avanzado:'Nivel Avanzado'};
   var nivelLogroHtml;
@@ -4916,13 +4925,15 @@ function renderSemanalForm(d){
     nivelLogroHtml = '<div class="hint">' + escapeHtml(motivoSinSemana) + '</div>';
   } else if(!semanaCoincide){
     nivelLogroHtml = '<div class="hint">No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.</div>';
-  } else if(!nivelLogroTiers.basico && !nivelLogroTiers.intermedio && !nivelLogroTiers.avanzado){
+  } else if(!nivelLogroTiers.basico.length && !nivelLogroTiers.intermedio.length && !nivelLogroTiers.avanzado.length){
     nivelLogroHtml = '<div class="hint">El PCA no distingue niveles (básico/intermedio/avanzado) para esta semana.</div>';
   } else {
     nivelLogroHtml = ['basico','intermedio','avanzado'].map(function(grupo){
-      if(!nivelLogroTiers[grupo]) return '';
-      var value = NIVEL_LOGRO_LABELS[grupo] + ': ' + nivelLogroTiers[grupo];
-      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivel-logro-cb" value="' + escapeHtml(value) + '" ' + (nivelLogroSeleccion.indexOf(value)!==-1?'checked':'') + ' /><span><strong>' + NIVEL_LOGRO_LABELS[grupo] + '</strong><br/>' + escapeHtml(nivelLogroTiers[grupo]) + '</span></label>';
+      var items = nivelLogroTiers[grupo];
+      if(!items.length) return '';
+      var value = NIVEL_LOGRO_LABELS[grupo] + ': ' + items.join(' • ');
+      var listHtml = items.map(function(it){ return '• ' + escapeHtml(it); }).join('<br/>');
+      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivel-logro-cb" value="' + escapeHtml(value) + '" ' + (nivelLogroSeleccion.indexOf(value)!==-1?'checked':'') + ' /><span><strong>' + NIVEL_LOGRO_LABELS[grupo] + '</strong><br/>' + listHtml + '</span></label>';
     }).join('');
     nivelLogroHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + nivelLogroHtml + '</div>';
   }
@@ -5097,9 +5108,7 @@ function renderSemanalFormAgain(){
 function saveSemanal(s, silent){
   var d = currentDocente();
   var existingHeader = load(LS.SEMANAL).find(function(x){ return x.id===s.id; });
-  var isNew = !existingHeader;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
-  if(isNew) s.locked = true;
   s.updatedAt = nowISO();
   var record = {
     id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId),
@@ -5120,10 +5129,7 @@ function saveSemanal(s, silent){
   all.push(record);
   save(LS.SEMANAL, all);
   state.editingSemanal = Object.assign({}, record, { dias: record.dias.map(function(x){ return Object.assign({}, x); }) });
-  if(!silent){
-    if(isNew && !isStaffRole(d.role)) toast('Plan semanal guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
-    else toast('Plan semanal guardado correctamente.', 'success');
-  }
+  if(!silent) toast('Plan semanal guardado correctamente.', 'success');
 }
 
 /* ============================= ZIP (STORE) + DOCX BUILDER ============================= */
