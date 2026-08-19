@@ -3962,10 +3962,11 @@ function renderPcaListInner(d, scopeAll){
   function pcaRowHtml(p){
     var nombre = (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '(sin asignatura)';
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
-    var lockedForViewer = !!p.locked && !isAdmin;
+    var bloqueado = pcaBloqueadoParaDocente(p);
+    var lockedForViewer = bloqueado && !isAdmin;
     return ''
     + '<tr>'
-    + '  <td><strong>' + escapeHtml(nombre) + '</strong>' + (p.locked ? ' <span class="pill pill-muted" title="Bloqueado para el docente">🔒</span>' : '') + '</td>'
+    + '  <td><strong>' + escapeHtml(nombre) + '</strong>' + (bloqueado ? ' <span class="pill pill-muted" title="Bloqueado para el docente">🔒</span>' : '') + '</td>'
     + '  <td>' + escapeHtml(p.nivel||'—') + (p.especialidad? '<br/><span class="pill pill-blue">'+escapeHtml(p.especialidad)+'</span>':'') + '</td>'
     + '  <td>' + escapeHtml(curso) + '</td>'
     + '  <td class="tabular">' + (p.unidadesNombres||[]).length + '</td>'
@@ -4075,6 +4076,21 @@ function pcaEsIngles(p){
   var re = /inglés|english/i;
   return re.test(p.asignatura||'') || re.test(p.asignaturaManual||'');
 }
+/* El PCA ya NO se bloquea al guardarlo la primera vez: el docente puede editarlo y volver a
+   guardarlo las veces que necesite mientras no haya pasado la Fecha y hora límite de entrega.
+   Al llegar esa fecha, se bloquea automáticamente para el docente (sin que nadie tenga que
+   marcarlo a mano) — el checkbox "Bloqueado para el docente" sigue existiendo aparte, para que un
+   administrador pueda forzar el bloqueo antes de tiempo, o desbloquearlo después de la fecha
+   límite si autoriza una entrega tardía. */
+function pcaFechaLimitePasada(p){
+  if(!p.fechaLimite) return false;
+  var d = new Date(p.fechaLimite);
+  if(isNaN(d.getTime())) return false;
+  return d.getTime() <= Date.now();
+}
+function pcaBloqueadoParaDocente(p){
+  return !!p.locked || pcaFechaLimitePasada(p);
+}
 var PCA_EN = {
   'Plan Curricular Anual': 'Annual Curriculum Plan',
   'Fecha y hora límite de entrega': 'Submission deadline (date and time)',
@@ -4136,10 +4152,13 @@ function pcaToolbarHtml(p){
   var isIngles = pcaEsIngles(p);
   var isAdmin = isStaffRole(currentDocente().role);
   var existsInDb = load(LS.PCA).some(function(x){ return x.id===p.id; });
-  var locked = !!p.locked && !isAdmin;
+  var locked = pcaBloqueadoParaDocente(p) && !isAdmin;
   var lockToggle = (isAdmin && existsInDb)
     ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="pfLockToggle" ' + (p.locked?'checked':'') + ' /> ' + te('Bloqueado para el docente', isIngles) + '</label>'
     : '';
+  var lockMsg = pcaFechaLimitePasada(p)
+    ? 'Ya pasó la fecha y hora límite de entrega, así que este plan no puede editarse. Si necesitas una corrección, contacta a un administrador.'
+    : 'Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.';
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">' + te('← Volver a la lista', isIngles) + '</button>'
@@ -4150,7 +4169,7 @@ function pcaToolbarHtml(p){
     + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
     + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan ya fue guardado y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
+    + (locked ? '<div class="lock-banner no-print">🔒 ' + te(lockMsg, isIngles) + '</div>' : '');
 }
 
 function renderPcaForm(d){
@@ -4251,7 +4270,7 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
 function bindPcaFormEvents(){
   var p = state.editingPca;
   var isAdmin = isStaffRole(currentDocente().role);
-  var locked = !!p.locked && !isAdmin;
+  var locked = pcaBloqueadoParaDocente(p) && !isAdmin;
 
   document.getElementById('btnBackToList').onclick = function(){ go(state.pcaReturnTo || 'pcalist'); };
   var saveBtn = document.getElementById('btnSavePca');
@@ -4391,7 +4410,6 @@ function savePca(p, silent){
   var existingHeader = load(LS.PCA).find(function(x){ return x.id===p.id; });
   var isNew = !existingHeader;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
-  if(isNew) p.locked = true;
   p.updatedAt = nowISO();
   p.unidadesNombres = p.unidades.map(function(u){ return u.nombre; });
   var header = {
@@ -4419,7 +4437,7 @@ function savePca(p, silent){
   });
   save(LS.CONT, cont);
   if(!silent){
-    if(isNew && !isStaffRole(d.role)) toast('Plan guardado. A partir de ahora queda bloqueado: para corregirlo, contacta a un administrador.', 'success');
+    if(isNew && p.fechaLimite && !isStaffRole(d.role)) toast('Plan guardado. Podrás seguir editándolo hasta la fecha límite de entrega.', 'success');
     else toast('Plan curricular guardado correctamente.', 'success');
   }
 }
