@@ -3985,6 +3985,7 @@ function renderPcaListInner(d, scopeAll){
     + '    <button class="btn btn-gold btn-sm" data-export-pca-pdf="' + p.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-word="' + p.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-excel="' + p.id + '">Excel</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-duplicate-pca="' + p.id + '" title="Crea una copia editable de este PCA">Duplicar</button> '
     + (isAdmin || !bloqueado ? '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>' : '')
     + '  </td>'
     + '</tr>';
@@ -4033,6 +4034,9 @@ function bindPcaListSharedEvents(){
       });
     };
   });
+  document.querySelectorAll('[data-duplicate-pca]').forEach(function(btn){
+    btn.onclick = function(){ duplicatePca(btn.getAttribute('data-duplicate-pca')); };
+  });
   document.querySelectorAll('[data-export-pca-word]').forEach(function(btn){ btn.onclick = function(){ exportPcaWord(btn.getAttribute('data-export-pca-word')); }; });
   document.querySelectorAll('[data-export-pca-excel]').forEach(function(btn){ btn.onclick = function(){ exportPcaExcel(btn.getAttribute('data-export-pca-excel')); }; });
   document.querySelectorAll('[data-export-pca-pdf]').forEach(function(btn){ btn.onclick = function(){ openPcaForm(btn.getAttribute('data-export-pca-pdf'), state.subview==='admin' ? 'admin' : 'pcalist'); setTimeout(printAsPdf, 250); }; });
@@ -4074,6 +4078,33 @@ function openPcaForm(pcaId, returnTo){
   } else {
     state.editingPca = blankPca(d);
   }
+  go('pcaform');
+}
+
+/* Duplicar PCA: crea una copia completa (temporalización + unidades + semanas) del PCA que el
+   docente indique en la lista, con IDs nuevos, sin bloqueo y con la fecha límite vigente — pero
+   sin guardarla en Firestore todavía: se abre en el formulario para que el docente ajuste nivel,
+   curso o asignatura (p.ej. copiar el PCA de 7.º "A" para crear el de 7.º "B") y la guarde él
+   mismo con "Guardar plan". */
+function duplicatePca(pcaId){
+  var d = currentDocente();
+  var header = load(LS.PCA).find(function(p){ return p.id===pcaId; });
+  if(!header) return;
+  var cont = load(LS.CONT).filter(function(c){ return c.pcaId===pcaId; });
+  var unidades = (header.unidadesNombres || []).map(function(nombre){
+    var filas = cont.filter(function(c){ return c.unidad===nombre; }).sort(function(a,b){ return (a.semana||0)-(b.semana||0); });
+    if(filas.length===0) filas = [weekRow(1)];
+    return { id: uid('un'), nombre: nombre, filas: filas.map(function(f){ return Object.assign({}, f, {id: uid('wk')}); }) };
+  });
+  if(unidades.length===0) unidades = [{id:uid('un'), nombre:'Unidad 1', filas:[weekRow(1)]}];
+  state.editingPca = Object.assign({}, header, {
+    id: uid('pca'), docenteId: d.id, locked: false, fechaLimite: fechaLimiteVigente('pca'),
+    temporalizacion: (header.temporalizacion||[]).map(function(t){ return Object.assign({}, t, {id: uid('tm')}); }),
+    unidades: unidades, elaboradoPor: nombreFormal(d),
+    createdAt: nowISO(), updatedAt: nowISO()
+  });
+  state.pcaReturnTo = state.subview==='admin' ? 'admin' : 'pcalist';
+  toast('Se copió el PCA. Ajusta lo que necesites (p.ej. el curso) y presiona "Guardar plan" para crearlo.', 'success');
   go('pcaform');
 }
 
@@ -4582,16 +4613,17 @@ function siguienteNumeroSemanal(docenteId){
   var max = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).reduce(function(m,s){ return Math.max(m, s.numero||0); }, 0);
   return max + 1;
 }
-/* Agrupa por trimestre y mes según la fecha de inicio del plan. Los límites de trimestre son
-   una aproximación estándar del calendario Sierra (Sept-Dic / Ene-Mar / Abr-Jun); si la
+/* Agrupa por trimestre y mes según la fecha de inicio del plan. El año lectivo de esta
+   institución arranca a fines de agosto (el 1er Trimestre empieza el 31/08), así que agosto
+   cuenta como parte del 1er Trimestre y del inicio del ciclo, no como cierre del anterior. Si la
    institución maneja otros cortes, este mapeo es el único lugar que hay que ajustar. */
-var MES_A_TRIMESTRE = {9:1, 10:1, 11:1, 12:1, 1:2, 2:2, 3:2, 4:3, 5:3, 6:3, 7:3, 8:3};
+var MES_A_TRIMESTRE = {8:1, 9:1, 10:1, 11:1, 12:1, 1:2, 2:2, 3:2, 4:3, 5:3, 6:3, 7:3};
 var MESES_CAP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-/* El año lectivo empieza en septiembre, así que al agrupar por mes, el ciclo debe empezar en
-   septiembre y terminar en agosto (Sept,Oct,Nov,Dic,Ene,...,Ago) — no el orden calendario Ene-Dic.
-   Esto se usa solo para ORDENAR los grupos de mes; dentro de un mismo mes-del-ciclo, se desempata
-   por año calendario para que años lectivos distintos no se mezclen fuera de orden. */
-var MES_ORDEN_ANIO_LECTIVO = {9:0, 10:1, 11:2, 12:3, 1:4, 2:5, 3:6, 4:7, 5:8, 6:9, 7:10, 8:11};
+/* El año lectivo empieza en agosto, así que al agrupar por mes, el ciclo debe empezar en agosto y
+   terminar en julio (Ago,Sept,Oct,Nov,Dic,Ene,...,Jul) — no el orden calendario Ene-Dic. Esto se
+   usa solo para ORDENAR los grupos de mes; dentro de un mismo mes-del-ciclo, se desempata por año
+   calendario para que años lectivos distintos no se mezclen fuera de orden. */
+var MES_ORDEN_ANIO_LECTIVO = {8:0, 9:1, 10:2, 11:3, 12:4, 1:5, 2:6, 3:7, 4:8, 5:9, 6:10, 7:11};
 function trimestreYMesDe(fechaIso){
   if(!fechaIso) return null;
   var p = fechaIso.split('-');
