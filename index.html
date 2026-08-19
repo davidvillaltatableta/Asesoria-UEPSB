@@ -29,9 +29,14 @@
     --serif:Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',serif;
     --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,'SF Mono',Consolas,'Liberation Mono',monospace;
+    /* Fondo del menú lateral: variable propia (no --blue-900) porque ese token se invierte a un
+       azul claro en modo oscuro (para servir de texto legible sobre fondos oscuros en el resto de
+       la app), lo cual volvía el menú casi blanco con texto claro encima — ilegible. */
+    --sidebar-bg:#0A2A5E;
   }
   @media (prefers-color-scheme: dark){
     :root{
+      --sidebar-bg:#000000;
       --blue-900:#DCE8FF;
       --blue-700:#8FB6FA;
       --blue-600:#6FA0F4;
@@ -57,6 +62,7 @@
     }
   }
   :root[data-theme="dark"]{
+    --sidebar-bg:#000000;
     --blue-900:#DCE8FF; --blue-700:#8FB6FA; --blue-600:#6FA0F4; --blue-500:#5C93EF;
     --blue-100:#16294D; --blue-50:#101B33; --gold-100:#3A2E08; --red-600:#FF6B6B; --red-100:#3A1414;
     --green-600:#4FCB92; --green-100:#0F2A20; --ink:#EAF0FB; --paper:#0B1220; --surface:#111A2E;
@@ -65,6 +71,7 @@
     --shadow-2:0 2px 6px rgba(0,0,0,.4), 0 16px 40px rgba(0,0,0,.5);
   }
   :root[data-theme="light"]{
+    --sidebar-bg:#0A2A5E;
     --blue-900:#0A2A5E; --blue-700:#123E8C; --blue-600:#1848A0; --blue-500:#2563C7;
     --blue-100:#E7EEFB; --blue-50:#F2F6FD; --gold-100:#FCF1CC; --red-600:#D62828; --red-100:#FBE4E4;
     --green-600:#1E8E5A; --green-100:#E3F5EC; --ink:#16233A; --paper:#F5F7FB; --surface:#FFFFFF;
@@ -153,7 +160,7 @@
   /* ---------- App shell ---------- */
   .shell{display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100vh;}
   @media (max-width:860px){ .shell{grid-template-columns:minmax(0,1fr);} .sidebar{position:fixed; z-index:40; inset:0 auto 0 0; width:248px; transform:translateX(-100%); transition:transform .2s ease;} .sidebar.open{transform:translateX(0);} .sidebar-scrim{display:none; position:fixed; inset:0; background:rgba(8,14,28,.45); z-index:35;} .sidebar-scrim.show{display:block;} .mobile-topbar{display:flex !important;} }
-  .sidebar{background:var(--blue-900); color:#EAF0FF; display:flex; flex-direction:column; padding:20px 16px; gap:22px;}
+  .sidebar{background:var(--sidebar-bg); color:#EAF0FF; display:flex; flex-direction:column; padding:20px 16px; gap:22px;}
   .sidebar .brand{display:flex; align-items:center; gap:10px; padding:0 4px;}
   .sidebar .brand img{width:38px; height:38px; border-radius:50%; object-fit:cover; background:#fff;}
   .sidebar .brand .name{font-family:var(--serif); font-weight:700; font-size:13.5px; line-height:1.25;}
@@ -190,7 +197,7 @@
   .sidebar .who button{background:rgba(255,255,255,.08); color:#fff; border:none; padding:8px 10px; border-radius:8px; font-size:12.5px; cursor:pointer; text-align:left;}
   .sidebar .who button:hover{background:rgba(255,255,255,.16);}
 
-  .mobile-topbar{display:none; align-items:center; gap:10px; padding:12px 16px; background:var(--blue-900); color:#fff; position:sticky; top:0; z-index:20;}
+  .mobile-topbar{display:none; align-items:center; gap:10px; padding:12px 16px; background:var(--sidebar-bg); color:#fff; position:sticky; top:0; z-index:20;}
   .mobile-topbar button{background:none; border:none; color:#fff; font-size:20px; cursor:pointer;}
   .mobile-topbar .name{font-size:13.5px; font-weight:700;}
 
@@ -4057,7 +4064,7 @@ function blankPca(d){
     createdAt: nowISO(), updatedAt: nowISO()
   };
 }
-function weekRow(n){ return {id:uid('wk'), semana:n, fechaInicio:'', fechaFin:'', destreza:'', temas:'', pagina:'', observacion:''}; }
+function weekRow(n){ return {id:uid('wk'), semana:n, fechaInicio:'', fechaFin:'', destreza:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', temas:'', pagina:'', observacion:''}; }
 
 function openPcaForm(pcaId, returnTo){
   state.pcaReturnTo = returnTo || 'pcalist';
@@ -4178,6 +4185,13 @@ var PCA_EN = {
   'Fecha': 'Date',
   'Nivel de Logro': 'Achievement Level',
   'Nivel de logro': 'Achievement level',
+  'Niveles de Logro': 'Achievement Levels',
+  'Básico': 'Basic',
+  'Intermedio': 'Intermediate',
+  'Avanzado': 'Advanced',
+  'Nivel de logro básico': 'Basic achievement level',
+  'Nivel de logro intermedio': 'Intermediate achievement level',
+  'Nivel de logro avanzado': 'Advanced achievement level',
   'Temas y subtemas': 'Topics and subtopics',
   'Página': 'Page',
   'Observación': 'Remark',
@@ -4288,7 +4302,11 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
     return '<tr data-wkrow="'+f.id+'">'
     + '<td class="tabular" style="text-align:center;">' + (fi+1) + '</td>'
     + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
-    + '<td style="min-width:280px;">' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro', isIngles)) + '</td>'
+    + '<td style="min-width:280px;">'
+    +   '<div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles))
+    +   '<div class="hint" style="font-weight:700; margin:8px 0 2px;">' + te('Intermedio', isIngles) + '</div>' + richEditorHtml('nivelLogroIntermedio', f.id, f.nivelLogroIntermedio, te('Nivel de logro intermedio', isIngles))
+    +   '<div class="hint" style="font-weight:700; margin:8px 0 2px;">' + te('Avanzado', isIngles) + '</div>' + richEditorHtml('nivelLogroAvanzado', f.id, f.nivelLogroAvanzado, te('Nivel de logro avanzado', isIngles))
+    + '</td>'
     + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, te('Temas y subtemas', isIngles)) + '</td>'
     + '<td><input class="cell-input" data-wf="pagina" style="min-width:60px;" value="'+escapeHtml(f.pagina)+'" /></td>'
     + '<td style="min-width:130px;">' + estadoSemanaBadgeHtml(f, pcaId) + '</td>'
@@ -4300,7 +4318,7 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
   + '  <div class="pca-band band-unit"><input class="unit-head-input" data-unitname="'+u.id+'" value="'+escapeHtml(u.nombre)+'" placeholder="'+te('Nombre de la unidad', isIngles)+'" />'
   + '    <button class="btn btn-danger btn-sm no-print" data-removeunit="'+u.id+'" style="margin-left:auto; background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">' + te('Eliminar unidad', isIngles) + '</button></div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">' + te('Semana', isIngles) + '</th><th style="width:150px;">' + te('Fecha', isIngles) + '</th><th>' + te('Nivel de Logro', isIngles) + '</th><th>' + te('Temas y subtemas', isIngles) + '</th><th style="width:70px;">' + te('Página', isIngles) + '</th><th>' + te('Observación', isIngles) + '</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">' + te('Semana', isIngles) + '</th><th style="width:150px;">' + te('Fecha', isIngles) + '</th><th>' + te('Niveles de Logro', isIngles) + '</th><th>' + te('Temas y subtemas', isIngles) + '</th><th style="width:70px;">' + te('Página', isIngles) + '</th><th>' + te('Observación', isIngles) + '</th><th></th></tr></thead>'
   + '    <tbody data-unitbody="' + u.id + '">' + rows + '</tbody></table></div>'
   + '    <button class="btn btn-ghost btn-sm no-print" data-addweek="' + u.id + '" style="margin-top:10px;">' + te('+ Agregar semana', isIngles) + '</button>'
   + '  </div>'
@@ -4471,6 +4489,7 @@ function savePca(p, silent){
       cont.push({
         id: f.id, pcaId:p.id, docenteId:ownerId, unidad:u.nombre, semana:f.semana,
         fechaInicio:f.fechaInicio, fechaFin:f.fechaFin, destreza:f.destreza,
+        nivelLogroIntermedio:f.nivelLogroIntermedio||'', nivelLogroAvanzado:f.nivelLogroAvanzado||'',
         temas:f.temas, pagina:f.pagina, observacion:f.observacion
       });
     });
@@ -4600,6 +4619,26 @@ function richTextToPlain(html){
   walk(doc.body.firstChild);
   flush();
   return lines.join('\n');
+}
+
+/* Une los 3 campos de Nivel de Logro de una fila de Contenidos (destreza=Básico,
+   nivelLogroIntermedio, nivelLogroAvanzado) en un solo texto plano legible, para las
+   exportaciones (Word/Markdown/CSV) que muestran una sola columna "Nivel de Logro". */
+function nivelLogroTextoCompleto(f){
+  var partes = [];
+  var b = richTextToPlain(f.destreza); if(b) partes.push('Básico:\n' + b);
+  var i = richTextToPlain(f.nivelLogroIntermedio); if(i) partes.push('Intermedio:\n' + i);
+  var a = richTextToPlain(f.nivelLogroAvanzado); if(a) partes.push('Avanzado:\n' + a);
+  return partes.join('\n\n');
+}
+/* Misma unión que nivelLogroTextoCompleto pero conservando el HTML enriquecido (negritas,
+   viñetas…), para la exportación en HTML que sí interpreta etiquetas. */
+function nivelLogroHtmlCompleto(f){
+  var partes = [];
+  if(f.destreza) partes.push('<p><strong>Básico:</strong></p>' + f.destreza);
+  if(f.nivelLogroIntermedio) partes.push('<p><strong>Intermedio:</strong></p>' + f.nivelLogroIntermedio);
+  if(f.nivelLogroAvanzado) partes.push('<p><strong>Avanzado:</strong></p>' + f.nivelLogroAvanzado);
+  return partes.join('');
 }
 
 /* ============================= PLAN SEMANAL — LIST ============================= */
@@ -4763,7 +4802,16 @@ function bindSemanalListSharedEvents(){
 }
 
 /* ============================= PLAN SEMANAL — FORM ============================= */
-function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', actividades:'', recursos:'', evaluacion:''}; }
+function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', actividades:'', recursos:'', evaluacion:''}; }
+/* Texto plano de los 3 niveles de logro seleccionados para un día del Plan Semanal, para usarlo
+   en las exportaciones (Word/HTML/Markdown/CSV), que muestran una sola línea/columna por día. */
+function nivelLogroDiaTexto(dia){
+  var partes = [];
+  if(dia.nivelLogroBasico) partes.push('Básico: ' + dia.nivelLogroBasico);
+  if(dia.nivelLogroIntermedio) partes.push('Intermedio: ' + dia.nivelLogroIntermedio);
+  if(dia.nivelLogroAvanzado) partes.push('Avanzado: ' + dia.nivelLogroAvanzado);
+  return partes.join('\n');
+}
 function blankSemanal(d){
   var niveles = misNiveles(d.id);
   var nivel = niveles[0] || '';
@@ -4777,7 +4825,7 @@ function blankSemanal(d){
     id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
-    unidadDidactica:'', bloqueCurricular:'', nivelLogro:'',
+    unidadDidactica:'', bloqueCurricular:'',
     dias:[blankDia()],
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lcdo. José Gómez',
     locked:false,
@@ -4841,7 +4889,7 @@ function applyFechaSelection(s){
 function recomputeSemanalPca(s){
   var pca = findMiPca(s.docenteId, s.nivel, s.especialidad, s.curso, s.asignatura);
   if(pca) applySemanaSelection(s, pca.id, (semanasDePca(pca.id)[0]||{}).id);
-  else { s.pcaId=''; s.semanaRowId=''; s.unidadDidactica=''; s.nivelLogro=''; }
+  else { s.pcaId=''; s.semanaRowId=''; s.unidadDidactica=''; }
 }
 
 function openSemanalForm(semId, returnTo){
@@ -4878,7 +4926,29 @@ function semanalToolbarHtml(s){
     + (locked ? '<div class="lock-banner no-print">🔒 Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.</div>' : '');
 }
 
-function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana){
+/* Campo (día) donde se guarda la selección de cada nivel de logro, y etiqueta visible de cada
+   columna — usados tanto para armar el HTML como para leer/guardar la selección del docente. */
+var NIVEL_LOGRO_DIA_FIELD = {basico:'nivelLogroBasico', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
+var NIVEL_LOGRO_DIA_LABEL = {basico:'Básico', intermedio:'Intermedio', avanzado:'Avanzado'};
+function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo){
+  var columnas = ['basico','intermedio','avanzado'].map(function(tier){
+    var items = nivelLogroItems[tier] || [];
+    var seleccion = (dia[NIVEL_LOGRO_DIA_FIELD[tier]]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+    var body;
+    if(nivelLogroMotivo){
+      body = '<div class="hint">' + escapeHtml(nivelLogroMotivo) + '</div>';
+    } else if(!items.length){
+      body = '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + NIVEL_LOGRO_DIA_LABEL[tier] + ' para esta semana.</div>';
+    } else {
+      body = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(it){
+        return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivellogro-dia-cb" data-tier="' + tier + '" value="' + escapeHtml(it) + '" ' + (seleccion.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
+      }).join('') + '</div>';
+    }
+    return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div>' + body + '</div>';
+  }).join('');
+  return '<div class="field"><label>Niveles de Logro</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+}
+function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana, nivelLogroItems, nivelLogroMotivo){
   var seleccionados = (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
   // (para que no desaparezcan de su propia lista al marcarlos).
@@ -4912,7 +4982,8 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoS
   + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
   + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">Eliminar día</button>' : '')
   + '  </div>'
-  + '  <div class="field"><label>Contenidos Esenciales</label>' + contenidosHtml + '</div>'
+  + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo)
+  + '  <div class="field" style="margin-top:12px;"><label>Contenidos Esenciales</label>' + contenidosHtml + '</div>'
   + '  <div class="grid-3" style="margin-top:12px; align-items:start;">'
   + '    <div class="field"><label>Actividades de Aprendizaje</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', 'Escribe las actividades de aprendizaje…') + '</div>'
   + '    <div class="field"><label>Recursos</label>' + richEditorHtml('recursos', dia.id, dia.recursos||'', 'Escribe los recursos…') + '</div>'
@@ -4949,26 +5020,15 @@ function renderSemanalForm(d){
   var semanaCoincide = !!(semanaActual && semanaActual.fechaInicio && semanaActual.fechaFin
     && s.fechaInicio >= semanaActual.fechaInicio && s.fechaInicio <= semanaActual.fechaFin);
 
-  var nivelLogroTiers = semanaCoincide ? parseNivelesLogroTiers(semanaActual.destreza) : {basico:[], intermedio:[], avanzado:[]};
-  var nivelLogroSeleccion = (s.nivelLogro||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-  var NIVEL_LOGRO_LABELS = {basico:'Nivel Básico', intermedio:'Nivel Intermedio', avanzado:'Nivel Avanzado'};
-  var nivelLogroHtml;
-  if(motivoSinSemana){
-    nivelLogroHtml = '<div class="hint">' + escapeHtml(motivoSinSemana) + '</div>';
-  } else if(!semanaCoincide){
-    nivelLogroHtml = '<div class="hint">No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.</div>';
-  } else if(!nivelLogroTiers.basico.length && !nivelLogroTiers.intermedio.length && !nivelLogroTiers.avanzado.length){
-    nivelLogroHtml = '<div class="hint">El PCA no distingue niveles (básico/intermedio/avanzado) para esta semana.</div>';
-  } else {
-    nivelLogroHtml = ['basico','intermedio','avanzado'].map(function(grupo){
-      var items = nivelLogroTiers[grupo];
-      if(!items.length) return '';
-      var value = NIVEL_LOGRO_LABELS[grupo] + ': ' + items.join(' • ');
-      var listHtml = items.map(function(it){ return '• ' + escapeHtml(it); }).join('<br/>');
-      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivel-logro-cb" value="' + escapeHtml(value) + '" ' + (nivelLogroSeleccion.indexOf(value)!==-1?'checked':'') + ' /><span><strong>' + NIVEL_LOGRO_LABELS[grupo] + '</strong><br/>' + listHtml + '</span></label>';
-    }).join('');
-    nivelLogroHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + nivelLogroHtml + '</div>';
-  }
+  // Los 3 niveles de logro ahora vienen de 3 campos separados del PCA (uno por nivel, ya no hay
+  // que detectar palabras clave): cada ítem (viñeta) del PCA se ofrece como opción individual
+  // seleccionable en cada día — ver nivelesLogroDiaHtml.
+  var nivelLogroItems = semanaCoincide
+    ? {basico: parseLinesList(semanaActual.destreza), intermedio: parseLinesList(semanaActual.nivelLogroIntermedio), avanzado: parseLinesList(semanaActual.nivelLogroAvanzado)}
+    : {basico:[], intermedio:[], avanzado:[]};
+  var nivelLogroMotivo = motivoSinSemana
+    ? motivoSinSemana
+    : (!semanaCoincide ? 'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.' : null);
 
   var bloqueOpts = bloquesFor(s.nivel, s.asignatura);
   var bloqueSeleccion = (s.bloqueCurricular||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
@@ -4988,7 +5048,7 @@ function renderSemanalForm(d){
     });
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
-    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana);
+    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana, nivelLogroItems, nivelLogroMotivo);
   }).join('');
 
   return ''
@@ -5023,7 +5083,6 @@ function renderSemanalForm(d){
   + '      <div class="field"><label>Unidad Didáctica</label><input class="cell-input" id="sfUnidad" value="' + escapeHtml(s.unidadDidactica||'') + '" placeholder="Se completa según la semana del PCA" /></div>'
   + '      <div class="field"><label>Bloque Curricular</label>' + bloqueHtml + '</div>'
   + '    </div>'
-  + '    <div class="field" style="margin-top:14px;"><label>Nivel de Logro</label>' + nivelLogroHtml + '</div>'
   + '  </div>'
   + '  <div class="pca-band band-section">Desarrollo de las Clases</div>'
   + '  <div class="pca-section">'
@@ -5092,12 +5151,6 @@ function bindSemanalFormEvents(){
       s.bloqueCurricular = seleccion.join('; ');
     });
   });
-  document.querySelectorAll('.nivel-logro-cb').forEach(function(cb){
-    cb.addEventListener('change', function(){
-      var seleccion = Array.from(document.querySelectorAll('.nivel-logro-cb:checked')).map(function(x){ return x.value; });
-      s.nivelLogro = seleccion.join('; ');
-    });
-  });
   document.getElementById('sfRevisado').addEventListener('input', function(e){ s.revisadoPor = e.target.value; });
   document.getElementById('sfAprobado').addEventListener('input', function(e){ s.aprobadoPor = e.target.value; });
 
@@ -5112,6 +5165,15 @@ function bindSemanalFormEvents(){
         var seleccion = Array.from(box.querySelectorAll('.contenidos-cb:checked')).map(function(x){ return x.value; });
         dia.contenidos = seleccion.join('; ');
         renderSemanalFormAgain();
+      });
+    });
+    ['basico','intermedio','avanzado'].forEach(function(tier){
+      var field = NIVEL_LOGRO_DIA_FIELD[tier];
+      box.querySelectorAll('.nivellogro-dia-cb[data-tier="'+tier+'"]').forEach(function(cb){
+        cb.addEventListener('change', function(){
+          var seleccion = Array.from(box.querySelectorAll('.nivellogro-dia-cb[data-tier="'+tier+'"]:checked')).map(function(x){ return x.value; });
+          dia[field] = seleccion.join('; ');
+        });
       });
     });
     box.querySelectorAll('.rte-editable').forEach(function(el){
@@ -5146,10 +5208,11 @@ function saveSemanal(s, silent){
     id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId),
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
-    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'', nivelLogro: s.nivelLogro||'',
+    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
     dias: (s.dias||[]).map(function(dia){
       return {
         id: dia.id, fecha: dia.fecha||'', contenidos: dia.contenidos||'',
+        nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
         actividades: sanitizeRte(dia.actividades||''), recursos: sanitizeRte(dia.recursos||''), evaluacion: sanitizeRte(dia.evaluacion||'')
       };
     }),
@@ -5351,7 +5414,7 @@ function buildPcaDocxXml(p, cont){
       rows.push(docxRow([
         docxCell(String(f.semana!=null?f.semana:''), {pct:contColPcts[0], align:'center'}),
         docxCell(fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin), {pct:contColPcts[1]}),
-        docxCell(richTextToPlain(f.destreza) || '', {pct:contColPcts[2]}),
+        docxCell(nivelLogroTextoCompleto(f) || '', {pct:contColPcts[2]}),
         docxCell(richTextToPlain(f.temas) || '', {pct:contColPcts[3]}),
         docxCell(f.pagina||'', {pct:contColPcts[4], align:'center'}),
         docxCell(computeEstadoSemana(f, p.id) || '', {pct:contColPcts[5]})
@@ -5533,7 +5596,7 @@ function buildPcaWordHtml(p, cont){
       return '<tr>'
       + '<td style="text-align:center;">'+escapeHtml(f.semana)+'</td>'
       + '<td>'+fmtDate(f.fechaInicio)+' al '+fmtDate(f.fechaFin)+'</td>'
-      + '<td>'+(f.destreza || '—')+'</td>'
+      + '<td>'+(nivelLogroHtmlCompleto(f) || '—')+'</td>'
       + '<td>'+(f.temas || '—')+'</td>'
       + '<td style="text-align:center;">'+escapeHtml(f.pagina)+'</td>'
       + '<td style="text-align:center;">'+escapeHtml(computeEstadoSemana(f, p.id) || '—')+'</td>'
@@ -5600,7 +5663,7 @@ function buildPcaMarkdown(p, cont){
     lines.push('| Semana | Fecha | Nivel de Logro | Temas y subtemas | Página | Observación |');
     lines.push('|---|---|---|---|---|---|');
     cont.filter(function(c){ return c.unidad===nombre; }).forEach(function(f){
-      lines.push('| ' + mdEsc(f.semana) + ' | ' + mdEsc(fmtDate(f.fechaInicio)+' al '+fmtDate(f.fechaFin)) + ' | ' + mdEsc(richTextToPlain(f.destreza)) + ' | ' + mdEsc(richTextToPlain(f.temas)) + ' | ' + mdEsc(f.pagina) + ' | ' + mdEsc(computeEstadoSemana(f, p.id)) + ' |');
+      lines.push('| ' + mdEsc(f.semana) + ' | ' + mdEsc(fmtDate(f.fechaInicio)+' al '+fmtDate(f.fechaFin)) + ' | ' + mdEsc(nivelLogroTextoCompleto(f)) + ' | ' + mdEsc(richTextToPlain(f.temas)) + ' | ' + mdEsc(f.pagina) + ' | ' + mdEsc(computeEstadoSemana(f, p.id)) + ' |');
     });
   });
   lines.push('');
@@ -5633,7 +5696,7 @@ function exportPcaExcel(pcaId){
   var lines = [];
   lines.push(['UNIDAD','SEMANA','FECHA INICIO','FECHA FIN','NIVEL DE LOGRO','TEMAS Y SUBTEMAS','PÁGINA','OBSERVACIÓN'].map(csvEsc).join(','));
   cont.forEach(function(f){
-    lines.push([f.unidad, f.semana, f.fechaInicio, f.fechaFin, richTextToPlain(f.destreza), richTextToPlain(f.temas), f.pagina, computeEstadoSemana(f, p.id)].map(csvEsc).join(','));
+    lines.push([f.unidad, f.semana, f.fechaInicio, f.fechaFin, nivelLogroTextoCompleto(f), richTextToPlain(f.temas), f.pagina, computeEstadoSemana(f, p.id)].map(csvEsc).join(','));
   });
   var csv = '﻿' + lines.join('\r\n');
 
@@ -5642,7 +5705,7 @@ function exportPcaExcel(pcaId){
     return l;
   });
   var txt = '﻿' + ['UNIDAD','SEMANA','FECHA INICIO','FECHA FIN','NIVEL DE LOGRO','TEMAS Y SUBTEMAS','PÁGINA','OBSERVACIÓN'].join('\t') + '\n'
-    + cont.map(function(f){ return [f.unidad,f.semana,f.fechaInicio,f.fechaFin,richTextToPlain(f.destreza),richTextToPlain(f.temas),f.pagina,computeEstadoSemana(f, p.id)].join('\t'); }).join('\n');
+    + cont.map(function(f){ return [f.unidad,f.semana,f.fechaInicio,f.fechaFin,nivelLogroTextoCompleto(f),richTextToPlain(f.temas),f.pagina,computeEstadoSemana(f, p.id)].join('\t'); }).join('\n');
 
   saveAttempts('CONTENIDOS_' + pcaDisplayName(p), [
     {ext:'csv', data:csv},
@@ -5666,13 +5729,14 @@ function buildSemanalDocxXml(s, d){
   ], [2500,2500]);
   body += docxPara('DATOS CURRICULARES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   body += docxTable([docxRow([
-    docxCell('Unidad Didáctica: ' + (s.unidadDidactica||'—'), {pct:3333}),
-    docxCell('Bloque Curricular: ' + (s.bloqueCurricular||'—'), {pct:3333}),
-    docxCell('Nivel de Logro: ' + (s.nivelLogro||'—'), {pct:3334})
-  ])], [3333,3333,3334]);
+    docxCell('Unidad Didáctica: ' + (s.unidadDidactica||'—'), {pct:5000/2}),
+    docxCell('Bloque Curricular: ' + (s.bloqueCurricular||'—'), {pct:5000/2})
+  ])], [5000/2,5000/2]);
   body += docxPara('DESARROLLO DE LAS CLASES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   (s.dias||[]).forEach(function(dia, i){
     body += docxPara('Día ' + (i+1) + ' — ' + fmtDate(dia.fecha), {bold:true, color:'FFFFFF', size:11, shd:'1848A0'});
+    body += docxPara('Niveles de Logro', {bold:true, size:10.5});
+    body += docxPara(nivelLogroDiaTexto(dia) || '—');
     body += docxPara('Contenidos Esenciales', {bold:true, size:10.5});
     body += docxPara(dia.contenidos||'—');
     body += docxPara('Actividades de Aprendizaje', {bold:true, size:10.5});
@@ -5718,6 +5782,7 @@ function buildSemanalDocxBlob(s, d){
 function buildSemanalWordHtml(s, d){
   function diaSection(dia, i){
     return '<h3 style="background:#1848A0; color:#fff; padding:8px 10px; margin:18px 0 0;">Día ' + (i+1) + ' — ' + fmtDate(dia.fecha) + '</h3>'
+      + '<p><strong>Niveles de Logro:</strong><br/>' + escapeHtml(nivelLogroDiaTexto(dia) || '—').replace(/\n/g,'<br/>') + '</p>'
       + '<p><strong>Contenidos Esenciales:</strong><br/>' + escapeHtml(dia.contenidos||'').replace(/\n/g,'<br/>') + '</p>'
       + '<p><strong>Actividades de Aprendizaje:</strong></p>' + (dia.actividades || '<p>—</p>')
       + '<p><strong>Recursos:</strong></p>' + (dia.recursos || '<p>—</p>')
@@ -5734,7 +5799,7 @@ function buildSemanalWordHtml(s, d){
   + '<p><strong>Nivel Educativo:</strong> ' + escapeHtml(s.nivel) + ' &nbsp; <strong>Especialidad:</strong> ' + escapeHtml(s.especialidad||'No aplica') + ' &nbsp; <strong>Curso/Grado:</strong> ' + escapeHtml(s.curso) + '</p>'
   + '<p><strong>Asignatura:</strong> ' + escapeHtml(s.asignatura) + ' &nbsp; <strong>Docente:</strong> ' + escapeHtml(nombreFormal(d)) + ' &nbsp; <strong>Fecha:</strong> ' + fmtDate(s.fechaInicio) + ' al ' + fmtDate(s.fechaFin) + '</p>'
   + '<h2 style="background:#F2B705; padding:8px;">Datos Curriculares</h2>'
-  + '<p><strong>Unidad Didáctica:</strong> ' + escapeHtml(s.unidadDidactica||'—') + ' &nbsp; <strong>Bloque Curricular:</strong> ' + escapeHtml(s.bloqueCurricular||'—') + ' &nbsp; <strong>Nivel de Logro:</strong> ' + escapeHtml(s.nivelLogro||'—') + '</p>'
+  + '<p><strong>Unidad Didáctica:</strong> ' + escapeHtml(s.unidadDidactica||'—') + ' &nbsp; <strong>Bloque Curricular:</strong> ' + escapeHtml(s.bloqueCurricular||'—') + '</p>'
   + '<h2 style="background:#F2B705; padding:8px;">Desarrollo de las Clases</h2>'
   + (s.dias||[]).map(diaSection).join('')
   + '<h2 style="background:#F2B705; padding:8px; margin-top:20px;">Firmas de Responsabilidad</h2>'
@@ -5759,12 +5824,12 @@ function buildSemanalMarkdown(s, d){
   lines.push('### Datos Curriculares');
   lines.push('- **Unidad Didáctica:** ' + (s.unidadDidactica||'—'));
   lines.push('- **Bloque Curricular:** ' + (s.bloqueCurricular||'—'));
-  lines.push('- **Nivel de Logro:** ' + (s.nivelLogro||'—'));
   lines.push('');
   lines.push('### Desarrollo de las Clases');
   (s.dias||[]).forEach(function(dia, i){
     lines.push('');
     lines.push('#### Día ' + (i+1) + ' — ' + fmtDate(dia.fecha));
+    lines.push('**Niveles de Logro:** ' + (nivelLogroDiaTexto(dia) || '—'));
     lines.push('**Contenidos Esenciales:** ' + (dia.contenidos||'—'));
     lines.push('');
     lines.push('**Actividades de Aprendizaje:**');
@@ -5804,14 +5869,14 @@ function exportSemanalExcel(semId){
   (s.dias||[]).forEach(function(dia){
     lines.push([
       s.nivel, s.especialidad, s.curso, s.asignatura, nombreFormal(d), s.fechaInicio, s.fechaFin,
-      s.unidadDidactica, s.bloqueCurricular, s.nivelLogro,
+      s.unidadDidactica, s.bloqueCurricular, nivelLogroDiaTexto(dia),
       dia.fecha, dia.contenidos, richTextToPlain(dia.actividades), richTextToPlain(dia.recursos), richTextToPlain(dia.evaluacion)
     ].map(csvEsc).join(','));
   });
   var csv = '﻿' + lines.join('\r\n');
   var txt = '﻿' + headCols.join('\t') + '\n'
     + (s.dias||[]).map(function(dia){
-        return [s.nivel,s.especialidad,s.curso,s.asignatura,nombreFormal(d),s.fechaInicio,s.fechaFin,s.unidadDidactica,s.bloqueCurricular,s.nivelLogro,dia.fecha,dia.contenidos,richTextToPlain(dia.actividades),richTextToPlain(dia.recursos),richTextToPlain(dia.evaluacion)].join('\t');
+        return [s.nivel,s.especialidad,s.curso,s.asignatura,nombreFormal(d),s.fechaInicio,s.fechaFin,s.unidadDidactica,s.bloqueCurricular,nivelLogroDiaTexto(dia),dia.fecha,dia.contenidos,richTextToPlain(dia.actividades),richTextToPlain(dia.recursos),richTextToPlain(dia.evaluacion)].join('\t');
       }).join('\n');
   saveAttempts('PLAN_SEMANAL_' + semanalDisplayName(s), [
     {ext:'csv', data:csv},
