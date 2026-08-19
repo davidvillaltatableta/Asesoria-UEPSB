@@ -111,6 +111,14 @@
     background:var(--surface-2); font-size:14.5px; color:var(--ink); width:100%; min-width:0;
   }
   .field textarea{resize:vertical; min-height:64px; font-family:var(--sans);}
+  /* La regla de arriba está pensada para inputs de texto/select/textarea; sin este reset, un
+     checkbox o radio dentro de un .field hereda width:100% + padding + fondo y se infla hasta
+     ocupar casi todo el ancho del contenedor (aplastando el texto de su etiqueta a una columna
+     casi de 0px de ancho — visible sobre todo con textos largos, como el checklist de Nivel de
+     Logro). */
+  .field input[type=checkbox], .field input[type=radio]{
+    width:auto; min-width:0; flex:0 0 auto; padding:0; border:none; background:none; border-radius:0;
+  }
   .field input:focus, .field select:focus, .field textarea:focus{
     outline:2px solid var(--blue-500); outline-offset:1px; border-color:var(--blue-500);
   }
@@ -294,9 +302,9 @@
   .checkbox-pill{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--line); border-radius:99px; padding:5px 10px 5px 8px; font-size:12px; font-weight:600; color:var(--ink); cursor:pointer; user-select:none; white-space:nowrap;}
   .checkbox-pill:has(input:checked){background:var(--blue-100); border-color:var(--blue-500); color:var(--blue-700);}
   .checkbox-pill input{accent-color:var(--blue-600); cursor:pointer; margin:0;}
-  .nivel-logro-pill{display:flex; align-items:flex-start; justify-content:flex-start; height:auto; white-space:normal; padding:10px 12px; width:100%; text-align:left; gap:10px;}
+  .nivel-logro-pill{display:flex; align-items:flex-start; justify-content:flex-start; height:auto; white-space:normal; padding:10px 12px; width:100%; text-align:left; gap:10px; border-radius:var(--radius-sm); box-sizing:border-box;}
   .nivel-logro-pill input{margin-top:3px; flex-shrink:0;}
-  .nivel-logro-pill span{flex:1; min-width:0; text-align:justify;}
+  .nivel-logro-pill span{flex:1 1 0%; min-width:0; text-align:justify; display:block;}
   .obs-opts{display:flex; flex-wrap:wrap; gap:6px;}
   .obs-table{table-layout:fixed;}
   .obs-table td, .obs-table th{vertical-align:middle;}
@@ -331,6 +339,20 @@
     .unit-block{page-break-inside:avoid;}
     .pca-band{page-break-after:avoid;}
     .signature-grid{page-break-inside:avoid;}
+    /* Los select/input/textarea dentro de tablas usan un min-width fijo en pantalla para que sean
+       cómodos de editar; al imprimir eso hace que se desborden de celdas angostas. En los
+       documentos imprimibles (PCA, Plan Semanal, Observación, DECE) se quita ese mínimo y se
+       fuerza el contenido a envolver dentro del ancho real de la celda. */
+    .pca-doc table, .obs-doc table, .dece-doc table{table-layout:fixed;}
+    .pca-doc td, .pca-doc th, .obs-doc td, .obs-doc th, .dece-doc td, .dece-doc th{word-break:break-word; overflow-wrap:break-word; white-space:normal;}
+    .pca-doc .cell-input, .pca-doc .cell-select, .pca-doc .cell-textarea,
+    .obs-doc .cell-input, .obs-doc .cell-select, .obs-doc .cell-textarea,
+    .dece-doc .cell-input, .dece-doc .cell-select, .dece-doc .cell-textarea{
+      min-width:0 !important; width:100% !important; box-sizing:border-box; border-color:var(--line); background:transparent;
+    }
+    .pca-doc select.cell-select, .obs-doc select.cell-select, .dece-doc select.cell-select{-webkit-appearance:none; appearance:none;}
+    .rte-editable{overflow:visible; min-height:0;}
+    .rte-toolbar{display:none !important;}
     /* Los manuales van en A4 vertical (el resto del sistema imprime en horizontal): esta "página
        con nombre" es la única forma en CSS de tener una orientación distinta dentro del mismo
        documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
@@ -420,13 +442,15 @@ var LS = {
   ASISTENCIA: 'ASISTENCIA',
   INCIDENTES: 'INCIDENTES',
   OBSERVACIONES: 'OBSERVACIONES',
-  DECE: 'DECE'
+  DECE: 'DECE',
+  ALERTAS_DECE: 'ALERTAS_DECE'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
-  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece'
+  ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece',
+  ALERTAS_DECE: 'alertasdece'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], ALERTAS_DECE: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -1113,6 +1137,7 @@ var NAV_GROUPS = [
     {key:'inspeccion', label:'Inspección General', ic:'🧭', adminOnly:true}
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
+    {key:'alertadece', label:'Alertar al DECE', ic:'🚨'},
     {key:'dece', label:'Casos DECE', ic:'🧑‍⚕️', adminOnly:true}
   ]},
   {label:'Administración y Base de Datos', hue:'rose', items:[
@@ -1169,6 +1194,7 @@ function renderShell(){
   else if(state.subview === 'inspeccion') sub = renderInspeccion(d);
   else if(state.subview === 'observacion') sub = renderObservacion(d);
   else if(state.subview === 'dece') sub = renderDece(d);
+  else if(state.subview === 'alertadece') sub = renderAlertaDece(d);
   else sub = renderDashboard(d);
 
   return ''
@@ -1223,6 +1249,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'inspeccion') bindInspeccionEvents();
   else if(state.subview === 'observacion') bindObservacionEvents();
   else if(state.subview === 'dece') bindDeceEvents();
+  else if(state.subview === 'alertadece') bindAlertaDeceEvents();
   else bindDashboardEvents();
 }
 
@@ -1267,10 +1294,16 @@ async function doSavePerfil(){
     }catch(err){ return fail(mapAuthError(err)); }
   }
 
-  d.titulo = titulo; d.nombres = nombres; d.apellidos = apellidos; d.ci = ci; d.telefono = telefono;
-  d.usuarioId = usuarioId;
+  /* No mutar `d` directamente: currentDocente() devuelve la MISMA referencia que vive en
+     FS_CACHE.DOCENTES, así que mutarla antes de save() hace que el detector de cambios compare
+     el registro contra sí mismo (ya mutado) y no vea diferencia — el cambio nunca se escribe a
+     Firestore, aunque la UI muestre "guardado" porque la caché local sí quedó actualizada. Hay
+     que construir un objeto nuevo. */
+  var toSave = Object.assign({}, d, {
+    titulo: titulo, nombres: nombres, apellidos: apellidos, ci: ci, telefono: telefono, usuarioId: usuarioId
+  });
 
-  save(LS.DOCENTES, docentes.map(function(x){ return x.id === d.id ? d : x; }));
+  save(LS.DOCENTES, docentes.map(function(x){ return x.id === d.id ? toSave : x; }));
   render();
   toast('Tus datos se actualizaron correctamente.', 'success');
 }
@@ -1658,7 +1691,28 @@ function bindInspeccionEvents(){
 /* --- Inspección · Estudiantes --- */
 function blankEstudiante(){
   return {id:uid('est'), nombres:'', apellidos:'', ci:'', nivel:'', especialidad:'', curso:'', cursoManual:'',
-    nombreRepresentante:'', telefonoRepresentante:'', emailRepresentante:'', estado:'Activo', observaciones:''};
+    nombreRepresentante:'', telefonoRepresentante:'', emailRepresentante:'', estado:'Activo', observaciones:'', foto:''};
+}
+/* Lee cualquier archivo de imagen (jpg, png, webp, heic si el navegador lo soporta, etc.), lo
+   redimensiona a tamaño carnet y lo comprime a JPEG antes de guardarlo como base64 en Firestore
+   (no hay almacenamiento de archivos aparte en esta app). */
+function resizeImageFileToDataUrl(file, maxW, maxH, quality, callback){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var img = new Image();
+    img.onload = function(){
+      var ratio = Math.min(maxW/img.width, maxH/img.height, 1);
+      var w = Math.max(1, Math.round(img.width*ratio)), h = Math.max(1, Math.round(img.height*ratio));
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      callback(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = function(){ callback(null); };
+    img.src = ev.target.result;
+  };
+  reader.onerror = function(){ callback(null); };
+  reader.readAsDataURL(file);
 }
 function renderInspEstudiantes(){
   var view = state.inspEstView || 'lista';
@@ -1685,7 +1739,7 @@ function renderInspEstudiantesLista(){
   });
   var rows = filtrados.map(function(e){
     return '<tr>'
-    + '<td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>'
+    + '<td>' + (e.foto ? '<img src="'+e.foto+'" alt="" style="width:32px; height:40px; object-fit:cover; border-radius:4px; border:1px solid var(--line); vertical-align:middle; margin-right:8px;" />' : '<span style="display:inline-block; width:32px; height:40px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); vertical-align:middle; margin-right:8px;"></span>') + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>'
     + '<td>' + escapeHtml(e.nivel) + (e.especialidad?' · '+escapeHtml(e.especialidad):'') + '</td>'
     + '<td>' + escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso) + '</td>'
     + '<td>' + escapeHtml(e.nombreRepresentante||'—') + '</td>'
@@ -1736,6 +1790,17 @@ function renderInspEstudianteForm(){
   + '<div class="card">'
   + '  <h2>' + (isEdit ? 'Editar estudiante' : 'Nuevo estudiante') + '</h2>'
   + '  <div class="form-error" id="estError"></div>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Foto tipo carnet</label>'
+  + '      <div style="display:flex; align-items:center; gap:12px;">'
+  + (e.foto ? '<img id="estFotoPreview" src="'+e.foto+'" alt="" style="width:70px; height:90px; object-fit:cover; border-radius:6px; border:1px solid var(--line-strong);" />' : '<div id="estFotoPreview" style="width:70px; height:90px; border-radius:6px; border:1px dashed var(--line-strong); background:var(--surface-2); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:22px;">👤</div>')
+  + '        <div style="display:flex; flex-direction:column; gap:6px;">'
+  + '          <input type="file" accept="image/*" id="estFotoInput" class="no-print" />'
+  + (e.foto ? '<button type="button" class="btn btn-ghost btn-sm" id="btnEstFotoQuitar" style="width:fit-content;">Quitar foto</button>' : '')
+  + '        </div>'
+  + '      </div>'
+  + '    </div>'
+  + '  </div>'
   + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input class="cell-input" id="estNombres" value="'+escapeHtml(e.nombres)+'" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input class="cell-input" id="estApellidos" value="'+escapeHtml(e.apellidos)+'" /></div></div>'
   + '  <div class="field-row"><div class="field"><label>Cédula</label><input class="cell-input" id="estCI" maxlength="10" value="'+escapeHtml(e.ci||'')+'" /></div><div class="field"><label>Estado</label><select class="cell-select" id="estEstado">' + optionsHtml(['Activo','Inactivo'], e.estado||'Activo', null) + '</select></div></div>'
   + '  <div class="field-row">'
@@ -1756,6 +1821,18 @@ function renderInspEstudianteForm(){
 }
 function bindInspEstudianteFormEvents(){
   var e = state.editingEstudiante;
+  document.getElementById('estFotoInput').onchange = function(ev){
+    var file = ev.target.files && ev.target.files[0];
+    if(!file) return;
+    if(file.size > 15*1024*1024){ toast('La imagen es demasiado grande (máx. 15 MB).', 'error'); return; }
+    resizeImageFileToDataUrl(file, 220, 280, 0.82, function(dataUrl){
+      if(!dataUrl){ toast('No se pudo procesar la imagen.', 'error'); return; }
+      e.foto = dataUrl;
+      render();
+    });
+  };
+  var quitarFotoBtn = document.getElementById('btnEstFotoQuitar');
+  if(quitarFotoBtn) quitarFotoBtn.onclick = function(){ e.foto = ''; render(); };
   document.getElementById('estNombres').oninput = function(ev){ e.nombres = ev.target.value; };
   document.getElementById('estApellidos').oninput = function(ev){ e.apellidos = ev.target.value; };
   document.getElementById('estCI').oninput = function(ev){ e.ci = ev.target.value; };
@@ -3073,38 +3150,52 @@ function renderDeceForm(){
       + '</div>';
   }).join('') || '<div class="hint" style="padding:6px 0 14px;">Todavía no hay seguimientos registrados.</div>';
 
+  var firmante = currentDocente();
   return ''
-  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnDecePrint" title="Genera un PDF en A4 horizontal">PDF ✓</button><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
   + '<div class="form-error no-print" id="dcError" style="margin-bottom:10px;"></div>'
-  + '<div class="card">'
-  + '  <h2>Caso de Consejería Estudiantil</h2>'
-  + '  <div class="card-sub">La información de este caso es confidencial. Solo la puede ver personal de Administración, Directivos y DECE.</div>'
-  + '  <div class="pca-band band-section" style="margin:16px -22px 14px;">Datos del estudiante</div>'
-  + '  <div class="grid-3">'
-  + '    <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="dcNivel">' + optionsHtml(NIVELES, c.nivel, 'Elija un elemento…') + '</select></div>'
-  + '    <div class="field"><label>Curso</label><select class="cell-select" id="dcCurso" '+(c.nivel?'':'disabled')+'>' + optionsHtml(cursoOpts.concat(['Otro…']), c.curso, c.nivel?'Elija un elemento…':'Elija primero el nivel') + '</select></div>'
-  + '    <div class="field"><label>Estudiante</label>' + (c.curso==='Otro…'
+  + '<div class="pca-doc dece-doc" id="dcDoc">'
+  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+  + '  <div class="pca-band band-title">FICHA DE CASO · DEPARTAMENTO DE CONSEJERÍA ESTUDIANTIL (DECE)</div>'
+  + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">La información de este caso es confidencial. Solo la puede ver personal de Administración, Directivos y DECE.</div></div>'
+  + '  <div class="pca-band band-section">Datos del estudiante</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-3">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="dcNivel">' + optionsHtml(NIVELES, c.nivel, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Curso</label><select class="cell-select" id="dcCurso" '+(c.nivel?'':'disabled')+'>' + optionsHtml(cursoOpts.concat(['Otro…']), c.curso, c.nivel?'Elija un elemento…':'Elija primero el nivel') + '</select></div>'
+  + '      <div class="field"><label>Estudiante</label>' + (c.curso==='Otro…'
         ? '<input class="cell-input" id="dcEstudianteManual" value="'+escapeHtml(c.estudianteManual||'')+'" placeholder="Nombre del estudiante" />'
         : '<select class="cell-select" id="dcEstudiante" '+(estudiantesOpts.length?'':'disabled')+'>' + estudianteOptsHtml + '</select>') + '</div>'
+  + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Datos del caso</div>'
-  + '  <div class="grid-3">'
-  + '    <div class="field"><label>Fecha de apertura</label><input class="cell-input" type="date" id="dcFecha" value="'+escapeHtml(c.fecha)+'" /></div>'
-  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcEstado">' + optionsHtml(DECE_ESTADOS, c.estado, null) + '</select></div>'
-  + '    <div class="field"><label>Atendido por</label><input class="cell-input" id="dcAtendidoPor" value="'+escapeHtml(c.atendidoPor||'')+'" /></div>'
+  + '  <div class="pca-band band-section">Datos del caso</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-3">'
+  + '      <div class="field"><label>Fecha de apertura</label><input class="cell-input" type="date" id="dcFecha" value="'+escapeHtml(c.fecha)+'" /></div>'
+  + '      <div class="field"><label>Estado</label><select class="cell-select" id="dcEstado">' + optionsHtml(DECE_ESTADOS, c.estado, null) + '</select></div>'
+  + '      <div class="field"><label>Atendido por</label><input class="cell-input" id="dcAtendidoPor" value="'+escapeHtml(c.atendidoPor||'')+'" /></div>'
+  + '    </div>'
+  + '    <div class="field" style="margin-top:14px;"><label>Tipo de caso</label>' + tipoHtml + '</div>'
+  + '    <div class="field" style="margin-top:14px;"><label>Descripción / motivo (confidencial)</label>' + richEditorHtml('descripcion', c.id, c.descripcion, 'Describe la situación del caso…') + '</div>'
+  + '    <div class="field" style="margin-top:14px;"><label>Acciones tomadas</label>' + richEditorHtml('accionesTomadas', c.id, c.accionesTomadas, 'Registra las acciones realizadas…') + '</div>'
   + '  </div>'
-  + '  <div class="field" style="margin-top:14px;"><label>Tipo de caso</label>' + tipoHtml + '</div>'
-  + '  <div class="field" style="margin-top:14px;"><label>Descripción / motivo (confidencial)</label>' + richEditorHtml('descripcion', c.id, c.descripcion, 'Describe la situación del caso…') + '</div>'
-  + '  <div class="field" style="margin-top:14px;"><label>Acciones tomadas</label>' + richEditorHtml('accionesTomadas', c.id, c.accionesTomadas, 'Registra las acciones realizadas…') + '</div>'
-  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Bitácora de seguimientos</div>'
-  + '  <div id="dcSeguimientosWrap">' + seguimientosHtml + '</div>'
-  + '  <button class="btn btn-ghost btn-sm" id="btnDeceAddSeguimiento">+ Agregar seguimiento</button>'
-  + '  <div class="pca-band band-section" style="margin:20px -22px 14px;">Derivación externa</div>'
-  + '  <div class="field-row">'
-  + '    <div class="field"><label class="checkbox-pill" style="display:inline-flex;"><input type="checkbox" id="dcDerivActiva" ' + (c.derivacionActiva?'checked':'') + ' /> Este caso fue derivado a una institución externa</label></div>'
+  + '  <div class="pca-band band-section">Bitácora de seguimientos</div>'
+  + '  <div class="pca-section">'
+  + '    <div id="dcSeguimientosWrap">' + seguimientosHtml + '</div>'
+  + '    <button class="btn btn-ghost btn-sm no-print" id="btnDeceAddSeguimiento">+ Agregar seguimiento</button>'
   + '  </div>'
-  + (c.derivacionActiva ? '  <div class="field"><label>Institución / profesional de derivación</label><input class="cell-input" id="dcDerivInstitucion" value="'+escapeHtml(c.derivacionInstitucion||'')+'" /></div>' : '')
-  + '  <div style="display:flex; gap:10px; margin-top:20px; align-items:center;">'
+  + '  <div class="pca-band band-section">Derivación externa</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="field-row">'
+  + '      <div class="field"><label class="checkbox-pill" style="display:inline-flex;"><input type="checkbox" id="dcDerivActiva" ' + (c.derivacionActiva?'checked':'') + ' /> Este caso fue derivado a una institución externa</label></div>'
+  + '    </div>'
+  + (c.derivacionActiva ? '    <div class="field"><label>Institución / profesional de derivación</label><input class="cell-input" id="dcDerivInstitucion" value="'+escapeHtml(c.derivacionInstitucion||'')+'" /></div>' : '')
+  + '  </div>'
+  + '  <div class="pca-band band-section">Firmas</div>'
+  + '  <div class="signature-grid">'
+  + '    <div class="signature-box"><div class="role">Encargado del caso</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(nombreFormal(firmante)) + '</div><div class="hint">CI: ' + escapeHtml(firmante.ci||'—') + '</div></div>'
+  + '  </div>'
+  + '  <div class="no-print" style="display:flex; gap:10px; padding:0 20px 20px; align-items:center;">'
   + (existsInDb ? '<button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar caso</button>' : '')
   + '  </div>'
   + '</div>';
@@ -3112,6 +3203,7 @@ function renderDeceForm(){
 function bindDeceFormEvents(){
   var c = state.editingDece;
   document.getElementById('btnDeceVolver').onclick = function(){ state.editingDece=null; state.deceView='lista'; render(); };
+  document.getElementById('btnDecePrint').onclick = printAsPdf;
   document.getElementById('btnDeceGuardar').onclick = doSaveDeceCaso;
 
   document.getElementById('dcNivel').onchange = function(e){ c.nivel = e.target.value; c.curso=''; c.estudianteId=''; c.estudianteManual=''; render(); };
@@ -3136,7 +3228,7 @@ function bindDeceFormEvents(){
     var key = el.getAttribute('data-rte-field');
     el.addEventListener('input', function(){ c[key] = el.innerHTML; });
   });
-  bindRteToolbars(document.querySelector('.card'));
+  bindRteToolbars(document.getElementById('dcDoc'));
 
   document.querySelectorAll('[data-seg-fecha]').forEach(function(el){
     el.addEventListener('input', function(){
@@ -3196,6 +3288,180 @@ function doSaveDeceCaso(){
   save(LS.DECE, exists ? all.map(function(x){ return x.id===c.id?toSave:x; }) : all.concat([toSave]));
   state.editingDece=null; state.deceView='lista'; render();
   toast('Caso guardado correctamente.', 'success');
+}
+
+/* ============================= ALERTA AL DECE (docente) =============================
+   A diferencia de los Casos DECE (exclusivos de personal administrativo), cualquier docente
+   puede crear una Alerta para notificar al DECE sobre una situación de un estudiante. El docente
+   ve y crea solo las suyas, y una vez guardada queda bloqueada para él (igual que PCA/Plan
+   Semanal); el personal de Administración/Directivos/DECE ve y gestiona todas. Como el docente
+   no tiene acceso a la colección de estudiantes de Inspección General, el nombre del estudiante
+   se escribe en texto libre. */
+var ALERTA_ESTADOS = ['Nueva','En revisión','Atendida','Derivada a caso'];
+function blankAlertaDece(){
+  return {
+    id: uid('alerta'), fecha: todayISO(),
+    nivel:'', especialidad:'', curso:'', cursoManual:'',
+    estudianteNombre:'', datosRelevantes:'',
+    estado:'Nueva',
+    docenteId:'', docenteNombreFormal:'', docenteCi:'',
+    createdAt:'', updatedAt:''
+  };
+}
+function alertaEstadoPillHtml(estado){
+  if(estado==='Atendida') return '<span class="pill pill-green">Atendida</span>';
+  if(estado==='En revisión') return '<span class="pill pill-blue">En revisión</span>';
+  if(estado==='Derivada a caso') return '<span class="pill pill-gold">Derivada a caso</span>';
+  return '<span class="pill pill-muted">Nueva</span>';
+}
+function renderAlertaDece(d){
+  return (state.alertaDeceView === 'form') ? renderAlertaDeceForm(d) : renderAlertaDeceLista(d);
+}
+function bindAlertaDeceEvents(){
+  if(state.alertaDeceView === 'form') bindAlertaDeceFormEvents();
+  else bindAlertaDeceListaEvents();
+}
+function renderAlertaDeceLista(d){
+  var isStaff = isStaffRole(d.role);
+  var todos = load(LS.ALERTAS_DECE).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+  var propias = isStaff ? todos : todos.filter(function(a){ return a.docenteId===d.id; });
+  var rows = propias.map(function(a){
+    return '<tr>'
+      + '<td class="tabular">' + fmtDate(a.fecha) + '</td>'
+      + (isStaff ? '<td>' + escapeHtml(a.docenteNombreFormal||'—') + '</td>' : '')
+      + '<td>' + escapeHtml(a.estudianteNombre||'—') + '</td>'
+      + '<td>' + escapeHtml(a.nivel||'—') + (a.curso ? ' · '+escapeHtml(a.curso==='Otro…'?a.cursoManual:a.curso) : '') + '</td>'
+      + '<td>' + alertaEstadoPillHtml(a.estado) + '</td>'
+      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-alerta-open="'+a.id+'">' + (isStaff?'Abrir':'Ver') + '</button>' + (isStaff ? ' <button class="btn btn-danger btn-sm" data-alerta-delete="'+a.id+'">Eliminar</button>' : '') + '</td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="'+(isStaff?6:5)+'" class="hint">Todavía no hay alertas registradas' + (isStaff?'.':' de tu parte.') + '</td></tr>';
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>' + (isStaff ? 'Alertas recibidas' : 'Mis alertas al DECE') + '</h1><p>' + (isStaff ? 'Alertas enviadas por los docentes sobre situaciones de estudiantes.' : 'Notifica al DECE sobre una situación que requiere atención. Una vez guardada, la alerta queda registrada y no puede editarse.') + '</p></div></div>'
+  + '<div class="card">'
+  + '  <button class="btn btn-primary btn-sm" id="btnAlertaNueva" style="margin-bottom:14px;">+ Nueva alerta</button>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th>' + (isStaff?'<th>Docente</th>':'') + '<th>Estudiante</th><th>Nivel / Curso</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '</div>';
+}
+function bindAlertaDeceListaEvents(){
+  document.getElementById('btnAlertaNueva').onclick = function(){ state.editingAlertaDece = blankAlertaDece(); state.alertaDeceView='form'; render(); };
+  document.querySelectorAll('[data-alerta-open]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.ALERTAS_DECE).find(function(x){ return x.id===btn.getAttribute('data-alerta-open'); });
+      if(target){ state.editingAlertaDece = Object.assign({}, target); state.alertaDeceView='form'; render(); }
+    };
+  });
+  document.querySelectorAll('[data-alerta-delete]').forEach(function(btn){
+    btn.onclick = function(){
+      confirmDialog('¿Eliminar esta alerta? Esta acción no se puede deshacer.', function(){
+        save(LS.ALERTAS_DECE, load(LS.ALERTAS_DECE).filter(function(x){ return x.id!==btn.getAttribute('data-alerta-delete'); }));
+        toast('Alerta eliminada.', 'success');
+        render();
+      });
+    };
+  });
+}
+function renderAlertaDeceForm(d){
+  var a = state.editingAlertaDece || blankAlertaDece();
+  state.editingAlertaDece = a;
+  var isStaff = isStaffRole(d.role);
+  var existsInDb = load(LS.ALERTAS_DECE).some(function(x){ return x.id===a.id; });
+  var editable = isStaff || !existsInDb;
+  var espOpts = especialidadesFor(a.nivel);
+  var cursoOpts = cursosFor(a.nivel, a.especialidad);
+  var firmanteNombre = a.docenteNombreFormal || nombreFormal(currentDocente());
+  var firmanteCi = a.docenteCi || currentDocente().ci || '—';
+
+  return ''
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnAlertaVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnAlertaPrint" title="Genera un PDF en A4 horizontal">PDF ✓</button>' + (editable ? '<button class="btn btn-primary btn-sm" id="btnAlertaGuardar">Guardar</button>' : '') + '</div>'
+  + (editable ? '<div class="form-error no-print" id="alertaError" style="margin-bottom:10px;"></div>' : '<div class="lock-banner no-print">🔒 Esta alerta ya fue enviada y no puede editarse. Si necesitas corregirla, contacta al DECE.</div>')
+  + '<div class="pca-doc dece-doc" id="alertaDoc">'
+  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+  + '  <div class="pca-band band-title">ALERTA AL DEPARTAMENTO DE CONSEJERÍA ESTUDIANTIL (DECE)</div>'
+  + '  <div class="pca-band band-section">Datos informativos</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-3">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="alNivel" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, a.nivel, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Especialidad</label><select class="cell-select" id="alEspecialidad" '+((espOpts.length&&editable)?'':'disabled')+'>' + optionsHtml(espOpts, a.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '      <div class="field"><label>Curso / Grado</label><select class="cell-select" id="alCurso" '+(editable?'':'disabled')+'>' + optionsHtml(cursoOpts.concat(['Otro…']), a.curso, 'Elija un elemento…') + '</select>' + (a.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="alCursoManual" value="'+escapeHtml(a.cursoManual||'')+'" placeholder="Especifica" '+(editable?'':'disabled')+' />' : '') + '</div>'
+  + '    </div>'
+  + '    <div class="grid-3" style="margin-top:14px;">'
+  + '      <div class="field"><label>Estudiante</label><input class="cell-input" id="alEstudiante" value="'+escapeHtml(a.estudianteNombre||'')+'" placeholder="Nombre del estudiante" '+(editable?'':'readonly')+' /></div>'
+  + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="alFecha" value="'+escapeHtml(a.fecha)+'" '+(editable?'':'disabled')+' /></div>'
+  + '      <div class="field"><label>Estado</label><select class="cell-select" id="alEstado" '+(isStaff?'':'disabled')+'>' + optionsHtml(ALERTA_ESTADOS, a.estado, null) + '</select></div>'
+  + '    </div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">Datos relevantes</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="field">' + richEditorHtml('datosRelevantes', a.id, a.datosRelevantes, 'Describe la situación observada, el contexto y cualquier información relevante para el DECE…') + '</div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">Firma</div>'
+  + '  <div class="signature-grid" style="grid-template-columns:1fr;">'
+  + '    <div class="signature-box"><div class="role">Docente que reporta</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(firmanteNombre) + '</div><div class="hint">CI: ' + escapeHtml(firmanteCi) + '</div></div>'
+  + '  </div>'
+  + '</div>';
+}
+function bindAlertaDeceFormEvents(){
+  var a = state.editingAlertaDece;
+  var d = currentDocente();
+  var isStaff = isStaffRole(d.role);
+  var existsInDb = load(LS.ALERTAS_DECE).some(function(x){ return x.id===a.id; });
+  var editable = isStaff || !existsInDb;
+
+  document.getElementById('btnAlertaVolver').onclick = function(){ state.editingAlertaDece=null; state.alertaDeceView='lista'; render(); };
+  document.getElementById('btnAlertaPrint').onclick = printAsPdf;
+
+  if(!editable){
+    document.querySelectorAll('#alertaDoc input, #alertaDoc select, #alertaDoc textarea, #alertaDoc button').forEach(function(el){ el.disabled = true; });
+    document.querySelectorAll('#alertaDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
+    return;
+  }
+
+  var guardarBtn = document.getElementById('btnAlertaGuardar');
+  if(guardarBtn) guardarBtn.onclick = doSaveAlertaDece;
+
+  var nivelSel = document.getElementById('alNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ a.nivel = e.target.value; a.especialidad=''; a.curso=''; a.cursoManual=''; render(); };
+  var espSel = document.getElementById('alEspecialidad');
+  if(espSel) espSel.onchange = function(e){ a.especialidad = e.target.value; a.curso=''; a.cursoManual=''; render(); };
+  var cursoSel = document.getElementById('alCurso');
+  if(cursoSel) cursoSel.onchange = function(e){ a.curso = e.target.value; if(a.curso!=='Otro…') a.cursoManual=''; render(); };
+  var cursoManual = document.getElementById('alCursoManual');
+  if(cursoManual) cursoManual.oninput = function(e){ a.cursoManual = e.target.value; };
+  document.getElementById('alEstudiante').oninput = function(e){ a.estudianteNombre = e.target.value; };
+  document.getElementById('alFecha').oninput = function(e){ a.fecha = e.target.value; };
+  var estadoSel = document.getElementById('alEstado');
+  if(estadoSel) estadoSel.onchange = function(e){ a.estado = e.target.value; };
+
+  document.querySelectorAll('.rte-editable').forEach(function(el){
+    var key = el.getAttribute('data-rte-field');
+    el.addEventListener('input', function(){ a[key] = el.innerHTML; });
+  });
+  bindRteToolbars(document.getElementById('alertaDoc'));
+
+  document.getElementById('alertaError').classList.remove('show');
+}
+function doSaveAlertaDece(){
+  var a = state.editingAlertaDece;
+  var errEl = document.getElementById('alertaError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!a.fecha || !a.nivel || !a.curso || !(a.estudianteNombre||'').trim()) return fail('Completa la fecha, el nivel, el curso y el nombre del estudiante.');
+  if(a.curso==='Otro…' && !(a.cursoManual||'').trim()) return fail('Especifica el curso.');
+  var d = currentDocente();
+  var isNew = !load(LS.ALERTAS_DECE).some(function(x){ return x.id===a.id; });
+  var toSave = Object.assign({}, a, {
+    datosRelevantes: sanitizeRte(a.datosRelevantes),
+    docenteId: a.docenteId || d.id,
+    docenteNombreFormal: a.docenteNombreFormal || nombreFormal(d),
+    docenteCi: a.docenteCi || d.ci || '',
+    createdAt: a.createdAt || nowISO(), updatedAt: nowISO()
+  });
+  var all = load(LS.ALERTAS_DECE);
+  var exists = all.some(function(x){ return x.id===a.id; });
+  save(LS.ALERTAS_DECE, exists ? all.map(function(x){ return x.id===a.id?toSave:x; }) : all.concat([toSave]));
+  state.editingAlertaDece=null; state.alertaDeceView='lista'; render();
+  if(isNew && !isStaffRole(d.role)) toast('Alerta enviada al DECE. Quedará registrada y ya no podrás editarla.', 'success');
+  else toast('Alerta actualizada correctamente.', 'success');
 }
 
 /* ============================= CARGA HORARIA ============================= */
@@ -3564,6 +3830,25 @@ function bindAdminFiltroBarraEvents(filtro, idPrefix){
 function renderPcaList(d){ return renderPcaListInner(d, false); }
 function renderAdminPca(){ return renderPcaListInner(currentDocente(), true); }
 
+/* Agrupa una lista de registros con docenteId (PCA, Planes Semanales, etc.) por docente, en
+   orden alfabético apellidos+nombres; los registros cuyo docente ya no existe quedan al final. */
+function groupByDocente(records, docentesById){
+  var groups = {}; var order = [];
+  records.forEach(function(r){
+    var key = r.docenteId || '__sin__';
+    if(!groups[key]){ groups[key] = {docenteId: r.docenteId, docente: docentesById[r.docenteId], items: []}; order.push(key); }
+    groups[key].items.push(r);
+  });
+  var list = order.map(function(k){ return groups[k]; });
+  list.sort(function(a,b){
+    if(!a.docente && !b.docente) return 0;
+    if(!a.docente) return 1;
+    if(!b.docente) return -1;
+    return (a.docente.apellidos+a.docente.nombres).localeCompare(b.docente.apellidos+b.docente.nombres);
+  });
+  return list;
+}
+
 function renderPcaListInner(d, scopeAll){
   var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.PCA);
@@ -3586,15 +3871,12 @@ function renderPcaListInner(d, scopeAll){
     filtroHtml = adminFiltroBarraHtml(filtro, 'apf', 'Curso (7.º EGB a 3.º BGU)');
   }
 
-  var rows = pcas.map(function(p){
+  function pcaRowHtml(p){
     var nombre = (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '(sin asignatura)';
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
     var lockedForViewer = !!p.locked && !isAdmin;
-    var owner = scopeAll ? docentesById[p.docenteId] : null;
-    var docenteCell = scopeAll ? '<td>' + (owner ? escapeHtml(owner.nombres) + ' ' + escapeHtml(owner.apellidos) : '<span class="hint">(docente eliminado)</span>') + '</td>' : '';
     return ''
     + '<tr>'
-    + docenteCell
     + '  <td><strong>' + escapeHtml(nombre) + '</strong>' + (p.locked ? ' <span class="pill pill-muted" title="Bloqueado para el docente">🔒</span>' : '') + '</td>'
     + '  <td>' + escapeHtml(p.nivel||'—') + (p.especialidad? '<br/><span class="pill pill-blue">'+escapeHtml(p.especialidad)+'</span>':'') + '</td>'
     + '  <td>' + escapeHtml(curso) + '</td>'
@@ -3608,17 +3890,27 @@ function renderPcaListInner(d, scopeAll){
     + (isAdmin ? '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>' : '')
     + '  </td>'
     + '</tr>';
-  }).join('');
+  }
 
-  var theadDocente = scopeAll ? '<th>Docente</th>' : '';
+  var rows;
+  if(scopeAll){
+    rows = groupByDocente(pcas, docentesById).map(function(g){
+      var nombre = g.docente ? (escapeHtml(g.docente.nombres) + ' ' + escapeHtml(g.docente.apellidos)) : '(docente eliminado)';
+      return '<tr class="group-head-row"><td colspan="6">' + nombre + ' <span class="hint">(' + g.items.length + (g.items.length===1?' plan':' planes') + ')</span></td></tr>'
+        + g.items.map(pcaRowHtml).join('');
+    }).join('');
+  } else {
+    rows = pcas.map(pcaRowHtml).join('');
+  }
+
   var head = scopeAll
-    ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan, incluidos los bloqueados para los docentes.</p>'
+    ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan, incluidos los bloqueados para los docentes.</p>'
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div>';
 
   return head + filtroHtml
   + (pcas.length === 0
       ? '<div class="card"><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
-      : '<div class="card"><div class="table-wrap"><table><thead><tr>' + theadDocente + '<th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
+      : '<div class="card"><div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
 }
 function bindPcaListEvents(){
   ['btnNewPca','btnNewPca2'].forEach(function(id){
@@ -4849,12 +5141,22 @@ function docxCell(text, opts){
   return '<w:tc>' + tcPr + docxPara(text, {bold:opts.bold, color:opts.color, align:opts.align, before:20, after:20}) + '</w:tc>';
 }
 function docxRow(cells){ return '<w:tr>' + cells.join('') + '</w:tr>'; }
-function docxTable(rows){
+function docxTable(rows, colPcts){
+  /* Word necesita <w:tblGrid> con el ancho de cada columna (en twips) para respetar las
+     proporciones de w:tcW pct; sin esto, algunas versiones de Word ignoran los anchos por celda y
+     el texto largo (p.ej. Nivel de Logro, Temas y subtemas) se ve apretado en columnas angostas.
+     Se calcula a partir de los pct de la primera fila (out of 5000 = 100%) sobre un ancho de
+     página horizontal A4 tipo, ~10800 twips de contenido. */
+  var pageWidthTwips = 10800;
+  var gridColsXml = '';
+  if(colPcts && colPcts.length){
+    gridColsXml = colPcts.map(function(pct){ return '<w:gridCol w:w="' + Math.round(pct/5000*pageWidthTwips) + '"/>'; }).join('');
+  }
   return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>'
     + '<w:top w:val="single" w:sz="4" w:color="C3CEE3"/><w:left w:val="single" w:sz="4" w:color="C3CEE3"/>'
     + '<w:bottom w:val="single" w:sz="4" w:color="C3CEE3"/><w:right w:val="single" w:sz="4" w:color="C3CEE3"/>'
     + '<w:insideH w:val="single" w:sz="4" w:color="C3CEE3"/><w:insideV w:val="single" w:sz="4" w:color="C3CEE3"/>'
-    + '</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid/>'
+    + '</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + gridColsXml + '</w:tblGrid>'
     + rows.join('') + '</w:tbl>';
 }
 
@@ -4869,47 +5171,49 @@ function buildPcaDocxXml(p, cont){
     docxRow([docxCell('Nivel Educativo: ' + (p.nivel||'—'), {pct:2500}), docxCell('Especialidad: ' + (p.especialidad||'No aplica'), {pct:2500})]),
     docxRow([docxCell('Curso/Grado: ' + (curso||'—'), {pct:2500}), docxCell('Asignatura: ' + (asig||'—'), {pct:2500})]),
     docxRow([docxCell('Carga horaria semanal: ' + (p.cargaSemanal||'—'), {pct:2500}), docxCell('N.º semanas — 1er: ' + p.semanasT1 + ' · 2do: ' + p.semanasT2 + ' · 3er: ' + p.semanasT3, {pct:2500})])
-  ]);
+  ], [2500,2500]);
   body += docxPara('TEMPORALIZACIÓN', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+  var tmColPcts = [1150,1550,1150,1150];
   var tmRows = [docxRow([
-    docxCell('Unidad didáctica', {bold:true, fill:'E7EEFB', pct:1500}),
-    docxCell('Nombre de la Unidad', {bold:true, fill:'E7EEFB', pct:2000}),
-    docxCell('Trimestre', {bold:true, fill:'E7EEFB', pct:1500}),
-    docxCell('N.º semanas', {bold:true, fill:'E7EEFB', pct:1500})
+    docxCell('Unidad didáctica', {bold:true, fill:'E7EEFB', pct:tmColPcts[0]}),
+    docxCell('Nombre de la Unidad', {bold:true, fill:'E7EEFB', pct:tmColPcts[1]}),
+    docxCell('Trimestre', {bold:true, fill:'E7EEFB', pct:tmColPcts[2]}),
+    docxCell('N.º semanas', {bold:true, fill:'E7EEFB', pct:tmColPcts[3]})
   ])];
   (p.temporalizacion||[]).forEach(function(t){
     tmRows.push(docxRow([
-      docxCell(t.unidad||'', {pct:1500}),
-      docxCell(t.nombreUnidad||'', {pct:2000}),
-      docxCell(t.trimestre||'', {pct:1500}),
-      docxCell(String(t.semanas!=null?t.semanas:''), {pct:1500, align:'center'})
+      docxCell(t.unidad||'', {pct:tmColPcts[0]}),
+      docxCell(t.nombreUnidad||'', {pct:tmColPcts[1]}),
+      docxCell(t.trimestre||'', {pct:tmColPcts[2]}),
+      docxCell(String(t.semanas!=null?t.semanas:''), {pct:tmColPcts[3], align:'center'})
     ]));
   });
-  body += docxTable(tmRows);
+  body += docxTable(tmRows, tmColPcts);
 
   body += docxPara('CONTENIDOS', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   (p.unidadesNombres||[]).forEach(function(nombre){
     body += docxPara(nombre, {bold:true, color:'FFFFFF', size:11, shd:'1848A0'});
     var filas = cont.filter(function(c){ return c.unidad===nombre; });
+    var contColPcts = [400,900,1250,1200,400,850];
     var rows = [docxRow([
-      docxCell('Semana', {bold:true, fill:'E7EEFB', pct:500}),
-      docxCell('Fecha', {bold:true, fill:'E7EEFB', pct:1100}),
-      docxCell('Nivel de Logro', {bold:true, fill:'E7EEFB', pct:1500}),
-      docxCell('Temas y subtemas', {bold:true, fill:'E7EEFB', pct:1400}),
-      docxCell('Página', {bold:true, fill:'E7EEFB', pct:500}),
-      docxCell('Observación', {bold:true, fill:'E7EEFB', pct:1000})
+      docxCell('Semana', {bold:true, fill:'E7EEFB', pct:contColPcts[0]}),
+      docxCell('Fecha', {bold:true, fill:'E7EEFB', pct:contColPcts[1]}),
+      docxCell('Nivel de Logro', {bold:true, fill:'E7EEFB', pct:contColPcts[2]}),
+      docxCell('Temas y subtemas', {bold:true, fill:'E7EEFB', pct:contColPcts[3]}),
+      docxCell('Página', {bold:true, fill:'E7EEFB', pct:contColPcts[4]}),
+      docxCell('Observación', {bold:true, fill:'E7EEFB', pct:contColPcts[5]})
     ])];
     filas.forEach(function(f){
       rows.push(docxRow([
-        docxCell(String(f.semana!=null?f.semana:''), {pct:500, align:'center'}),
-        docxCell(fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin), {pct:1100}),
-        docxCell(richTextToPlain(f.destreza) || '', {pct:1500}),
-        docxCell(richTextToPlain(f.temas) || '', {pct:1400}),
-        docxCell(f.pagina||'', {pct:500, align:'center'}),
-        docxCell(computeEstadoSemana(f, p.id) || '', {pct:1000})
+        docxCell(String(f.semana!=null?f.semana:''), {pct:contColPcts[0], align:'center'}),
+        docxCell(fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin), {pct:contColPcts[1]}),
+        docxCell(richTextToPlain(f.destreza) || '', {pct:contColPcts[2]}),
+        docxCell(richTextToPlain(f.temas) || '', {pct:contColPcts[3]}),
+        docxCell(f.pagina||'', {pct:contColPcts[4], align:'center'}),
+        docxCell(computeEstadoSemana(f, p.id) || '', {pct:contColPcts[5]})
       ]));
     });
-    body += docxTable(rows);
+    body += docxTable(rows, contColPcts);
   });
 
   body += docxPara('FIRMAS', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
@@ -4917,7 +5221,7 @@ function buildPcaDocxXml(p, cont){
     docxCell('Elaborado por (Docente)\n' + (p.elaboradoPor||''), {pct:1666}),
     docxCell('Revisado por (Asesor Pedagógico)\n' + (p.revisadoPor||''), {pct:1667}),
     docxCell('Aprobado por (Vicerrector)\n' + (p.aprobadoPor||''), {pct:1667})
-  ])]);
+  ])], [1666,1667,1667]);
 
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
@@ -5215,13 +5519,13 @@ function buildSemanalDocxXml(s, d){
     docxRow([docxCell('Nivel Educativo: ' + (s.nivel||'—'), {pct:2500}), docxCell('Especialidad: ' + (s.especialidad||'No aplica'), {pct:2500})]),
     docxRow([docxCell('Curso/Grado: ' + (s.curso||'—'), {pct:2500}), docxCell('Asignatura: ' + (s.asignatura||'—'), {pct:2500})]),
     docxRow([docxCell('Docente: ' + nombreFormal(d), {pct:2500}), docxCell('Fecha: ' + fmtDate(s.fechaInicio) + ' al ' + fmtDate(s.fechaFin), {pct:2500})])
-  ]);
+  ], [2500,2500]);
   body += docxPara('DATOS CURRICULARES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   body += docxTable([docxRow([
     docxCell('Unidad Didáctica: ' + (s.unidadDidactica||'—'), {pct:3333}),
     docxCell('Bloque Curricular: ' + (s.bloqueCurricular||'—'), {pct:3333}),
     docxCell('Nivel de Logro: ' + (s.nivelLogro||'—'), {pct:3334})
-  ])]);
+  ])], [3333,3333,3334]);
   body += docxPara('DESARROLLO DE LAS CLASES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   (s.dias||[]).forEach(function(dia, i){
     body += docxPara('Día ' + (i+1) + ' — ' + fmtDate(dia.fecha), {bold:true, color:'FFFFFF', size:11, shd:'1848A0'});
@@ -5239,7 +5543,7 @@ function buildSemanalDocxXml(s, d){
     docxCell('Docente\n' + nombreFormal(d), {pct:3333}),
     docxCell('Asesor Pedagógico\n' + (s.revisadoPor||''), {pct:3333}),
     docxCell('Vicerrector\n' + (s.aprobadoPor||''), {pct:3334})
-  ])]);
+  ])], [3333,3333,3334]);
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
     + '<w:body>' + body
@@ -6320,7 +6624,7 @@ async function attachRealtimeListeners(){
 
   Object.keys(FS_COLLECTION).forEach(function(key){
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
-    var queryRef = (key === 'OBSERVACIONES' && !soyAdmin)
+    var queryRef = ((key === 'OBSERVACIONES' || key === 'ALERTAS_DECE') && !soyAdmin)
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
       : colRef;
     var unsub = window.FB.onSnapshot(queryRef, function(snap){
