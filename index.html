@@ -403,6 +403,8 @@
   .manual-shot .mini-side{ background:var(--blue-900); color:#EAF0FF; border-radius:8px; padding:12px; font-size:11.5px; display:flex; flex-direction:column; gap:6px; width:170px; }
   .manual-shot .mini-side .mi{ padding:6px 8px; border-radius:6px; }
   .manual-shot .mini-side .mi.active{ background:var(--gold-500); color:#3A2A00; font-weight:700; }
+  .manual-shot .mini-side .mi-group-label{ font-size:9.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#8FA3D6; padding:8px 8px 2px; }
+  .manual-shot .mini-side .mi-group-label:first-child{ padding-top:2px; }
   .manual-shot table{ width:100%; border-collapse:collapse; font-size:11.5px; }
   .manual-shot th{ background:var(--blue-50); color:var(--blue-900); text-align:left; padding:6px 8px; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; }
   .manual-shot td{ padding:6px 8px; border-top:1px solid var(--line); }
@@ -1205,7 +1207,7 @@ function renderShell(){
   + '    <div class="brand"><img src="data:image/jpeg;base64,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" alt="Logo" /><div><div class="name">UEP “Simón Bolívar”</div><div class="year">Año lectivo 2026-2027</div></div></div>'
   + '    <nav>' + navHtml + '</nav>'
   + '    <div class="spacer"></div>'
-  + '    <div class="who"><div class="who-name">' + escapeHtml(d.nombres) + ' ' + escapeHtml(d.apellidos) + '</div><div class="who-role">' + escapeHtml(misAsignaturas(d.id).join(' · ') || ROLE_LABELS[d.role] || 'Docente') + '</div><button id="btnLogout">Cerrar sesión</button></div>'
+  + '    <div class="who"><div class="who-name">' + escapeHtml(d.nombres) + ' ' + escapeHtml(d.apellidos) + '</div><div class="who-role">' + escapeHtml(ROLE_LABELS[d.role] || 'Docente') + '</div><button id="btnLogout">Cerrar sesión</button></div>'
   + '  </aside>'
   + '  <main class="content">' + sub + '</main>'
   + '</div>';
@@ -1315,7 +1317,7 @@ function bindPerfilEvents(){
 function renderDashboard(d){
   var isAdmin = isStaffRole(d.role);
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.usuarioId || d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
   + '<div class="grid-4">'
   + '  <button class="action-card" data-go="cargahoraria"><div class="ic">🗂️</div><h3>Registrar carga horaria</h3><p>Indica qué asignaturas dictas y en qué cursos o grados.</p></button>'
   + '  <button class="action-card" data-go="pcalist"><div class="ic">📘</div><h3>Plan Curricular Anual</h3><p>Crea o edita tus PCA siguiendo el formato institucional.</p></button>'
@@ -1349,9 +1351,19 @@ function manualTip(html){ return '<div class="manual-tip"><b>💡 Consejo:</b> '
 function manualWarn(html){ return '<div class="manual-warn"><b>⚠️ Importante:</b> ' + html + '</div>'; }
 function manualExample(label, html){ return '<div class="manual-example"><b>Ejemplo práctico — ' + escapeHtml(label) + '</b>' + html + '</div>'; }
 function manualStep(n, html){ return '<div class="manual-step"><span class="manual-num">' + n + '</span><div>' + html + '</div></div>'; }
-function manualSideNav(items, activeKey){
+function manualSideNav(items, activeLabel){
   return '<div class="mini-side">' + items.map(function(it){
-    return '<div class="mi' + (it.key===activeKey?' active':'') + '">' + escapeHtml(it.ic) + ' ' + escapeHtml(it.label) + '</div>';
+    return '<div class="mi' + (it.label===activeLabel?' active':'') + '">' + escapeHtml(it.ic) + ' ' + escapeHtml(it.label) + '</div>';
+  }).join('') + '</div>';
+}
+/* Igual que manualSideNav, pero agrupado en categorías (como el menú real de la app desde la
+   reorganización en acordeón): groups = [{label, items:[{ic,label}]}]. */
+function manualSideNavGrouped(groups, activeLabel){
+  return '<div class="mini-side">' + groups.map(function(g){
+    return '<div class="mi-group-label">' + escapeHtml(g.label) + '</div>'
+      + g.items.map(function(it){
+          return '<div class="mi' + (it.label===activeLabel?' active':'') + '">' + escapeHtml(it.ic) + ' ' + escapeHtml(it.label) + '</div>';
+        }).join('');
   }).join('') + '</div>';
 }
 function manualSection(id, titulo, bodyHtml){
@@ -1377,6 +1389,8 @@ function renderManualDocente(){
     + '<li>Mi Carga Horaria</li>'
     + '<li>Plan Curricular Anual (PCA)</li>'
     + '<li>Planes Semanales de Clase</li>'
+    + '<li>Observación de Clases</li>'
+    + '<li>Alertar al DECE</li>'
     + '<li>Base de Datos (respaldo)</li>'
     + '<li>Preguntas frecuentes</li>'
     + '</ol></div>';
@@ -1415,12 +1429,15 @@ function renderManualDocente(){
   );
 
   var secNav = manualSection('sec-3', '3. Cómo moverte por el sistema', ''
-    + '<p>Todo el sistema se maneja desde el menú de la izquierda (en el celular, tócalo con el botón ☰ de arriba).</p>'
-    + manualShot('Menú principal', manualSideNav([
-        {ic:'🏠', label:'Inicio'}, {ic:'👤', label:'Mi Perfil'}, {ic:'🗂️', label:'Mi Carga Horaria'},
-        {ic:'📘', label:'Planes Curriculares (PCA)'}, {ic:'📅', label:'Planes Semanales'}, {ic:'💾', label:'Base de Datos'}
+    + '<p>Todo el sistema se maneja desde el menú de la izquierda (en el celular, tócalo con el botón ☰ de arriba). El menú está organizado en <b>categorías con un color distinto cada una</b>: haz clic en el título de una categoría para expandirla o contraerla — la categoría donde te encuentras se abre sola automáticamente.</p>'
+    + manualShot('Menú principal (docente)', manualSideNavGrouped([
+        {label:'Perfil y Datos del Docente', items:[{ic:'🏠', label:'Inicio'}, {ic:'👤', label:'Mi Perfil'}, {ic:'🗂️', label:'Mi Carga Horaria'}]},
+        {label:'Lo Pedagógico', items:[{ic:'📘', label:'Planes Curriculares (PCA)'}, {ic:'📅', label:'Planes Semanales'}, {ic:'📋', label:'Observación de Clases'}]},
+        {label:'Departamento de Consejería Estudiantil (DECE)', items:[{ic:'🚨', label:'Alertar al DECE'}]},
+        {label:'Administración y Base de Datos', items:[{ic:'💾', label:'Base de Datos'}]}
       ], 'Mi Carga Horaria'))
     + '<p>Desde <b>Inicio</b> también puedes entrar directamente a cada sección con las tarjetas grandes de acceso rápido.</p>'
+    + manualTip('Si no ves alguna categoría u opción (por ejemplo, “Inspección” o parte de “Administración”), es normal: esas secciones son exclusivas de Administradores, Directivos o personal del DECE.')
   );
 
   var secPerfil = manualSection('sec-4', '4. Mi Perfil', ''
@@ -1469,6 +1486,8 @@ function renderManualDocente(){
     + '<h3>Exportar tu PCA</h3>'
     + '<p>Desde la lista de PCA, cada plan tiene tres botones: <b>PDF ✓</b> (abre el diálogo de impresión para guardar como PDF con el formato oficial completo), <b>Word</b> (descarga un .docx editable) y <b>Excel</b> (descarga el detalle de contenidos en .csv).</p>'
     + manualTip('Si tu vista no permite el formato .docx real, el sistema intenta automáticamente con .html y luego .md — siempre te entrega algo que puedes abrir en Word.')
+    + '<h3>Cuando la asignatura es de Inglés</h3>'
+    + '<p>Si tu asignatura contiene la palabra <b>“Inglés”</b> o <b>“ENGLISH”</b> (por ejemplo, cualquiera de los grupos ENGLISH A1/A2/B1 de tu Carga Horaria), el formulario completo del PCA — título, etiquetas de los campos, encabezados de tablas y botones — se muestra automáticamente en inglés. Solo cambia el idioma de las etiquetas del formulario: lo que tú escribas en Contenidos, Temas y Nivel de Logro sigue siendo el texto que redactes.</p>'
   );
 
   var secSemanal = manualSection('sec-7', '7. Planes Semanales de Clase', ''
@@ -1495,12 +1514,30 @@ function renderManualDocente(){
     + '<p>Los mismos botones <b>PDF ✓ / Word / Excel</b> están disponibles en cada Plan Semanal, con el mismo comportamiento que en el PCA.</p>'
   );
 
-  var secBd = manualSection('sec-8', '8. Base de Datos (respaldo)', ''
+  var secObservacion = manualSection('sec-8', '8. Observación de Clases', ''
+    + '<p>Aquí ves el historial de las observaciones de clase que el Asesor Pedagógico haya registrado sobre ti, con el formato institucional “Clase con Enfoque DUA”. Es una pantalla de <b>solo lectura</b> para ti: no puedes crear, editar ni eliminar observaciones — eso lo hace el Asesor Pedagógico o un administrador.</p>'
+    + manualStep(1, 'Ve a <b>Observación de Clases</b> en el menú (dentro de “Lo Pedagógico”).')
+    + manualStep(2, 'Verás la lista de tus observaciones, con fecha, asignatura y observador.')
+    + manualStep(3, 'Haz clic en <b>“Ver”</b> para abrir el detalle completo: ambiente del aula, didáctica utilizada en clase, y los comentarios del observador en cada perspectiva.')
+    + manualTip('Solo ves tus propias observaciones — nunca las de otros docentes.')
+  );
+
+  var secAlerta = manualSection('sec-9', '9. Alertar al DECE', ''
+    + '<p>Si notas una situación con un estudiante que requiere la atención del <b>Departamento de Consejería Estudiantil (DECE)</b> — un cambio de comportamiento, una dificultad familiar, académica o emocional — puedes enviarles una alerta directamente desde el sistema, sin pasar por ningún intermediario.</p>'
+    + manualStep(1, 'Ve a <b>Alertar al DECE</b> (categoría “Departamento de Consejería Estudiantil”) y haz clic en <b>“+ Nueva alerta”</b>.')
+    + manualStep(2, 'Completa el <b>Nivel Educativo</b>, el <b>Curso</b>, el <b>nombre del estudiante</b>, la <b>fecha</b> y los <b>Datos relevantes</b> — describe la situación con el detalle que consideres necesario.')
+    + manualStep(3, 'Tu nombre completo y tu cédula quedan registrados automáticamente como firma de quien reporta, al pie del documento.')
+    + manualStep(4, 'Haz clic en <b>“Guardar”</b>.')
+    + manualWarn('Una vez enviada, la alerta queda <b>bloqueada</b>: no podrás editarla ni eliminarla. Si necesitas agregar información adicional, contacta directamente al DECE.')
+    + '<p>Desde la misma pantalla puedes ver el historial de todas las alertas que has enviado, y su estado: <b>Nueva</b>, <b>En revisión</b>, <b>Atendida</b> o <b>Derivada a caso</b> (estos estados los actualiza el DECE, no tú).</p>'
+  );
+
+  var secBd = manualSection('sec-10', '10. Base de Datos (respaldo)', ''
     + '<p>Aunque tu información ya se guarda automáticamente en la nube y se comparte en tiempo real con el administrador, esta sección te permite exportar un respaldo adicional en formato .json por seguridad, o importar uno si necesitas restaurar información.</p>'
     + manualTip('Usa Exportar de vez en cuando (por ejemplo, al final de cada trimestre) para tener siempre una copia de respaldo propia.')
   );
 
-  var secFaq = manualSection('sec-9', '9. Preguntas frecuentes', ''
+  var secFaq = manualSection('sec-11', '11. Preguntas frecuentes', ''
     + '<h3>No veo el curso o la asignatura que necesito</h3>'
     + '<p>Ve primero a <b>Mi Carga Horaria</b> y regístrala ahí — las opciones del PCA y Plan Semanal salen de tu carga horaria.</p>'
     + '<h3>Mi PCA está bloqueado y necesito corregirlo</h3>'
@@ -1511,18 +1548,20 @@ function renderManualDocente(){
     + '<p>El sistema necesita conexión a internet para guardar y cargar información, ya que todo vive en la nube. Guarda tu trabajo apenas recuperes la conexión.</p>'
     + '<h3>Olvidé mi contraseña</h3>'
     + '<p>En la pantalla de ingreso, usa el enlace “¿Olvidaste tu contraseña?” con tu correo institucional.</p>'
+    + '<h3>Envié una alerta al DECE con un error y ya no puedo editarla</h3>'
+    + '<p>Es normal — las alertas quedan bloqueadas apenas se envían, para que el DECE trabaje siempre con la versión original. Contacta directamente al DECE para la corrección.</p>'
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Docente')
     + '<div class="manual-doc" id="manualDocenteDoc">'
-    + manualCoverHtml('Guía completa para docentes: carga horaria, Plan Curricular Anual y Planes Semanales de Clase.', 'Manual del Docente')
-    + toc + secIntro + secCuenta + secNav + secPerfil + secCarga + secPca + secSemanal + secBd + secFaq
+    + manualCoverHtml('Guía completa para docentes: carga horaria, Plan Curricular Anual, Planes Semanales, Observación de Clases y Alertas al DECE.', 'Manual del Docente')
+    + toc + secIntro + secCuenta + secNav + secPerfil + secCarga + secPca + secSemanal + secObservacion + secAlerta + secBd + secFaq
     + '</div>';
 }
 
 function renderManualAdmin(){
   var toc = '<div class="manual-toc"><h2>Índice</h2><ol>'
-    + '<li>Bienvenida y rol de administrador</li>'
+    + '<li>Bienvenida y roles de administración</li>'
     + '<li>Panel de Administración — visión general</li>'
     + '<li>Gestión de Docentes</li>'
     + '<li>Carga Horaria de todos los docentes</li>'
@@ -1532,13 +1571,17 @@ function renderManualAdmin(){
     + '<li>Consultas</li>'
     + '<li>Presentación de Planes y de PCA</li>'
     + '<li>Fechas Límite</li>'
+    + '<li>Inspección General</li>'
+    + '<li>Observación de Clases (gestión)</li>'
+    + '<li>Departamento de Consejería Estudiantil (DECE)</li>'
     + '<li>Base de Datos y seguridad de roles</li>'
     + '<li>Preguntas frecuentes de administración</li>'
     + '</ol></div>';
 
-  var secIntro = manualSection('sec-a1', '1. Bienvenida y rol de administrador', ''
-    + '<p>Como <b>Administrador</b>, además de todo lo que puede hacer un docente (registrar tu propia carga horaria, tus PCA y Planes Semanales — ver el <i>Manual del Docente</i> para esa parte), tienes acceso al <b>Panel de Administración</b>: ahí puedes ver, editar y supervisar la información de <u>todos</u> los docentes de la institución.</p>'
-    + manualWarn('Todo lo que hagas en el Panel de Administración afecta datos reales de otros docentes. Antes de eliminar algo, el sistema siempre te pedirá confirmación.')
+  var secIntro = manualSection('sec-a1', '1. Bienvenida y roles de administración', ''
+    + '<p>Además del rol <b>Docente</b>, el sistema tiene tres roles con acceso administrativo, con exactamente los mismos permisos entre sí: <b>Administrador</b>, <b>Directivo</b> y <b>DECE</b>. Cualquiera de los tres, además de todo lo que puede hacer un docente (registrar su propia carga horaria, sus PCA y Planes Semanales — ver el <i>Manual del Docente</i> para esa parte), tiene acceso al <b>Panel de Administración</b>, a <b>Inspección General</b>, a la gestión de <b>Observación de Clases</b> y al módulo <b>DECE</b>: ahí puede ver, editar y supervisar la información de <u>todos</u> los docentes y estudiantes de la institución.</p>'
+    + '<p>Se mantienen como roles separados (en vez de uno solo) para que el sistema identifique correctamente quién hizo cada acción — por ejemplo, quién firma un caso del DECE — aunque hoy los tres tengan el mismo nivel de acceso.</p>'
+    + manualWarn('Todo lo que hagas en el Panel de Administración, Inspección General o el módulo DECE afecta datos reales de docentes y estudiantes. Antes de eliminar algo, el sistema siempre te pedirá confirmación.')
   );
 
   var secPanel = manualSection('sec-a2', '2. Panel de Administración — visión general', ''
@@ -1561,12 +1604,12 @@ function renderManualAdmin(){
         + '<div style="margin-top:10px;"><span class="mbtn primary">+ Nuevo Usuario</span></div>')
     + '<h3>Crear un usuario nuevo directamente</h3>'
     + manualStep(1, 'Haz clic en <b>“+ Nuevo Usuario”</b>.')
-    + manualStep(2, 'Completa sus datos, elige su <b>Rol</b> (Docente o Administrador) y una contraseña inicial.')
+    + manualStep(2, 'Completa sus datos, elige su <b>Rol</b> (<b>Docente</b>, <b>Administrador</b>, <b>Directivo</b> o <b>DECE</b>) y una contraseña inicial.')
     + manualStep(3, 'Haz clic en <b>“Crear usuario”</b> — la cuenta queda lista para que esa persona inicie sesión de inmediato con esa contraseña (puede cambiarla después desde Mi Perfil).')
     + '<h3>Editar un docente, cambiar su rol o navegar entre todos</h3>'
     + '<p>Haz clic en <b>“Editar”</b> junto a cualquier docente. Ahí puedes corregir sus datos, y usar <b>“« Anterior”</b> / <b>“Siguiente »”</b> para recorrer la lista completa de docentes sin volver a la tabla cada vez.</p>'
-    + manualExample('Promover a un docente a Administrador', 'Para dar acceso de administración a la Lic. Torres, entras a Editar su ficha, cambias el campo Rol de "Docente" a "Administrador" y guardas. Ella verá el menú "Administración" aparecer automáticamente la próxima vez que use el sistema — sin que tenga que crear una cuenta nueva.')
-    + manualWarn('No puedes quitar el rol de Administrador a la última cuenta administradora del sistema, ni eliminarla — siempre debe quedar al menos una.')
+    + manualExample('Promover a un docente a Directivo o DECE', 'Para dar acceso administrativo a la Lic. Torres como personal del DECE, entras a Editar su ficha, cambias el campo Rol de "Docente" a "DECE" y guardas. Ella verá aparecer automáticamente las categorías "Inspección", "Departamento de Consejería Estudiantil" y "Administración y Base de Datos" en su menú la próxima vez que use el sistema — sin que tenga que crear una cuenta nueva. Lo mismo aplica para el rol "Directivo".')
+    + manualWarn('No puedes quitar el acceso administrativo (Administrador, Directivo o DECE) a la última cuenta que lo tenga, ni eliminarla — siempre debe quedar al menos una cuenta con ese acceso, sin importar cuál de los tres roles sea.')
     + '<h3>Restablecer la contraseña de un docente</h3>'
     + '<p>El sistema no permite que el administrador escriba una contraseña nueva directamente por seguridad. En su lugar, haz clic en <b>“Enviar correo para restablecer contraseña”</b> — el docente recibirá un correo para crear una nueva él mismo. El correo de acceso tampoco se puede cambiar desde aquí una vez creada la cuenta.</p>'
     + '<h3>Eliminar un docente</h3>'
@@ -1574,11 +1617,11 @@ function renderManualAdmin(){
   );
 
   var secCarga = manualSection('sec-a4', '4. Carga Horaria de todos los docentes', ''
-    + '<p>Tabla editable con la carga horaria de todos los docentes a la vez. Puedes corregir cualquier campo directamente en la fila y eliminar filas erróneas, luego hacer clic en <b>“Guardar cambios”</b>.</p>'
+    + '<p>Tabla editable con la carga horaria de todos los docentes a la vez, <b>agrupada por docente</b> (en orden alfabético, con el nombre y el número de filas como encabezado de cada grupo) para que sea fácil ubicar a cualquiera sin tener que buscar entre todas las filas mezcladas. Puedes corregir cualquier campo directamente en la fila y eliminar filas erróneas, luego hacer clic en <b>“Guardar cambios”</b>.</p>'
   );
 
   var secPca = manualSection('sec-a5', '5. Planes Curriculares Anuales de todos los docentes', ''
-    + '<p>Puedes ver, editar (incluso los que están bloqueados 🔒 para el docente), exportar y eliminar cualquier PCA del sistema.</p>'
+    + '<p>Puedes ver, editar (incluso los que están bloqueados 🔒 para el docente), exportar y eliminar cualquier PCA del sistema. La lista también aparece <b>agrupada por docente</b>, en orden alfabético.</p>'
     + '<h3>Filtrar por Docente, Fecha, Asignatura y Curso</h3>'
     + '<p>Arriba de la lista hay una barra de filtros:</p>'
     + manualShot('Filtrar PCA', ''
@@ -1625,25 +1668,70 @@ function renderManualAdmin(){
     + '<p>Las fechas de Planes Semanales quedan agrupadas por mes (siguiendo el año lectivo, de septiembre a agosto) para que sea fácil ubicar cualquier corte. Puedes <b>Editar</b> o <b>Eliminar</b> cualquier fecha ya registrada.</p>'
   );
 
-  var secBd = manualSection('sec-a11', '11. Base de Datos y seguridad de roles', ''
-    + '<p>Toda la información del sistema (Docentes, Carga Horaria, PCA, Contenidos, Planes Semanales) vive en la nube y se sincroniza en tiempo real entre todos — no necesitas consolidar nada manualmente. Usa Exportar solo como respaldo de seguridad periódico.</p>'
-    + '<h3>Sobre los roles</h3>'
-    + '<p>Solo un Administrador puede otorgar o quitar el rol de Administrador a otra persona — nadie puede auto-otorgarse ese rol, ni siquiera técnicamente. El primer usuario que se registra en un sistema recién instalado queda como Docente por defecto; el primer Administrador se define una única vez desde la configuración del proyecto.</p>'
+  var secInspeccion = manualSection('sec-a11', '11. Inspección General', ''
+    + '<p>Sección exclusiva de Administradores, Directivos y DECE, para organizar y supervisar la disciplina, la asistencia y la convivencia de los estudiantes. Tiene cuatro pestañas: <b>Estudiantes</b>, <b>Asistencia</b>, <b>Disciplina</b> y <b>Reportes</b>.</p>'
+    + '<h3>Estudiantes</h3>'
+    + '<p>Registra la ficha de cada estudiante: nombres, apellidos, cédula, nivel, curso, datos del representante y estado (Activo/Inactivo). Cada estudiante puede tener una <b>foto tipo carnet</b>: acepta cualquier formato de imagen (JPG, PNG, HEIC, etc.) — el sistema la redimensiona y comprime automáticamente antes de guardarla, así que no necesitas preocuparte por el tamaño del archivo original.</p>'
+    + manualStep(1, 'Haz clic en <b>“+ Nuevo estudiante”</b> (o “+ Carga masiva” para registrar varios a la vez desde una tabla).')
+    + manualStep(2, 'Sube su foto (opcional) con el botón de <b>Foto tipo carnet</b>.')
+    + manualStep(3, 'Completa sus datos y los del representante, y guarda.')
+    + manualTip('La foto también aparece como miniatura en la lista de estudiantes, junto al nombre.')
+    + '<h3>Asistencia</h3>'
+    + '<p>Cuadrícula de asistencia por curso y día, con 11 períodos de clase. Marca Presente, Ausente o Falta justificada para cada estudiante y período.</p>'
+    + '<h3>Disciplina</h3>'
+    + '<p>Registro de incidentes disciplinarios, separados en dos pestañas: Estudiantes y Personal (docentes, administrativos). Cada incidente lleva fecha, hora, descripción y las personas involucradas.</p>'
+    + '<h3>Reportes</h3>'
+    + '<p>Reportes imprimibles en A4 vertical, con el membrete institucional, listos para archivar o entregar en papel.</p>'
   );
 
-  var secFaq = manualSection('sec-a12', '12. Preguntas frecuentes de administración', ''
+  var secObservacionAdmin = manualSection('sec-a12', '12. Observación de Clases (gestión)', ''
+    + '<p>Aquí registras las observaciones de clase que hagas como Asesor Pedagógico, siguiendo el formato institucional “Clase con Enfoque DUA”. Solo el personal con acceso administrativo puede crear, editar y eliminar observaciones — cada docente solo puede leer las suyas propias.</p>'
+    + manualStep(1, 'Ve a <b>Observación de Clases</b> y haz clic en <b>“+ Nueva observación”</b>.')
+    + manualStep(2, 'Elige el <b>Nivel Educativo</b> — recién ahí se activan las listas de <b>Docente</b> (solo los que dictan en ese nivel) y luego <b>Asignatura</b> (solo las que ese docente dicta en ese nivel).')
+    + manualStep(3, 'Completa las acciones observadas en las dos perspectivas: <b>Ambiente del Aula de Clase</b> y <b>Didáctica Utilizada en el Aula de Clase</b>, marcando la respuesta correspondiente a cada una.')
+    + manualStep(4, 'Agrega tus comentarios en cada perspectiva.')
+    + manualStep(5, 'Guarda — el docente observado podrá ver esta observación (de solo lectura) desde su propio menú.')
+    + manualTip('Usa el botón “Imprimir / PDF (A4)” para entregar una copia física firmada, si tu institución lo requiere.')
+  );
+
+  var secDeceAdmin = manualSection('sec-a13', '13. Departamento de Consejería Estudiantil (DECE)', ''
+    + '<p>Módulo exclusivo de Administradores, Directivos y DECE, para dar seguimiento confidencial a situaciones de estudiantes. Tiene dos partes: <b>Casos DECE</b> (que administras tú) y las <b>Alertas</b> que te envían los docentes.</p>'
+    + '<h3>Casos DECE</h3>'
+    + manualStep(1, 'Ve a <b>Casos DECE</b> y haz clic en <b>“+ Nuevo caso”</b>.')
+    + manualStep(2, 'Elige Nivel y Curso, y selecciona al estudiante de la lista (o escribe su nombre manualmente si todavía no está registrado en Inspección General).')
+    + manualStep(3, 'Completa Fecha, Estado, Atendido por, el o los <b>Tipos de caso</b> (Académico, Conductual, Emocional/Psicológico, Familiar, Vocacional, Salud, Otro), la <b>Descripción</b> confidencial y las <b>Acciones tomadas</b>.')
+    + manualStep(4, 'Usa <b>“+ Agregar seguimiento”</b> para ir registrando cada sesión con su fecha y nota, formando una bitácora del caso.')
+    + manualStep(5, 'Si el caso fue derivado a una institución externa, marca la casilla y anota la institución.')
+    + manualStep(6, 'Guarda. El documento queda firmado automáticamente con tu nombre completo y cédula, e imprimible en A4 horizontal con el botón “PDF ✓”.')
+    + manualWarn('La información de los Casos DECE es confidencial: ningún docente puede verla, ni siquiera el docente del estudiante involucrado.')
+    + '<h3>Alertas del DECE</h3>'
+    + '<p>Cuando un docente detecta una situación y envía una alerta desde su propio menú (“Alertar al DECE”), la verás aquí junto con las tuyas propias. A diferencia de los Casos, las alertas las <b>crea el docente</b>, no tú — tu trabajo es revisarlas y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida, Derivada a caso) conforme les das seguimiento.</p>'
+    + manualTip('Si una alerta amerita abrir un caso formal, puedes crear un Caso DECE nuevo con la misma información y marcar la alerta como “Derivada a caso”.')
+  );
+
+  var secBd = manualSection('sec-a14', '14. Base de Datos y seguridad de roles', ''
+    + '<p>Toda la información del sistema (Docentes, Carga Horaria, PCA, Contenidos, Planes Semanales, Inspección General, Observaciones, DECE) vive en la nube y se sincroniza en tiempo real entre todos — no necesitas consolidar nada manualmente. Usa Exportar solo como respaldo de seguridad periódico.</p>'
+    + '<h3>Sobre los roles</h3>'
+    + '<p>Solo alguien con acceso administrativo (Administrador, Directivo o DECE) puede otorgar o quitar cualquiera de esos tres roles a otra persona — nadie puede auto-otorgarse ese acceso, ni siquiera técnicamente. El primer usuario que se registra en un sistema recién instalado queda como Docente por defecto; el primer rol administrativo se define una única vez desde la configuración del proyecto.</p>'
+  );
+
+  var secFaq = manualSection('sec-a15', '15. Preguntas frecuentes de administración', ''
     + '<h3>Un docente dice que no puede editar su PCA</h3>'
-    + '<p>Es normal: los PCA quedan bloqueados para el docente después de guardarse la primera vez. Entra como administrador, ábrelo y edítalo por él, o guíalo para que te pida el cambio.</p>'
+    + '<p>Es normal: los PCA quedan bloqueados para el docente después de guardarse la primera vez. Entra con tu acceso administrativo, ábrelo y edítalo por él, o guíalo para que te pida el cambio.</p>'
     + '<h3>¿Cómo sé si alguien entregó tarde su PCA o Plan Semanal?</h3>'
     + '<p>Usa <b>Presentación de PCA</b> o <b>Presentación de Planes</b> — ahí ves la observación "a tiempo" o "con retraso" comparando la fecha de creación contra la Fecha Límite que definiste.</p>'
     + '<h3>Necesito buscar solo los PCA de un docente en un curso específico</h3>'
     + '<p>Usa la barra de filtros arriba de la lista de PCA: elige el Docente, luego el Curso.</p>'
+    + '<h3>¿Cuál es la diferencia entre Administrador, Directivo y DECE?</h3>'
+    + '<p>Ninguna en cuanto a permisos — los tres ven y editan exactamente lo mismo. Son roles separados solo para identificar correctamente quién hizo cada acción (por ejemplo, en la firma de un caso DECE).</p>'
+    + '<h3>Un docente envió una alerta al DECE con un dato incorrecto</h3>'
+    + '<p>Las alertas quedan bloqueadas para el docente apenas se envían, así que él no puede corregirla. Tú sí puedes abrirla y editarla desde el módulo DECE.</p>'
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Administrador')
     + '<div class="manual-doc" id="manualAdminDoc">'
-    + manualCoverHtml('Guía completa de administración: docentes, tablas maestras, filtros, consultas, presentación de planes y fechas límite.', 'Manual del Administrador')
-    + toc + secIntro + secPanel + secDocentes + secCarga + secPca + secCont + secSemanal + secConsultas + secPresentacion + secFechas + secBd + secFaq
+    + manualCoverHtml('Guía completa de administración: docentes, tablas maestras, filtros, consultas, presentación de planes, fechas límite, Inspección General y DECE.', 'Manual del Administrador')
+    + toc + secIntro + secPanel + secDocentes + secCarga + secPca + secCont + secSemanal + secConsultas + secPresentacion + secFechas + secInspeccion + secObservacionAdmin + secDeceAdmin + secBd + secFaq
     + '</div>';
 }
 
