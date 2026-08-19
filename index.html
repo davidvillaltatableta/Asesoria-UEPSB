@@ -6726,6 +6726,12 @@ function detachRealtimeListeners(){
    exactamente con la regla de seguridad basada en resource.data, así que hace falta saber el rol
    ANTES de armar la consulta — por eso esta única lectura puntual (no en tiempo real) de la
    colección "docentes" (de lectura pública) se hace primero y se espera antes de suscribirse. */
+/* Estudiantes, Asistencia, Incidentes y Casos DECE son de acceso exclusivo para roles con acceso
+   administrativo (ver firestore.rules: allow read, write: if isStaff()) — ni siquiera de forma
+   acotada a lo propio, como sí ocurre con Observaciones/Alertas al DECE. Un docente jamás navega
+   a esas secciones (no aparecen en su menú), así que no tiene sentido intentar sincronizarlas
+   para él: Firestore rechazaría la lectura y solo generaría avisos de error en pantalla. */
+var COLECCIONES_SOLO_STAFF = ['ESTUDIANTES', 'ASISTENCIA', 'INCIDENTES', 'DECE'];
 async function attachRealtimeListeners(){
   detachRealtimeListeners();
   var soyAdmin = false;
@@ -6735,6 +6741,7 @@ async function attachRealtimeListeners(){
   }catch(e){ console.error('No se pudo determinar el rol antes de sincronizar', e); }
 
   Object.keys(FS_COLLECTION).forEach(function(key){
+    if(!soyAdmin && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; return; }
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
     var queryRef = ((key === 'OBSERVACIONES' || key === 'ALERTAS_DECE') && !soyAdmin)
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
