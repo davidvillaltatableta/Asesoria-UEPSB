@@ -827,6 +827,28 @@ function temasPendientesAnteriores(pcaId, semanaActualId){
   });
   return temasAnt.filter(function(t){ return !vistos[t]; });
 }
+/* Campo del PCA (destreza=Básico) y del día del Plan Semanal donde vive cada nivel de logro —
+   compartido por temasPendientesAnteriores-equivalente y por el formulario de Plan Semanal. */
+var NIVEL_LOGRO_PCA_FIELD = {basico:'destreza', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
+/* Igual que temasPendientesAnteriores, pero para los ítems de Nivel de Logro (Básico/Intermedio/
+   Avanzado) de la semana INMEDIATAMENTE ANTERIOR del PCA que ningún plan semanal marcó todavía:
+   se ofrecen como pendientes en la semana siguiente para que no se pierdan de vista. */
+function nivelLogroPendientesAnteriores(pcaId, semanaActualId, tier){
+  var semanas = semanasDePca(pcaId);
+  var idx = semanas.findIndex(function(r){ return r.id===semanaActualId; });
+  if(idx <= 0) return [];
+  var anterior = semanas[idx-1];
+  var itemsAnt = parseLinesList(anterior[NIVEL_LOGRO_PCA_FIELD[tier]]);
+  if(!itemsAnt.length) return [];
+  var campoDia = NIVEL_LOGRO_DIA_FIELD[tier];
+  var vistos = {};
+  load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
+    (s.dias||[]).forEach(function(dia){
+      (dia[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+    });
+  });
+  return itemsAnt.filter(function(t){ return !vistos[t]; });
+}
 var ESTADO_SEMANA_STYLE = {
   'POR COMPLETAR': {color:'#8A6400', bg:'#FFF9DB'},
   'EN PROCESO': {color:'#D69E00', bg:'#FFF6D9'},
@@ -4123,6 +4145,13 @@ function pcaEsIngles(p){
   var re = /inglés|english/i;
   return re.test(p.asignatura||'') || re.test(p.asignaturaManual||'');
 }
+/* El Plan Semanal no tiene un modo bilingüe completo como el PCA, pero cuando la asignatura es de
+   Inglés, la categoría "Niveles de Logro" (y sus 3 columnas Básico/Intermedio/Avanzado) sí se
+   muestra en inglés, con la terminología que usa el área de Inglés en vez de una traducción
+   literal — ver NIVEL_LOGRO_DIA_LABEL_EN. */
+function semanalEsIngles(s){
+  return /inglés|english/i.test(s.asignatura||'');
+}
 /* El PCA ya NO se bloquea al guardarlo la primera vez: el docente puede editarlo y volver a
    guardarlo las veces que necesite mientras no haya pasado la Fecha y hora límite de entrega.
    Al llegar esa fecha, se bloquea automáticamente para el docente (sin que nadie tenga que
@@ -4183,15 +4212,13 @@ var PCA_EN = {
   '3er Trimestre': '3rd Term',
   'Semana': 'Week',
   'Fecha': 'Date',
-  'Nivel de Logro': 'Achievement Level',
-  'Nivel de logro': 'Achievement level',
-  'Niveles de Logro': 'Achievement Levels',
-  'Básico': 'Basic',
-  'Intermedio': 'Intermediate',
-  'Avanzado': 'Advanced',
-  'Nivel de logro básico': 'Basic achievement level',
-  'Nivel de logro intermedio': 'Intermediate achievement level',
-  'Nivel de logro avanzado': 'Advanced achievement level',
+  'Niveles de Logro': 'Learning Standards',
+  'Básico': 'Close to reach',
+  'Intermedio': 'Achieves the required learning outcomes',
+  'Avanzado': 'Masters the required learning',
+  'Nivel de logro básico': 'Close to reach',
+  'Nivel de logro intermedio': 'Achieves the required learning outcomes',
+  'Nivel de logro avanzado': 'Masters the required learning',
   'Temas y subtemas': 'Topics and subtopics',
   'Página': 'Page',
   'Observación': 'Remark',
@@ -4302,10 +4329,12 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
     return '<tr data-wkrow="'+f.id+'">'
     + '<td class="tabular" style="text-align:center;">' + (fi+1) + '</td>'
     + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
-    + '<td style="min-width:280px;">'
-    +   '<div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles))
-    +   '<div class="hint" style="font-weight:700; margin:8px 0 2px;">' + te('Intermedio', isIngles) + '</div>' + richEditorHtml('nivelLogroIntermedio', f.id, f.nivelLogroIntermedio, te('Nivel de logro intermedio', isIngles))
-    +   '<div class="hint" style="font-weight:700; margin:8px 0 2px;">' + te('Avanzado', isIngles) + '</div>' + richEditorHtml('nivelLogroAvanzado', f.id, f.nivelLogroAvanzado, te('Nivel de logro avanzado', isIngles))
+    + '<td style="min-width:640px;">'
+    +   '<div class="grid-3" style="align-items:start;">'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles)) + '</div>'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Intermedio', isIngles) + '</div>' + richEditorHtml('nivelLogroIntermedio', f.id, f.nivelLogroIntermedio, te('Nivel de logro intermedio', isIngles)) + '</div>'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Avanzado', isIngles) + '</div>' + richEditorHtml('nivelLogroAvanzado', f.id, f.nivelLogroAvanzado, te('Nivel de logro avanzado', isIngles)) + '</div>'
+    +   '</div>'
     + '</td>'
     + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, te('Temas y subtemas', isIngles)) + '</td>'
     + '<td><input class="cell-input" data-wf="pagina" style="min-width:60px;" value="'+escapeHtml(f.pagina)+'" /></td>'
@@ -4930,25 +4959,34 @@ function semanalToolbarHtml(s){
    columna — usados tanto para armar el HTML como para leer/guardar la selección del docente. */
 var NIVEL_LOGRO_DIA_FIELD = {basico:'nivelLogroBasico', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
 var NIVEL_LOGRO_DIA_LABEL = {basico:'Básico', intermedio:'Intermedio', avanzado:'Avanzado'};
-function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo){
+var NIVEL_LOGRO_DIA_LABEL_EN = {basico:'Close to reach', intermedio:'Achieves the required learning outcomes', avanzado:'Masters the required learning'};
+function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
+  var tituloCategoria = isIngles ? 'Learning Standards' : 'Niveles de Logro';
+  function grupoHtml(tier, items, seleccion){
+    return '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(it){
+      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivellogro-dia-cb" data-tier="' + tier + '" value="' + escapeHtml(it) + '" ' + (seleccion.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
+    }).join('') + '</div>';
+  }
   var columnas = ['basico','intermedio','avanzado'].map(function(tier){
-    var items = nivelLogroItems[tier] || [];
+    var itemsEstaSemana = (nivelLogroItems[tier] && nivelLogroItems[tier].estaSemana) || [];
+    var itemsPendientes = (nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || [];
     var seleccion = (dia[NIVEL_LOGRO_DIA_FIELD[tier]]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+    var etiqueta = isIngles ? NIVEL_LOGRO_DIA_LABEL_EN[tier] : NIVEL_LOGRO_DIA_LABEL[tier];
     var body;
     if(nivelLogroMotivo){
       body = '<div class="hint">' + escapeHtml(nivelLogroMotivo) + '</div>';
-    } else if(!items.length){
-      body = '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + NIVEL_LOGRO_DIA_LABEL[tier] + ' para esta semana.</div>';
+    } else if(!itemsEstaSemana.length && !itemsPendientes.length){
+      body = '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + etiqueta + ' para esta semana.</div>';
     } else {
-      body = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(it){
-        return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivellogro-dia-cb" data-tier="' + tier + '" value="' + escapeHtml(it) + '" ' + (seleccion.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
-      }).join('') + '</div>';
+      body = ''
+        + (itemsEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">De esta semana</div>' + grupoHtml(tier, itemsEstaSemana, seleccion) : '')
+        + (itemsPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">Pendientes de la semana anterior</div>' + grupoHtml(tier, itemsPendientes, seleccion) : '');
     }
-    return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div>' + body + '</div>';
+    return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + etiqueta + '</div>' + body + '</div>';
   }).join('');
-  return '<div class="field"><label>Niveles de Logro</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+  return '<div class="field"><label>' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
 }
-function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana, nivelLogroItems, nivelLogroMotivo){
+function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles){
   var seleccionados = (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
   // (para que no desaparezcan de su propia lista al marcarlos).
@@ -4982,7 +5020,7 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoS
   + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
   + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">Eliminar día</button>' : '')
   + '  </div>'
-  + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo)
+  + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles)
   + '  <div class="field" style="margin-top:12px;"><label>Contenidos Esenciales</label>' + contenidosHtml + '</div>'
   + '  <div class="grid-3" style="margin-top:12px; align-items:start;">'
   + '    <div class="field"><label>Actividades de Aprendizaje</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', 'Escribe las actividades de aprendizaje…') + '</div>'
@@ -4996,6 +5034,7 @@ function renderSemanalForm(d){
   var s = state.editingSemanal || blankSemanal(d);
   state.editingSemanal = s;
   var isAdminViewer = isStaffRole(d.role);
+  var isIngles = semanalEsIngles(s);
 
   var niveles = misNiveles(d.id); if(!niveles.length) niveles = NIVELES;
   var especialidades = misEspecialidadesPara(d.id, s.nivel); if(!especialidades.length) especialidades = especialidadesFor(s.nivel);
@@ -5022,10 +5061,16 @@ function renderSemanalForm(d){
 
   // Los 3 niveles de logro ahora vienen de 3 campos separados del PCA (uno por nivel, ya no hay
   // que detectar palabras clave): cada ítem (viñeta) del PCA se ofrece como opción individual
-  // seleccionable en cada día — ver nivelesLogroDiaHtml.
+  // seleccionable en cada día — ver nivelesLogroDiaHtml. Igual que con Contenidos Esenciales, los
+  // ítems de la semana del PCA inmediatamente anterior que nunca se marcaron se ofrecen también
+  // como "Pendientes de la semana anterior", para que no se pierdan de vista.
   var nivelLogroItems = semanaCoincide
-    ? {basico: parseLinesList(semanaActual.destreza), intermedio: parseLinesList(semanaActual.nivelLogroIntermedio), avanzado: parseLinesList(semanaActual.nivelLogroAvanzado)}
-    : {basico:[], intermedio:[], avanzado:[]};
+    ? {
+        basico: {estaSemana: parseLinesList(semanaActual.destreza), pendientes: nivelLogroPendientesAnteriores(s.pcaId, semanaActual.id, 'basico')},
+        intermedio: {estaSemana: parseLinesList(semanaActual.nivelLogroIntermedio), pendientes: nivelLogroPendientesAnteriores(s.pcaId, semanaActual.id, 'intermedio')},
+        avanzado: {estaSemana: parseLinesList(semanaActual.nivelLogroAvanzado), pendientes: nivelLogroPendientesAnteriores(s.pcaId, semanaActual.id, 'avanzado')}
+      }
+    : {basico:{estaSemana:[],pendientes:[]}, intermedio:{estaSemana:[],pendientes:[]}, avanzado:{estaSemana:[],pendientes:[]}};
   var nivelLogroMotivo = motivoSinSemana
     ? motivoSinSemana
     : (!semanaCoincide ? 'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.' : null);
@@ -5048,7 +5093,7 @@ function renderSemanalForm(d){
     });
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
-    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana, nivelLogroItems, nivelLogroMotivo);
+    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles);
   }).join('');
 
   return ''
