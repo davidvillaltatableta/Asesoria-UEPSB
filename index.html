@@ -326,6 +326,11 @@
   .rte-editable{min-height:90px; height:auto; overflow-y:visible; padding:9px 10px; font-size:13.5px; line-height:1.5; outline:none;}
   .rte-color{width:26px !important; height:26px !important; padding:1px; border:1px solid transparent; border-radius:5px; cursor:pointer; background:none;}
   .rte-color:hover{border-color:var(--line);}
+  .rte-symbol{height:26px; font-size:12px; color:var(--ink); border:1px solid var(--line); border-radius:5px; background:var(--surface); cursor:pointer; max-width:92px;}
+  .rte-editable sup, .rte-editable sub{font-size:.75em;}
+  .rte-paste-menu{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-2); padding:5px; display:flex; flex-direction:column; gap:2px; min-width:180px;}
+  .rte-paste-menu button{background:none; border:none; text-align:left; padding:7px 9px; font-size:12.5px; color:var(--ink); border-radius:5px; cursor:pointer;}
+  .rte-paste-menu button:hover{background:var(--blue-100);}
   .rte-editable ul, .rte-editable ol{margin:4px 0; padding-left:22px;}
   .rte-editable a{color:var(--blue-600); text-decoration:underline;}
   .rte-editable:empty:before{content:attr(data-placeholder); color:var(--muted);}
@@ -877,6 +882,49 @@ function toast(msg, type){
   setTimeout(function(){ el.remove(); }, 3600);
 }
 
+/* Autoguardado del PCA y el Plan Semanal: 4 segundos después del último cambio (sin necesidad de
+   presionar "Guardar plan"), guarda en silencio (sin el toast de guardado manual) y muestra un
+   texto discreto junto al botón — así el docente no pierde avances si se distrae, cierra la
+   pestaña sin querer, etc. No usa toast() a propósito: aparecería cada pocos segundos mientras
+   escribe, y sería más ruido que ayuda. */
+var AUTOSAVE_TIMERS = {};
+/* Marca de tiempo del último autoguardado exitoso por tipo ('pca'/'semanal'), usada para decidir
+   si el indicador debe mostrarse (en vez de manipular el DOM directamente): guardar y volver a
+   leer el texto en cada render hace que el indicador sobreviva al re-render que dispara el propio
+   guardado (el listener en tiempo real del PCA/Plan Semanal vuelve a pintar la barra de
+   herramientas apenas Firestore confirma el cambio, y eso borraba el texto si se ponía "a mano"). */
+var AUTOSAVE_ULTIMO = {};
+function programarAutoguardado(tipo){
+  if(AUTOSAVE_TIMERS[tipo]) clearTimeout(AUTOSAVE_TIMERS[tipo]);
+  AUTOSAVE_TIMERS[tipo] = setTimeout(function(){
+    AUTOSAVE_TIMERS[tipo] = null;
+    if(tipo==='pca' && state.editingPca) savePca(state.editingPca, true);
+    else if(tipo==='semanal' && state.editingSemanal) saveSemanal(state.editingSemanal, true);
+    AUTOSAVE_ULTIMO[tipo] = Date.now();
+    actualizarIndicadorAutoguardado(tipo);
+    setTimeout(function(){ actualizarIndicadorAutoguardado(tipo); }, 6200);
+  }, 4000);
+}
+function autoguardadoHintTexto(tipo){
+  var ts = AUTOSAVE_ULTIMO[tipo];
+  if(!ts || Date.now() - ts > 6000) return '';
+  return '✓ Guardado automáticamente · ' + fmtDateTime(new Date(ts).toISOString());
+}
+function actualizarIndicadorAutoguardado(tipo){
+  var el = document.getElementById(tipo==='pca' ? 'pcaAutosaveHint' : 'semanalAutosaveHint');
+  if(el) el.textContent = autoguardadoHintTexto(tipo);
+}
+/* Escucha "input"/"change" delegado en todo el documento del formulario (burbujea desde
+   cualquier campo, RTE incluido) en vez de engancharse campo por campo — así cualquier campo
+   nuevo que se agregue queda cubierto automáticamente. */
+function bindAutoguardadoDelegado(contenedorId, tipo){
+  var contenedor = document.getElementById(contenedorId);
+  if(!contenedor) return;
+  ['input','change'].forEach(function(evt){
+    contenedor.addEventListener(evt, function(){ programarAutoguardado(tipo); });
+  });
+}
+
 /* Native confirm()/alert() are commonly blocked (or silently return false) inside the
    Artifact's sandboxed iframe — the same category of restriction that already required
    special handling for downloads and window.print(). This custom modal replaces every
@@ -958,8 +1006,68 @@ var state = {
   registerError: ''
 };
 
-function go(subview){ state.subview = subview; state.sidebarOpen = false; render(); window.scrollTo(0,0); }
+function go(subview){ state.subview = subview; state.sidebarOpen = false; guardarUltimaVista(); render(); window.scrollTo(0,0); }
 function goAuth(view){ state.authView = view; state.loginError=''; state.registerError=''; render(); }
+
+/* Recuerda la última página visitada (por usuario) para que, al recargar la página del
+   navegador, el sistema vuelva ahí en vez de mandarlo siempre a Inicio. Para el PCA y el Plan
+   Semanal guarda también el id del registro abierto, para reabrirlo (no el borrador sin guardar:
+   eso se pierde igual que antes, ya que solo existe en memoria). */
+var SUBVIEW_ID_FIELD = {pcaform:'editingPca', semanalform:'editingSemanal'};
+var SUBVIEW_RETURN_FIELD = {pcaform:'pcaReturnTo', semanalform:'semanalReturnTo'};
+function guardarUltimaVista(){
+  var d = currentDocente();
+  if(!d) return;
+  var idField = SUBVIEW_ID_FIELD[state.subview];
+  var registro = idField && state[idField];
+  try{
+    localStorage.setItem('lastView_' + d.id, JSON.stringify({
+      subview: state.subview,
+      id: registro ? registro.id : null,
+      returnTo: SUBVIEW_RETURN_FIELD[state.subview] ? state[SUBVIEW_RETURN_FIELD[state.subview]] : null
+    }));
+  }catch(e){}
+}
+/* No se restaura la vista de "editar a este docente" (adminEditDocente/adminNewDocente): depende
+   de un working copy que no sobrevive un recargo, y reabrirla a ciegas podría confundir más de lo
+   que ayuda — se queda simplemente en la pestaña "admin". */
+var SUBVIEW_SIN_RESTAURAR = {adminEditDocente:'admin', adminNewDocente:'admin'};
+var RESTORED_LAST_VIEW = false;
+var RESTORE_STARTED_AT = null;
+function intentarRestaurarUltimaVista(d){
+  if(RESTORED_LAST_VIEW) return;
+  if(RESTORE_STARTED_AT===null) RESTORE_STARTED_AT = Date.now();
+  var saved;
+  try{
+    var raw = localStorage.getItem('lastView_' + d.id);
+    saved = raw ? JSON.parse(raw) : null;
+  }catch(e){ saved = null; }
+  if(!saved || !saved.subview){ RESTORED_LAST_VIEW = true; return; }
+  if(SUBVIEW_SIN_RESTAURAR[saved.subview]){
+    RESTORED_LAST_VIEW = true;
+    if(state.subview !== SUBVIEW_SIN_RESTAURAR[saved.subview]) go(SUBVIEW_SIN_RESTAURAR[saved.subview]);
+    return;
+  }
+  var col = saved.subview==='pcaform' ? LS.PCA : (saved.subview==='semanalform' ? LS.SEMANAL : null);
+  if(!col){
+    RESTORED_LAST_VIEW = true;
+    if(saved.subview !== state.subview) go(saved.subview);
+    return;
+  }
+  if(!saved.id){ RESTORED_LAST_VIEW = true; return; }
+  var existe = load(col).some(function(x){ return x.id===saved.id; });
+  if(existe){
+    RESTORED_LAST_VIEW = true;
+    if(col===LS.PCA) openPcaForm(saved.id, saved.returnTo||'pcalist');
+    else openSemanalForm(saved.id, saved.returnTo||'semanallist');
+  } else if(Date.now() - RESTORE_STARTED_AT > 4000){
+    // Se agotó la espera de los listeners en tiempo real, o el registro ya no existe (se borró):
+    // mejor quedarse en Inicio que esperar indefinidamente.
+    RESTORED_LAST_VIEW = true;
+  }
+  // si no existe todavía pero no se ha agotado el tiempo, se reintenta solo — cada onSnapshot
+  // llama a render() al llegar datos nuevos, y render() vuelve a invocar esta función.
+}
 
 /* ============================= RENDER ROOT ============================= */
 function render(){
@@ -974,6 +1082,7 @@ function render(){
   } else if(!currentDocente()){
     root.innerHTML = '<div class="center-screen"><div class="hint">Cargando tu perfil…</div></div>';
   } else {
+    intentarRestaurarUltimaVista(currentDocente());
     root.innerHTML = renderShell();
     bindShellEvents();
   }
@@ -4289,6 +4398,7 @@ function pcaToolbarHtml(p){
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">' + te('← Volver a la lista', isIngles) + '</button>'
     + lockToggle
+    + (locked ? '' : '  <span class="hint" id="pcaAutosaveHint">' + escapeHtml(autoguardadoHintTexto('pca')) + '</span>')
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
@@ -4429,6 +4539,7 @@ function bindPcaFormEvents(){
     document.querySelectorAll('#pcaDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
     return;
   }
+  bindAutoguardadoDelegado('pcaDoc', 'pca');
 
   document.getElementById('pfNivel').addEventListener('change', function(e){ p.nivel=e.target.value; p.especialidad=''; p.curso=''; p.asignatura=''; renderPcaFormAgain(); });
   document.getElementById('pfEspecialidad').addEventListener('change', function(e){ p.especialidad=e.target.value; p.asignatura=''; renderPcaFormAgain(); });
@@ -4589,6 +4700,22 @@ function richEditorHtml(fieldKey, ownerId, html, placeholder){
   + '    <button type="button" data-rte-cmd="outdent" title="Quitar sangría">|←</button>'
   + '    <input type="color" class="rte-color" data-rte-color title="Color de texto" value="#16233A" />'
   + '    <button type="button" data-rte-cmd="createLink" title="Insertar enlace">🔗</button>'
+  + '    <button type="button" data-rte-cmd="superscript" title="Exponente / superíndice">x²</button>'
+  + '    <button type="button" data-rte-cmd="subscript" title="Subíndice">x₂</button>'
+  + '    <button type="button" data-rte-cmd="insertFraction" title="Insertar fracción simple">½</button>'
+  + '    <select class="rte-symbol" data-rte-symbol title="Insertar símbolo matemático">'
+  + '      <option value="">√ ± × ÷ …</option>'
+  + '      <option value="√">√ (raíz)</option>'
+  + '      <option value="±">± (más/menos)</option>'
+  + '      <option value="×">× (multiplicación)</option>'
+  + '      <option value="÷">÷ (división)</option>'
+  + '      <option value="π">π (pi)</option>'
+  + '      <option value="°">° (grados)</option>'
+  + '      <option value="≤">≤ (menor o igual)</option>'
+  + '      <option value="≥">≥ (mayor o igual)</option>'
+  + '      <option value="≠">≠ (distinto)</option>'
+  + '      <option value="∞">∞ (infinito)</option>'
+  + '    </select>'
   + '    <button type="button" data-rte-cmd="removeFormat" title="Quitar formato">✕</button>'
   + '  </div>'
   + '  <div class="rte-editable" contenteditable="true" id="' + id + '" data-rte-field="' + fieldKey + '" data-placeholder="' + escapeHtml(placeholder||'') + '">' + (html||'') + '</div>'
@@ -4612,8 +4739,30 @@ function bindRteToolbars(root){
         });
         return;
       }
+      if(cmd === 'insertFraction'){
+        editable.focus();
+        document.execCommand('insertHTML', false, '<sup>1</sup>⁄<sub>2</sub>&nbsp;');
+        return;
+      }
       editable.focus();
       document.execCommand(cmd, false, null);
+    });
+  });
+  root.querySelectorAll('[data-rte-symbol]').forEach(function(sel){
+    var savedRange = null;
+    sel.addEventListener('mousedown', function(){
+      var s = window.getSelection();
+      savedRange = (s && s.rangeCount) ? s.getRangeAt(0).cloneRange() : null;
+    });
+    sel.addEventListener('change', function(){
+      var symbol = sel.value;
+      if(!symbol) return;
+      var wrap = sel.closest('.rte');
+      var editable = wrap.querySelector('.rte-editable');
+      editable.focus();
+      if(savedRange){ var s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(savedRange); }
+      document.execCommand('insertText', false, symbol);
+      sel.value = '';
     });
   });
   root.querySelectorAll('[data-rte-color]').forEach(function(inp){
@@ -4630,13 +4779,97 @@ function bindRteToolbars(root){
       document.execCommand('foreColor', false, inp.value);
     });
   });
+  root.querySelectorAll('.rte-editable').forEach(function(editable){
+    editable.addEventListener('paste', function(e){
+      var cd = e.clipboardData || window.clipboardData;
+      if(!cd) return;
+      var htmlRaw = cd.getData('text/html');
+      var textoPlano = cd.getData('text/plain');
+      if(!htmlRaw && !textoPlano) return;
+      e.preventDefault();
+      var sel = window.getSelection();
+      var savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+      mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, e.clientX, e.clientY);
+    });
+  });
+}
+/* Al pegar contenido con formato en un campo de texto enriquecido, ofrece un pequeño menú (como
+   en Word) para elegir cómo incorporarlo: manteniendo el formato de origen, combinándolo con uno
+   más simple, o solo el texto plano. Si el docente hace clic fuera sin elegir, se pega con el
+   formato de origen (la opción menos sorprendente) para que el pegado nunca quede "sin hacer
+   nada" por descuido. */
+function mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, x, y){
+  var previo = document.getElementById('rtePasteMenu');
+  if(previo) previo.remove();
+  var menu = document.createElement('div');
+  menu.id = 'rtePasteMenu';
+  menu.className = 'rte-paste-menu';
+  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - 190)) + 'px';
+  menu.style.top = (y + 10) + 'px';
+  menu.innerHTML = ''
+    + '<button type="button" data-modo="mantener">Mantener formato de origen</button>'
+    + '<button type="button" data-modo="combinar">Combinar formato</button>'
+    + '<button type="button" data-modo="texto">Pegar solo texto</button>';
+  document.body.appendChild(menu);
+
+  function insertar(modo){
+    editable.focus();
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    if(savedRange) sel.addRange(savedRange);
+    if(modo === 'texto'){
+      document.execCommand('insertHTML', false, escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
+    } else if(modo === 'combinar'){
+      document.execCommand('insertHTML', false, htmlRaw ? limpiarHtmlPegadoCombinado(htmlRaw) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
+    } else {
+      document.execCommand('insertHTML', false, htmlRaw ? sanitizeRte(htmlRaw) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
+    }
+    editable.dispatchEvent(new Event('input', {bubbles:true}));
+    cerrar();
+  }
+  function onOutside(ev){
+    if(menu.contains(ev.target)) return;
+    insertar('mantener');
+  }
+  function cerrar(){
+    menu.remove();
+    document.removeEventListener('mousedown', onOutside, true);
+  }
+  menu.querySelectorAll('button').forEach(function(btn){
+    btn.addEventListener('click', function(){ insertar(btn.getAttribute('data-modo')); });
+  });
+  setTimeout(function(){ document.addEventListener('mousedown', onOutside, true); }, 0);
+}
+/* Versión más simple que sanitizeRte para "Combinar formato": conserva negrita/subrayado y
+   saltos de línea/párrafo, pero descarta listas, enlaces, colores y demás formato del origen
+   (las viñetas de listas se convierten en líneas separadas para no perder la separación). */
+function limpiarHtmlPegadoCombinado(html){
+  if(!html) return '';
+  var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,BR:1};
+  function clean(node){
+    Array.from(node.childNodes).forEach(function(ch){
+      if(ch.nodeType === 3) return;
+      if(ch.nodeType !== 1){ node.removeChild(ch); return; }
+      if(ch.tagName === 'LI') node.insertBefore(document.createElement('br'), ch);
+      if(!allowed[ch.tagName]){
+        var text = document.createTextNode(ch.textContent || '');
+        node.replaceChild(text, ch);
+        return;
+      }
+      Array.from(ch.attributes).forEach(function(attr){ ch.removeAttribute(attr.name); });
+      clean(ch);
+    });
+  }
+  clean(doc.body.firstChild);
+  return doc.body.firstChild.innerHTML;
 }
 /* Whitelist sanitizer applied at save time: strips any tag/attribute outside a small allowed
    set (bold/underline/lists/links/line-breaks) so pasted content can't smuggle scripts or
    event-handler attributes into localStorage. */
 function sanitizeRte(html){
   if(!html) return '';
-  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1};
+  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1,SUP:1,SUB:1};
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
   function clean(node){
     Array.from(node.childNodes).forEach(function(ch){
@@ -4992,6 +5225,7 @@ function semanalToolbarHtml(s){
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
     + lockToggle
+    + (locked ? '' : '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>')
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
@@ -5240,6 +5474,7 @@ function bindSemanalFormEvents(){
     document.querySelectorAll('#semanalDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
     return;
   }
+  bindAutoguardadoDelegado('semanalDoc', 'semanal');
 
   document.getElementById('sfNivel').addEventListener('change', function(e){ s.nivel=e.target.value; s.especialidad=''; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
   document.getElementById('sfEspecialidad').addEventListener('change', function(e){ s.especialidad=e.target.value; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
@@ -6979,6 +7214,8 @@ window.addEventListener('firebase-ready', function(){
       detachRealtimeListeners();
       Object.keys(FS_CACHE).forEach(function(k){ FS_CACHE[k] = []; });
       state.subview = 'dashboard';
+      RESTORED_LAST_VIEW = false;
+      RESTORE_STARTED_AT = null;
     }
     FB_READY = true;
     render();
