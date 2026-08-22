@@ -7527,6 +7527,14 @@ window.addEventListener('firebase-ready', function(){
     return;
   }
   window.FB.onAuthStateChanged(window.FB.auth, function(user){
+    /* Una sesión anónima (creada por el enlace público del representante legal) puede quedar
+       persistida en el mismo navegador; si alguien luego abre el sistema normal con esa sesión
+       todavía activa, nunca tendrá un perfil docente — hay que cerrarla en vez de quedarse
+       esperando "Cargando tu perfil…" para siempre. */
+    if(user && user.isAnonymous){
+      window.FB.signOut(window.FB.auth);
+      return;
+    }
     if(user){
       CURRENT_UID = user.uid;
       attachRealtimeListeners();
