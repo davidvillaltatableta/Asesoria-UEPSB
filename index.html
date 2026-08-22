@@ -673,6 +673,13 @@ function misAsignaturasPara(docenteId, nivel, especialidad, curso){
    actualizado el listener onAuthStateChanged (ver abajo, sección FIREBASE BOOTSTRAP). */
 var CURRENT_UID = null;
 var FB_READY = false;
+/* Enlace público del representante legal (sin registro): ?formulario=fichadatos activa un modo
+   de arranque separado que nunca pasa por el login ni el menú — ver renderFormularioPublico y el
+   bootstrap de Firebase Auth anónimo, más abajo. */
+var ES_FORMULARIO_PUBLICO = (function(){
+  try{ return new URLSearchParams(window.location.search).get('formulario') === 'fichadatos'; }
+  catch(e){ return false; }
+})();
 function getSessionId(){ return CURRENT_UID; }
 function setSessionId(id){ CURRENT_UID = id; }
 function clearSession(){ CURRENT_UID = null; }
@@ -1073,6 +1080,7 @@ function intentarRestaurarUltimaVista(d){
 
 /* ============================= RENDER ROOT ============================= */
 function render(){
+  if(ES_FORMULARIO_PUBLICO){ renderFormularioPublico(); return; }
   var root = document.getElementById('app');
   if(!FB_READY){
     root.innerHTML = '<div class="center-screen"><div class="hint">Conectando…</div></div>';
@@ -1294,7 +1302,7 @@ var NAV_GROUPS = [
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
     {key:'fichadeteccion', label:'Ficha de Detección', ic:'🚨'},
-    {key:'dece', label:'Casos DECE', ic:'🧑‍⚕️', adminOnly:true}
+    {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true}
   ]},
   {label:'Administración y Base de Datos', hue:'rose', items:[
     {key:'admin', label:'Administración', ic:'🛡️', adminOnly:true},
@@ -1850,18 +1858,16 @@ function renderManualAdmin(){
   );
 
   var secDeceAdmin = manualSection('sec-a13', '13. Departamento de Consejería Estudiantil (DECE)', ''
-    + '<p>Módulo exclusivo de Administradores, Directivos y DECE, para dar seguimiento confidencial a situaciones de estudiantes. Tiene dos partes: <b>Casos DECE</b> (que administras tú) y las <b>Fichas de Detección</b> que te envían los docentes.</p>'
-    + '<h3>Casos DECE</h3>'
-    + manualStep(1, 'Ve a <b>Casos DECE</b> y haz clic en <b>“+ Nuevo caso”</b>.')
-    + manualStep(2, 'Elige Nivel y Curso, y selecciona al estudiante de la lista (o escribe su nombre manualmente si todavía no está registrado en Inspección General).')
-    + manualStep(3, 'Completa Fecha, Estado, Atendido por, el o los <b>Tipos de caso</b> (Académico, Conductual, Emocional/Psicológico, Familiar, Vocacional, Salud, Otro), la <b>Descripción</b> confidencial y las <b>Acciones tomadas</b>.')
-    + manualStep(4, 'Usa <b>“+ Agregar seguimiento”</b> para ir registrando cada sesión con su fecha y nota, formando una bitácora del caso.')
-    + manualStep(5, 'Si el caso fue derivado a una institución externa, marca la casilla y anota la institución.')
-    + manualStep(6, 'Guarda. El documento queda firmado automáticamente con tu nombre completo y cédula, e imprimible en A4 horizontal con el botón “PDF ✓”.')
-    + manualWarn('La información de los Casos DECE es confidencial: ningún docente puede verla, ni siquiera el docente del estudiante involucrado.')
+    + '<p>Módulo exclusivo de Administradores, Directivos y DECE, para dar seguimiento confidencial a situaciones de estudiantes. Tiene dos partes: la <b>Ficha de Datos Informativos</b> (el registro acumulativo general de cada estudiante) y las <b>Fichas de Detección</b> que te envían los docentes.</p>'
+    + '<h3>Ficha de Datos Informativos</h3>'
+    + '<p>Es el registro acumulativo general del estudiante (datos de identificación, familia, referencias socioeconómicas, salud, rendimiento académico e historia vital), mapeado tal cual de la ficha institucional en papel. Puede llegar de dos maneras:</p>'
+    + manualStep(1, 'La llena el <b>representante legal</b> directamente, sin necesidad de registrarse, desde el enlace público que le compartes (por ejemplo por WhatsApp o correo): agrega <code>?formulario=fichadatos</code> al final de la dirección del sistema. Cuando la envía, aparece aquí automáticamente marcada como “Representante legal”.')
+    + manualStep(2, 'O la registras tú mismo desde <b>“+ Nueva ficha”</b>, llenando el mismo formulario completo.')
+    + manualStep(3, 'Abre cualquier ficha para revisarla o completarla, y usa el campo <b>Estado</b> (Nueva, En revisión, Completa) para llevar seguimiento.')
+    + manualWarn('La información de la Ficha de Datos Informativos es confidencial: ningún docente puede verla, ni siquiera el docente del estudiante involucrado. El representante legal que la envía tampoco puede verla ni editarla después de enviada — solo Administración, Directivos y DECE.')
     + '<h3>Fichas de Detección</h3>'
-    + '<p>Cuando un docente detecta una dificultad y envía una Ficha de Detección desde su propio menú, la verás aquí junto con las tuyas propias — es la ficha institucional en papel (dificultades académicas, aspectos a considerarse, padres de familia, acciones y logros) mapeada tal cual al sistema. A diferencia de los Casos, la ficha la <b>crea el docente</b>, no tú — tu trabajo es revisarla, completar <b>“Recibido por”</b> y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida) conforme le das seguimiento.</p>'
-    + manualTip('Si una ficha amerita abrir un caso formal, puedes crear un Caso DECE nuevo con la misma información del estudiante.')
+    + '<p>Cuando un docente detecta una dificultad y envía una Ficha de Detección desde su propio menú, la verás aquí junto con las tuyas propias — es la ficha institucional en papel (dificultades académicas, aspectos a considerarse, padres de familia, acciones y logros) mapeada tal cual al sistema. A diferencia de la Ficha de Datos, esta la <b>crea el docente</b>, no tú — tu trabajo es revisarla, completar <b>“Recibido por”</b> y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida) conforme le das seguimiento.</p>'
+    + manualTip('Si una ficha de detección amerita abrir el registro completo del estudiante, puedes crear una Ficha de Datos Informativos nueva con su información.')
   );
 
   var secBd = manualSection('sec-a14', '14. Base de Datos y seguridad de roles', ''
@@ -1878,7 +1884,7 @@ function renderManualAdmin(){
     + '<h3>Necesito buscar solo los PCA de un docente en un curso específico</h3>'
     + '<p>Usa la barra de filtros arriba de la lista de PCA: elige el Docente, luego el Curso.</p>'
     + '<h3>¿Cuál es la diferencia entre Administrador, Directivo y DECE?</h3>'
-    + '<p>Ninguna en cuanto a permisos — los tres ven y editan exactamente lo mismo. Son roles separados solo para identificar correctamente quién hizo cada acción (por ejemplo, en la firma de un caso DECE).</p>'
+    + '<p>Ninguna en cuanto a permisos — los tres ven y editan exactamente lo mismo. Son roles separados solo para identificar correctamente quién hizo cada acción (por ejemplo, quién recibió una ficha de detección).</p>'
     + '<h3>Un docente envió una ficha de detección con un dato incorrecto</h3>'
     + '<p>Las fichas quedan bloqueadas para el docente apenas se envían, así que él no puede corregirla. Tú sí puedes abrirla y editarla desde el módulo DECE.</p>'
   );
@@ -3251,54 +3257,257 @@ function doSaveObservacion(){
   toast('Observación guardada correctamente.', 'success');
 }
 
-/* ============================= DECE (Consejería Estudiantil) =============================
-   Módulo exclusivo de los roles con acceso administrativo (admin/directivo/dece), nunca visible
-   a docentes: casos de consejería vinculados a los estudiantes ya registrados en Inspección
-   General (o a un nombre manual si el estudiante aún no está registrado), con bitácora de
-   seguimientos y datos sensibles/confidenciales. */
-var DECE_TIPOS = ['Académico','Conductual','Emocional / Psicológico','Familiar','Vocacional / Orientación','Salud','Otro'];
-var DECE_ESTADOS = ['Abierto','En seguimiento','Cerrado','Derivado'];
-
-function blankDeceCaso(){
+/* ============================= FICHA DE DATOS INFORMATIVOS (DECE) =============================
+   Reemplaza al antiguo módulo "Casos DECE": mapea 1:1 la ficha institucional en papel "REGISTRO
+   ACUMULATIVO GENERAL" que llena el representante legal del estudiante. La llena el propio
+   representante desde el enlace público (sin iniciar sesión — ver el bootstrap de
+   `?formulario=fichadatos` más abajo) o, alternativamente, el personal del DECE directamente
+   desde este módulo. Nunca visible a docentes: solo Administración/Directivos/DECE. */
+function fdiEstadoPillHtml(estado){
+  if(estado==='Completa') return '<span class="pill pill-green">Completa</span>';
+  if(estado==='En revision') return '<span class="pill pill-blue">En revision</span>';
+  return '<span class="pill pill-muted">Nueva</span>';
+}
+var FDI_ESTADOS = ['Nueva','En revision','Completa'];
+var FDI_JORNADA = ['Matutina','Vespertina','Nocturna'];
+var FDI_ESTADO_CIVIL = ['Soltero/a','Casado/a','Divorciado/a','Viudo/a','Union libre'];
+var FDI_SERVICIOS = ['Luz electrica','Agua potable','SSHH','Pozo septico','Internet','Telefono','Cable','Celular','Computador'];
+var FDI_VIVIENDA = ['Propia','Arrendada','Con prestamo','Prestada','Anticresis'];
+var FDI_CALIDAD = ['Buena','Regular','Mala'];
+var FDI_SINO = ['Si','No'];
+var FDI_ATENCION_MEDICA = ['Centro de salud','Subcentro de salud','Hospital publico','Hospital privado'];
+var FDI_TERMINO_EMBARAZO = ['Prematuro','Cesarea','Parto Normal'];
+var FDI_APRENDIZAJE_TIPO = ['Teorico','Practico','Reflexivo'];
+var FDI_DIFICULTADES_APRENDIZAJE = ['Atencion','Concentracion','Memoria','Razonamiento'];
+var FDI_RESPONSABILIDAD = ['Responsable','Poco responsable','Nada responsable'];
+var FDI_PERSONALIDAD = ['Timido/a','Inquieto/a','Sociable','Agresivo/a','Creativo/a'];
+var FDI_ANTECEDENTES_PATOLOGICOS = ['Obesidad','Enfermedades cardiacas','Hipertension','Diabetes','Enfermedades mentales','Otros'];
+function blankFichaDatos(){
   return {
-    id: uid('dece'), fecha: todayISO(),
-    estudianteId: '', estudianteManual: '',
-    nivel: '', curso: '',
-    tipo: '', descripcion: '', accionesTomadas: '',
-    seguimientos: [],
-    estado: 'Abierto',
-    derivacionActiva: false, derivacionInstitucion: '',
-    atendidoPor: nombreFormal(currentDocente()),
-    registradoPor: '', createdAt: '', updatedAt: ''
+    id: uid('fdi'), createdAt:'', updatedAt:'',
+    jornada:'', cedulaEstudiante:'',
+    estudianteNombre:'', lugarNacimiento:'', fechaNacimiento:'', domicilio:'', sector:'', cambiosDomicilio:'',
+    telefonoConvencional:'', celular:'', fotoEstudiante:'',
+    madreNombre:'', madreEdad:'', madreEstadoCivil:'', madreInstruccion:'', madreProfesion:'', madreTrabajo:'', madreTelContacto:'', madreTelTrabajo:'',
+    padreNombre:'', padreEdad:'', padreEstadoCivil:'', padreInstruccion:'', padreProfesion:'', padreTrabajo:'', padreTelContacto:'', padreTelTrabajo:'',
+    repLegalNombre:'', repLegalParentesco:'', repLegalEdad:'', repLegalProfesion:'', repLegalTelefono:'', repLegalTrabajo:'',
+    personasConvive:'', tieneHermanos:'', cuantosHermanos:'', padresMigrantes:'', lugarMigracion:'',
+    hermanosEdades:['','','','',''], hermanosLugar:['','','','',''],
+    hermanosInstNombre:['','',''], hermanosInstCurso:['','',''], hermanosInstParalelo:['','',''],
+    estructuraFamiliar:'', familiaresDiscapacidad:'', familiaresDiscapacidadQuien:'', obsReferenciasFamiliares:'',
+    ingresosEgresos:'', condicionVivienda:'', descripcionVivienda:'', servicios:'', obsSocioeconomicas:'',
+    discapacidad:'', carnetConadis:'', queDiscapacidad:'', condicionMedica:'', condicionMedicaCual:'',
+    alergiasSalud:'', alergiasCuales:'', medicamentos:'', enfermedadCatastrofica:'',
+    embarazada:'', mesesEmbarazo:'', padreMadreAdolescente:'', tieneConQuienDejarHijo:'', quienCuidaHijo:'',
+    atencionMedica:'', nombreMedico:'', obsSalud:'',
+    fechaIngresoInstitucion:'', institucionProcedencia:'', repitioAnios:'', anioRepitio:'',
+    asignaturasPreferencia:['','','',''], asignaturasDificultad:['','','',''], dignidades:['','','',''],
+    logrosAcademicos:['','','',''], logrosAnios:['','','',''],
+    participacion:['','','',''], participacionAnios:['','','',''],
+    clubesProyectos:['','','',''],
+    extracurricularNivel:'', extracurricularParticipa:'', extracurricularCual:'',
+    aprendizajeTipo:'', dificultadesAprendizaje:'', cumplimientoTareas:'', seConsidera:'',
+    edadMadreEmbarazo:'', accidentesEmbarazo:'', medicamentosEmbarazo:'', terminoEmbarazo:'', otraDificultadEmbarazo:'',
+    pesoNacer:'', tallaNacer:'', edadCaminar:'', edadHablo:'', periodoLactancia:'', edadBiberon:'', edadEsfinteres:'',
+    enfermedadesInfancia:'', accidentesInfancia:'', alergiasInfancia:'', cirugias:'', perdidasConocimiento:'', otrosSalud:'',
+    antecedentesPatologicos:'',
+    relacionPadre:'', motivoPadre:'', relacionMadre:'', motivoMadre:'', relacionHermanos:'', motivoHermanos:'', relacionOtros:'', motivoOtros:'', obsRelaciones:'',
+    habitosSueno:'', habitosAlimenticios:'', actividadesTiempoLibre:['','','',''], tiempoTareas:'',
+    estado:'Nueva', origen:'', docenteId:''
   };
 }
-function cursosConEstudiantes(nivel){
-  var set = {};
-  load(LS.ESTUDIANTES).filter(function(e){ return e.nivel===nivel; }).forEach(function(e){
-    var c = e.curso==='Otro…' ? (e.cursoManual||'') : e.curso;
-    if(c) set[c]=1;
-  });
-  return Object.keys(set).sort();
+function fdiCampo(label, key, valor, editable, tipo){
+  return '<div class="field"><label>'+label+'</label><input class="cell-input" type="'+(tipo||'text')+'" data-fdi-field="'+key+'" value="'+escapeHtml(valor||'')+'" '+(editable?'':'disabled')+' /></div>';
 }
-function estudiantesPorNivelCurso(nivel, curso){
-  return load(LS.ESTUDIANTES).filter(function(e){
-    if(e.nivel!==nivel) return false;
-    var c = e.curso==='Otro…' ? (e.cursoManual||'') : e.curso;
-    return c===curso;
-  }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+function fdiArea(label, key, valor, editable, filas){
+  return '<div class="field"><label>'+label+'</label><textarea class="cell-input" rows="'+(filas||2)+'" data-fdi-field="'+key+'" '+(editable?'':'disabled')+'>'+escapeHtml(valor||'')+'</textarea></div>';
 }
-function deceNombreEstudiante(caso){
-  if(caso.estudianteId){
-    var e = load(LS.ESTUDIANTES).find(function(x){ return x.id===caso.estudianteId; });
-    if(e) return e.apellidos + ' ' + e.nombres;
+function fdiRadios(label, key, opciones, valorActual, editable){
+  return '<div class="field"><label>'+label+'</label><div class="checkbox-grid">' + opciones.map(function(o){
+    return '<label class="checkbox-pill"><input type="radio" name="fdi-'+key+'" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(valorActual===o?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(o)+'</label>';
+  }).join('') + '</div></div>';
+}
+function fdiChecks(label, key, opciones, valorActual, editable){
+  var sel = (valorActual||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  return '<div class="field"><label>'+label+'</label><div class="checkbox-grid">' + opciones.map(function(o){
+    return '<label class="checkbox-pill"><input type="checkbox" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(sel.indexOf(o)!==-1?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(o)+'</label>';
+  }).join('') + '</div></div>';
+}
+function fdiListaCorta(key, valores, n, editable){
+  var out = '';
+  for(var i=0;i<n;i++) out += '<input class="cell-input" style="margin-bottom:6px;" data-fdi-arr="'+key+'" data-fdi-idx="'+i+'" value="'+escapeHtml(valores[i]||'')+'" placeholder="'+(i+1)+'." '+(editable?'':'disabled')+' />';
+  return out;
+}
+function fdiListaConAnio(keyTexto, keyAnio, valoresTexto, valoresAnio, n, editable){
+  var out = '<div class="table-wrap"><table><thead><tr><th style="width:24px;"></th><th>Descripcion</th><th style="width:90px;">Anio</th></tr></thead><tbody>';
+  for(var i=0;i<n;i++){
+    out += '<tr><td class="tabular">'+(i+1)+'</td>'
+      + '<td><input class="cell-input" data-fdi-arr="'+keyTexto+'" data-fdi-idx="'+i+'" value="'+escapeHtml(valoresTexto[i]||'')+'" '+(editable?'':'disabled')+' /></td>'
+      + '<td><input class="cell-input tabular" data-fdi-arr="'+keyAnio+'" data-fdi-idx="'+i+'" value="'+escapeHtml(valoresAnio[i]||'')+'" '+(editable?'':'disabled')+' /></td></tr>';
   }
-  return caso.estudianteManual || '—';
+  return out + '</tbody></table></div>';
 }
-function deceEstadoPillHtml(estado){
-  if(estado==='Cerrado') return '<span class="pill pill-green">Cerrado</span>';
-  if(estado==='En seguimiento') return '<span class="pill pill-blue">En seguimiento</span>';
-  if(estado==='Derivado') return '<span class="pill pill-gold">Derivado</span>';
-  return '<span class="pill pill-muted">Abierto</span>';
+function fdiHermanosEdadesHtml(edades, lugares, editable){
+  var ordinales = ['1er','2do','3er','4to','5to'];
+  var out = '<div class="table-wrap"><table><thead><tr><th>Hermanos/as</th><th>Edad</th><th>Lugar que ocupa (usted)</th></tr></thead><tbody>';
+  for(var i=0;i<5;i++){
+    out += '<tr><td>'+ordinales[i]+'</td>'
+      + '<td><input class="cell-input tabular" data-fdi-arr="hermanosEdades" data-fdi-idx="'+i+'" value="'+escapeHtml(edades[i]||'')+'" '+(editable?'':'disabled')+' /></td>'
+      + '<td><input class="cell-input" data-fdi-arr="hermanosLugar" data-fdi-idx="'+i+'" value="'+escapeHtml(lugares[i]||'')+'" '+(editable?'':'disabled')+' /></td></tr>';
+  }
+  return out + '</tbody></table></div>';
+}
+function fdiHermanosInstitucionHtml(nombres, cursos, paralelos, editable){
+  var ordinales = ['1er','2do','3er'];
+  var out = '<div class="table-wrap"><table><thead><tr><th>Hermanos/as</th><th>Nombre y Apellido</th><th>Curso</th><th>Paralelo</th></tr></thead><tbody>';
+  for(var i=0;i<3;i++){
+    out += '<tr><td>'+ordinales[i]+'</td>'
+      + '<td><input class="cell-input" data-fdi-arr="hermanosInstNombre" data-fdi-idx="'+i+'" value="'+escapeHtml(nombres[i]||'')+'" '+(editable?'':'disabled')+' /></td>'
+      + '<td><input class="cell-input" data-fdi-arr="hermanosInstCurso" data-fdi-idx="'+i+'" value="'+escapeHtml(cursos[i]||'')+'" '+(editable?'':'disabled')+' /></td>'
+      + '<td><input class="cell-input" data-fdi-arr="hermanosInstParalelo" data-fdi-idx="'+i+'" value="'+escapeHtml(paralelos[i]||'')+'" '+(editable?'':'disabled')+' /></td></tr>';
+  }
+  return out + '</tbody></table></div>';
+}
+function fdiCuerpoHtml(e, editable){
+  return ''
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2">'
+  + fdiRadios('Jornada', 'jornada', FDI_JORNADA, e.jornada, editable)
+  + fdiCampo('N. Cedula del/a estudiante', 'cedulaEstudiante', e.cedulaEstudiante, editable)
+  + '    </div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">1. Datos de identificacion/informacion</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2">' + fdiCampo('Apellidos y Nombres del/la estudiante', 'estudianteNombre', e.estudianteNombre, editable) + '<div class="field"><label>Foto del/a estudiante (obligatorio)</label></div>' + '</div>'
+  + '    <div style="max-width:220px; margin:6px 0 14px;">'
+  + '      <div id="fdiFotoPreview" style="width:150px; height:190px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); overflow:hidden; display:flex; align-items:center; justify-content:center; background:var(--surface-2);">' + (e.fotoEstudiante ? '<img src="'+e.fotoEstudiante+'" style="width:100%; height:100%; object-fit:cover;" />' : '<span class="hint">Sin foto</span>') + '</div>'
+  + (editable ? '      <input type="file" accept="image/*" id="fdiFotoInput" class="no-print" style="margin-top:8px;" />' + (e.fotoEstudiante ? '<button class="btn btn-ghost btn-sm no-print" id="btnFdiFotoQuitar" style="margin-top:6px;">Quitar foto</button>' : '') : '')
+  + '    </div>'
+  + '    <div class="grid-3">' + fdiCampo('Lugar de nacimiento', 'lugarNacimiento', e.lugarNacimiento, editable) + fdiCampo('Fecha de nacimiento', 'fechaNacimiento', e.fechaNacimiento, editable, 'date') + fdiCampo('Sector', 'sector', e.sector, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Domicilio', 'domicilio', e.domicilio, editable) + fdiCampo('Cambios de domicilio', 'cambiosDomicilio', e.cambiosDomicilio, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Telefono convencional', 'telefonoConvencional', e.telefonoConvencional, editable) + fdiCampo('Celular', 'celular', e.celular, editable) + '</div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">2. Datos familiares</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="hint" style="font-weight:700; margin-bottom:6px;">Madre</div>'
+  + '    <div class="grid-3">' + fdiCampo('Nombre de la madre', 'madreNombre', e.madreNombre, editable) + fdiCampo('Edad', 'madreEdad', e.madreEdad, editable) + fdiRadios('Estado civil', 'madreEstadoCivil', FDI_ESTADO_CIVIL, e.madreEstadoCivil, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Instruccion', 'madreInstruccion', e.madreInstruccion, editable) + fdiCampo('Profesion u ocupacion', 'madreProfesion', e.madreProfesion, editable) + fdiCampo('Lugar de trabajo', 'madreTrabajo', e.madreTrabajo, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Telefono de contacto', 'madreTelContacto', e.madreTelContacto, editable) + fdiCampo('Telefono de trabajo', 'madreTelTrabajo', e.madreTelTrabajo, editable) + '</div>'
+  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Padre</div>'
+  + '    <div class="grid-3">' + fdiCampo('Nombre del padre', 'padreNombre', e.padreNombre, editable) + fdiCampo('Edad', 'padreEdad', e.padreEdad, editable) + fdiRadios('Estado civil', 'padreEstadoCivil', FDI_ESTADO_CIVIL, e.padreEstadoCivil, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Instruccion', 'padreInstruccion', e.padreInstruccion, editable) + fdiCampo('Profesion u ocupacion', 'padreProfesion', e.padreProfesion, editable) + fdiCampo('Lugar de trabajo', 'padreTrabajo', e.padreTrabajo, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Telefono de contacto', 'padreTelContacto', e.padreTelContacto, editable) + fdiCampo('Telefono de trabajo', 'padreTelTrabajo', e.padreTelTrabajo, editable) + '</div>'
+  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Representante legal / cuidador / tutor (solo si el estudiante esta bajo el cuidado de otra persona que no sean sus progenitores)</div>'
+  + '    <div class="grid-3">' + fdiCampo('Nombre', 'repLegalNombre', e.repLegalNombre, editable) + fdiCampo('Parentesco', 'repLegalParentesco', e.repLegalParentesco, editable) + fdiCampo('Edad', 'repLegalEdad', e.repLegalEdad, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Profesion u ocupacion', 'repLegalProfesion', e.repLegalProfesion, editable) + fdiCampo('Telefono de contacto', 'repLegalTelefono', e.repLegalTelefono, editable) + fdiCampo('Lugar de trabajo', 'repLegalTrabajo', e.repLegalTrabajo, editable) + '</div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">3. Referencias familiares del/la estudiante</div>'
+  + '  <div class="pca-section">'
+  + fdiArea('Personas con quien vive el estudiante (especifique todas las personas que conforman la estructura familiar)', 'personasConvive', e.personasConvive, editable)
+  + '    <div class="grid-3">' + fdiRadios('Tiene hermanos/as?', 'tieneHermanos', FDI_SINO, e.tieneHermanos, editable) + fdiCampo('Cuantos?', 'cuantosHermanos', e.cuantosHermanos, editable) + fdiRadios('Padres migrantes?', 'padresMigrantes', FDI_SINO, e.padresMigrantes, editable) + '</div>'
+  + (e.padresMigrantes==='Si' ? fdiCampo('Lugar', 'lugarMigracion', e.lugarMigracion, editable) : '')
+  + fdiHermanosEdadesHtml(e.hermanosEdades, e.hermanosLugar, editable)
+  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Hermanos/as que estudian en la institucion</div>'
+  + fdiHermanosInstitucionHtml(e.hermanosInstNombre, e.hermanosInstCurso, e.hermanosInstParalelo, editable)
+  + fdiArea('Descripcion de la estructura familiar', 'estructuraFamiliar', e.estructuraFamiliar, editable, 3)
+  + '    <div class="grid-2">' + fdiRadios('Familiares con algun tipo de discapacidad?', 'familiaresDiscapacidad', FDI_SINO, e.familiaresDiscapacidad, editable) + (e.familiaresDiscapacidad==='Si' ? fdiCampo('Determinar quien', 'familiaresDiscapacidadQuien', e.familiaresDiscapacidadQuien, editable) : '') + '</div>'
+  + fdiArea('Observaciones', 'obsReferenciasFamiliares', e.obsReferenciasFamiliares, editable)
+  + '  </div>'
+  + '  <div class="pca-band band-section">3.1 Referencias socioeconomicas generales</div>'
+  + '  <div class="pca-section">'
+  + fdiRadios('Ingresos/egresos de los miembros de la familia', 'ingresosEgresos', FDI_CALIDAD, e.ingresosEgresos, editable)
+  + fdiRadios('Condiciones de vivienda', 'condicionVivienda', FDI_VIVIENDA, e.condicionVivienda, editable)
+  + fdiArea('Breve descripcion de la vivienda (casa, departamento, cuarto, etc.)', 'descripcionVivienda', e.descripcionVivienda, editable)
+  + fdiChecks('Servicios', 'servicios', FDI_SERVICIOS, e.servicios, editable)
+  + fdiArea('Observaciones', 'obsSocioeconomicas', e.obsSocioeconomicas, editable)
+  + '  </div>'
+  + '  <div class="pca-band band-section">4. Datos de salud</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-3">' + fdiRadios('Tiene algun tipo de discapacidad?', 'discapacidad', FDI_SINO, e.discapacidad, editable) + (e.discapacidad==='Si' ? fdiCampo('N. carnet del CONADIS', 'carnetConadis', e.carnetConadis, editable) : '') + '</div>'
+  + (e.discapacidad==='Si' ? fdiCampo('Determinar que discapacidad', 'queDiscapacidad', e.queDiscapacidad, editable) : '')
+  + '    <div class="grid-2">' + fdiRadios('Condicion medica especifica?', 'condicionMedica', FDI_SINO, e.condicionMedica, editable) + (e.condicionMedica==='Si' ? fdiCampo('Determine cual', 'condicionMedicaCual', e.condicionMedicaCual, editable) : '') + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('Padece de alergias?', 'alergiasSalud', FDI_SINO, e.alergiasSalud, editable) + (e.alergiasSalud==='Si' ? fdiCampo('Determinar cuales', 'alergiasCuales', e.alergiasCuales, editable) : '') + '</div>'
+  + fdiArea('Especificar medicamentos que utiliza', 'medicamentos', e.medicamentos, editable)
+  + fdiCampo('Sufre de alguna enfermedad catastrofica? Especifique', 'enfermedadCatastrofica', e.enfermedadCatastrofica, editable)
+  + '    <div class="grid-2">' + fdiRadios('Embarazada', 'embarazada', FDI_SINO, e.embarazada, editable) + (e.embarazada==='Si' ? fdiCampo('Meses', 'mesesEmbarazo', e.mesesEmbarazo, editable) : '') + '</div>'
+  + '    <div class="grid-3">' + fdiRadios('Es padre o madre adolescente?', 'padreMadreAdolescente', FDI_SINO, e.padreMadreAdolescente, editable) + fdiRadios('Tiene con quien dejar a su hijo?', 'tieneConQuienDejarHijo', FDI_SINO, e.tieneConQuienDejarHijo, editable) + (e.tieneConQuienDejarHijo==='Si' ? fdiCampo('Quien', 'quienCuidaHijo', e.quienCuidaHijo, editable) : '') + '</div>'
+  + fdiRadios('El/la estudiante recibe atencion medica en', 'atencionMedica', FDI_ATENCION_MEDICA, e.atencionMedica, editable)
+  + fdiArea('Nombre del medico que atiende regularmente al estudiante', 'nombreMedico', e.nombreMedico, editable)
+  + fdiArea('Observaciones', 'obsSalud', e.obsSalud, editable)
+  + '  </div>'
+  + '  <div class="pca-band band-section">5. Datos academicos / rendimiento escolar</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2">' + fdiCampo('Fecha de ingreso a la institucion', 'fechaIngresoInstitucion', e.fechaIngresoInstitucion, editable, 'date') + fdiCampo('Institucion educativa de la que procede', 'institucionProcedencia', e.institucionProcedencia, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('El estudiante ha repetido anios?', 'repitioAnios', FDI_SINO, e.repitioAnios, editable) + (e.repitioAnios==='Si' ? fdiCampo('Cual/es?', 'anioRepitio', e.anioRepitio, editable) : '') + '</div>'
+  + '    <div class="grid-4" style="align-items:start;">'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas de preferencia</div>' + fdiListaCorta('asignaturasPreferencia', e.asignaturasPreferencia, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas con dificultad</div>' + fdiListaCorta('asignaturasDificultad', e.asignaturasDificultad, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Dignidades alcanzadas</div>' + fdiListaCorta('dignidades', e.dignidades, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Clubes / Proyectos</div>' + fdiListaCorta('clubesProyectos', e.clubesProyectos, 4, editable) + '</div>'
+  + '    </div>'
+  + '    <div class="grid-2" style="margin-top:10px;">'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Logros academicos</div>' + fdiListaConAnio('logrosAcademicos', 'logrosAnios', e.logrosAcademicos, e.logrosAnios, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Participacion en</div>' + fdiListaConAnio('participacion', 'participacionAnios', e.participacion, e.participacionAnios, 4, editable) + '</div>'
+  + '    </div>'
+  + '    <div class="grid-3" style="margin-top:10px;">' + fdiRadios('Extracurriculares: nivel de participacion', 'extracurricularNivel', FDI_CALIDAD, e.extracurricularNivel, editable) + fdiRadios('Participa en extracurriculares?', 'extracurricularParticipa', FDI_SINO, e.extracurricularParticipa, editable) + (e.extracurricularParticipa==='Si' ? fdiCampo('Cuales?', 'extracurricularCual', e.extracurricularCual, editable) : '') + '</div>'
+  + fdiChecks('Su aprendizaje es', 'aprendizajeTipo', FDI_APRENDIZAJE_TIPO, e.aprendizajeTipo, editable)
+  + fdiChecks('En el aprendizaje tiene dificultades de', 'dificultadesAprendizaje', FDI_DIFICULTADES_APRENDIZAJE, e.dificultadesAprendizaje, editable)
+  + fdiRadios('Para el cumplimiento de tareas se considera', 'cumplimientoTareas', FDI_RESPONSABILIDAD, e.cumplimientoTareas, editable)
+  + fdiChecks('Usted se considera', 'seConsidera', FDI_PERSONALIDAD, e.seConsidera, editable)
+  + '  </div>'
+  + '  <div class="pca-band band-section">6. Historia vital</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-3">' + fdiCampo('Edad de la madre en el embarazo', 'edadMadreEmbarazo', e.edadMadreEmbarazo, editable) + fdiRadios('Accidentes en el embarazo', 'accidentesEmbarazo', FDI_SINO, e.accidentesEmbarazo, editable) + fdiRadios('Al termino', 'terminoEmbarazo', FDI_TERMINO_EMBARAZO, e.terminoEmbarazo, editable) + '</div>'
+  + fdiArea('Medicamentos durante el embarazo', 'medicamentosEmbarazo', e.medicamentosEmbarazo, editable)
+  + fdiArea('Especificar cualquier otra dificultad en el embarazo (preeclampsia, hipoxia, etc.)', 'otraDificultadEmbarazo', e.otraDificultadEmbarazo, editable)
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.1 Datos del/la nino/a recien nacido</div>'
+  + '    <div class="grid-4">' + fdiCampo('Peso al nacer', 'pesoNacer', e.pesoNacer, editable) + fdiCampo('Talla al nacer', 'tallaNacer', e.tallaNacer, editable) + fdiCampo('Edad en que empezo a caminar', 'edadCaminar', e.edadCaminar, editable) + fdiCampo('Edad a la que hablo por primera vez', 'edadHablo', e.edadHablo, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Periodo de lactancia', 'periodoLactancia', e.periodoLactancia, editable) + fdiCampo('Edad hasta la cual utilizo biberon', 'edadBiberon', e.edadBiberon, editable) + fdiCampo('Edad en que aprendio a controlar esfinteres', 'edadEsfinteres', e.edadEsfinteres, editable) + '</div>'
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.2 Enfermedades (desde la infancia hasta la actualidad)</div>'
+  + '    <div class="grid-3">' + fdiArea('Enfermedades', 'enfermedadesInfancia', e.enfermedadesInfancia, editable) + fdiArea('Accidentes', 'accidentesInfancia', e.accidentesInfancia, editable) + fdiArea('Alergias', 'alergiasInfancia', e.alergiasInfancia, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiArea('Cirugias', 'cirugias', e.cirugias, editable) + fdiArea('Perdidas de conocimiento', 'perdidasConocimiento', e.perdidasConocimiento, editable) + fdiArea('Otros', 'otrosSalud', e.otrosSalud, editable) + '</div>'
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.3 Antecedentes patologicos familiares</div>'
+  + fdiChecks('', 'antecedentesPatologicos', FDI_ANTECEDENTES_PATOLOGICOS, e.antecedentesPatologicos, editable)
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.4 Como describiria la relacion del/la estudiante con...?</div>'
+  + '    <div class="grid-2">' + fdiRadios('Padre', 'relacionPadre', FDI_CALIDAD, e.relacionPadre, editable) + fdiCampo('Motivo', 'motivoPadre', e.motivoPadre, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('Madre', 'relacionMadre', FDI_CALIDAD, e.relacionMadre, editable) + fdiCampo('Motivo', 'motivoMadre', e.motivoMadre, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('Hermanos/as', 'relacionHermanos', FDI_CALIDAD, e.relacionHermanos, editable) + fdiCampo('Motivo', 'motivoHermanos', e.motivoHermanos, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('Otros', 'relacionOtros', FDI_CALIDAD, e.relacionOtros, editable) + fdiCampo('Motivo', 'motivoOtros', e.motivoOtros, editable) + '</div>'
+  + fdiArea('Observaciones', 'obsRelaciones', e.obsRelaciones, editable)
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.5 Costumbres, habitos</div>'
+  + '    <div class="grid-2">' + fdiCampo('Habitos de sueno', 'habitosSueno', e.habitosSueno, editable) + fdiCampo('Habitos alimenticios', 'habitosAlimenticios', e.habitosAlimenticios, editable) + '</div>'
+  + '    <div><div class="hint" style="font-weight:700; margin-bottom:4px;">A que actividades en el tiempo libre se dedica con frecuencia</div>' + fdiListaCorta('actividadesTiempoLibre', e.actividadesTiempoLibre, 4, editable) + '</div>'
+  + fdiCampo('Que tiempo dedica para realizar sus tareas en el dia', 'tiempoTareas', e.tiempoTareas, editable)
+  + '  </div>';
+}
+function bindFdiCamposGenericos(root, estudiante, editable, onCambioCondicional){
+  if(!editable) return;
+  root.querySelectorAll('[data-fdi-field]').forEach(function(el){
+    var key = el.getAttribute('data-fdi-field');
+    el.addEventListener('input', function(){ estudiante[key] = el.value; });
+    if(el.tagName==='SELECT') el.addEventListener('change', function(){ estudiante[key] = el.value; });
+  });
+  root.querySelectorAll('[data-fdi-arr]').forEach(function(el){
+    var key = el.getAttribute('data-fdi-arr');
+    var idx = parseInt(el.getAttribute('data-fdi-idx'),10);
+    el.addEventListener('input', function(){ estudiante[key][idx] = el.value; });
+  });
+  var grupos = {};
+  root.querySelectorAll('[data-fdi-group]').forEach(function(el){ grupos[el.getAttribute('data-fdi-group')] = el.type; });
+  var condicionales = ['padresMigrantes','familiaresDiscapacidad','discapacidad','condicionMedica','alergiasSalud','embarazada','tieneConQuienDejarHijo','repitioAnios','extracurricularParticipa'];
+  Object.keys(grupos).forEach(function(key){
+    var esCondicional = condicionales.indexOf(key)!==-1;
+    root.querySelectorAll('[data-fdi-group="'+key+'"]').forEach(function(el){
+      el.addEventListener('change', function(){
+        if(grupos[key]==='radio'){
+          estudiante[key] = el.value;
+        } else {
+          estudiante[key] = Array.from(root.querySelectorAll('[data-fdi-group="'+key+'"]:checked')).map(function(x){ return x.value; }).join('; ');
+        }
+        if(esCondicional && onCambioCondicional) onCambioCondicional();
+      });
+    });
+  });
 }
 
 function renderDece(d){
@@ -3310,40 +3519,32 @@ function bindDeceEvents(){
 }
 
 function renderDeceLista(){
-  var f = state.deceFiltro || (state.deceFiltro = {nivel:'', estado:'', q:''});
-  var todos = load(LS.DECE).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
-  var filtrados = todos.filter(function(c){
-    if(f.nivel && c.nivel !== f.nivel) return false;
-    if(f.estado && c.estado !== f.estado) return false;
-    return true;
-  });
+  var f = state.deceFiltro || (state.deceFiltro = {estado:'', q:''});
+  var todos = load(LS.DECE).slice().sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
+  var filtrados = todos.filter(function(c){ return !f.estado || c.estado === f.estado; });
   var rows = filtrados.map(function(c){
-    var nombre = deceNombreEstudiante(c);
-    return '<tr data-searchable="' + escapeHtml(nombre.toLowerCase()) + '">'
-      + '<td class="tabular">' + fmtDate(c.fecha) + '</td>'
-      + '<td>' + escapeHtml(nombre) + '</td>'
-      + '<td>' + escapeHtml(c.nivel||'—') + (c.curso?' · '+escapeHtml(c.curso):'') + '</td>'
-      + '<td>' + escapeHtml((c.tipo||'').split(';').map(function(x){return x.trim();}).filter(Boolean).join(', ') || '—') + '</td>'
-      + '<td>' + deceEstadoPillHtml(c.estado) + '</td>'
-      + '<td>' + escapeHtml(c.atendidoPor||'—') + '</td>'
+    return '<tr data-searchable="' + escapeHtml((c.estudianteNombre||'').toLowerCase()) + '">'
+      + '<td class="tabular">' + fmtDate((c.updatedAt||'').slice(0,10)) + '</td>'
+      + '<td>' + escapeHtml(c.estudianteNombre||'-') + '</td>'
+      + '<td>' + escapeHtml(c.cedulaEstudiante||'-') + '</td>'
+      + '<td>' + (c.origen==='publico' ? '<span class="pill pill-blue">Representante legal</span>' : '<span class="pill pill-muted">DECE</span>') + '</td>'
+      + '<td>' + fdiEstadoPillHtml(c.estado) + '</td>'
       + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-dece-open="'+c.id+'">Abrir</button> <button class="btn btn-danger btn-sm" data-dece-delete="'+c.id+'">Eliminar</button></td>'
       + '</tr>';
-  }).join('') || '<tr><td colspan="7" class="hint">Todavía no hay casos registrados con este filtro.</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">Todavia no hay fichas registradas con este filtro.</td></tr>';
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>Casos DECE</h1><p>Seguimiento confidencial de casos de consejería estudiantil. Visible solo para Administración, Directivos y DECE.</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejeria Estudiantil</div><h1>Ficha de Datos Informativos</h1><p>Registro acumulativo general de cada estudiante. Visible solo para Administracion, Directivos y DECE.</p></div></div>'
   + '<div class="card">'
   + '  <div class="field-row" style="margin-bottom:14px;">'
-  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="dcFNivel">' + optionsHtml(NIVELES, f.nivel, 'Todos') + '</select></div>'
-  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcFEstado">' + optionsHtml(DECE_ESTADOS, f.estado, 'Todos') + '</select></div>'
-  + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido…" /></div>'
+  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcFEstado">' + optionsHtml(FDI_ESTADOS, f.estado, 'Todos') + '</select></div>'
+  + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido..." /></div>'
   + '  </div>'
-  + '  <button class="btn btn-primary btn-sm" id="btnDeceNuevo" style="margin-bottom:14px;">+ Nuevo caso</button>'
-  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Estudiante</th><th>Nivel / Curso</th><th>Tipo</th><th>Estado</th><th>Atendido por</th><th>Acciones</th></tr></thead><tbody id="dcTableBody">' + rows + '</tbody></table></div>'
+  + '  <button class="btn btn-primary btn-sm" id="btnDeceNuevo" style="margin-bottom:14px;">+ Nueva ficha</button>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Actualizado</th><th>Estudiante</th><th>Cedula</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="dcTableBody">' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function bindDeceListaEvents(){
   var f = state.deceFiltro;
-  document.getElementById('dcFNivel').onchange = function(e){ f.nivel = e.target.value; render(); };
   document.getElementById('dcFEstado').onchange = function(e){ f.estado = e.target.value; render(); };
   document.getElementById('dcFBuscar').oninput = function(e){
     f.q = e.target.value;
@@ -3353,194 +3554,153 @@ function bindDeceListaEvents(){
       tr.style.display = (!qLower || name.indexOf(qLower)>=0) ? '' : 'none';
     });
   };
-  document.getElementById('btnDeceNuevo').onclick = function(){ state.editingDece = blankDeceCaso(); state.deceView='form'; render(); };
+  document.getElementById('btnDeceNuevo').onclick = function(){ state.editingDece = blankFichaDatos(); state.deceView='form'; render(); };
   document.querySelectorAll('[data-dece-open]').forEach(function(btn){
     btn.onclick = function(){
       var target = load(LS.DECE).find(function(x){ return x.id===btn.getAttribute('data-dece-open'); });
-      if(target){ state.editingDece = Object.assign({}, target, {seguimientos: (target.seguimientos||[]).map(function(x){ return Object.assign({}, x); })}); state.deceView='form'; render(); }
+      if(target){ state.editingDece = JSON.parse(JSON.stringify(target)); state.deceView='form'; render(); }
     };
   });
   document.querySelectorAll('[data-dece-delete]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar este caso DECE? Esta acción no se puede deshacer.', function(){
+      confirmDialog('¿Eliminar esta ficha? Esta accion no se puede deshacer.', function(){
         save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==btn.getAttribute('data-dece-delete'); }));
-        toast('Caso eliminado.', 'success');
+        toast('Ficha eliminada.', 'success');
         render();
       });
     };
   });
 }
 function renderDeceForm(){
-  var c = state.editingDece || blankDeceCaso();
-  state.editingDece = c;
-  var existsInDb = load(LS.DECE).some(function(x){ return x.id===c.id; });
-  var cursoOpts = c.nivel ? cursosConEstudiantes(c.nivel) : [];
-  var estudiantesOpts = (c.nivel && c.curso && c.curso!=='Otro…') ? estudiantesPorNivelCurso(c.nivel, c.curso) : [];
-  var estudianteOptsHtml = '<option value="">' + (estudiantesOpts.length ? 'Elija un elemento…' : (c.curso ? 'No hay estudiantes en este curso' : 'Elija primero el curso')) + '</option>' + estudiantesOpts.map(function(e){
-    return '<option value="'+e.id+'" '+(c.estudianteId===e.id?'selected':'')+'>'+escapeHtml(e.apellidos+' '+e.nombres)+'</option>';
-  }).join('');
-
-  var tipoSel = (c.tipo||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-  var tipoHtml = '<div class="checkbox-grid">' + DECE_TIPOS.map(function(t){
-    return '<label class="checkbox-pill"><input type="checkbox" class="dece-tipo-cb" value="'+escapeHtml(t)+'" '+(tipoSel.indexOf(t)!==-1?'checked':'')+' />'+escapeHtml(t)+'</label>';
-  }).join('') + '</div>';
-
-  var seguimientosHtml = (c.seguimientos||[]).map(function(s){
-    return '<div data-segrow="'+s.id+'" style="display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;">'
-      + '<div class="field" style="max-width:170px;"><label>Fecha</label><input class="cell-input" type="date" data-seg-fecha="'+s.id+'" value="'+escapeHtml(s.fecha||'')+'" /></div>'
-      + '<div class="field"><label>Nota de seguimiento</label><textarea class="cell-input" rows="2" data-seg-nota="'+s.id+'">'+escapeHtml(s.nota||'')+'</textarea></div>'
-      + '<button class="row-remove" data-seg-remove="'+s.id+'" style="margin-top:26px;">✕</button>'
-      + '</div>';
-  }).join('') || '<div class="hint" style="padding:6px 0 14px;">Todavía no hay seguimientos registrados.</div>';
-
-  var firmante = currentDocente();
+  var e = state.editingDece || blankFichaDatos();
+  state.editingDece = e;
+  var existsInDb = load(LS.DECE).some(function(x){ return x.id===e.id; });
   return ''
-  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnDecePrint" title="Genera un PDF en A4 horizontal">PDF ✓</button><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">&larr; Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnDecePrint" title="Genera un PDF en A4 vertical">PDF &#10003;</button><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
   + '<div class="form-error no-print" id="dcError" style="margin-bottom:10px;"></div>'
   + '<div class="pca-doc dece-doc" id="dcDoc">'
-  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
-  + '  <div class="pca-band band-title">FICHA DE CASO · DEPARTAMENTO DE CONSEJERÍA ESTUDIANTIL (DECE)</div>'
-  + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">La información de este caso es confidencial. Solo la puede ver personal de Administración, Directivos y DECE.</div></div>'
-  + '  <div class="pca-band band-section">Datos del estudiante</div>'
-  + '  <div class="pca-section">'
-  + '    <div class="grid-3">'
-  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="dcNivel">' + optionsHtml(NIVELES, c.nivel, 'Elija un elemento…') + '</select></div>'
-  + '      <div class="field"><label>Curso</label><select class="cell-select" id="dcCurso" '+(c.nivel?'':'disabled')+'>' + optionsHtml(cursoOpts.concat(['Otro…']), c.curso, c.nivel?'Elija un elemento…':'Elija primero el nivel') + '</select></div>'
-  + '      <div class="field"><label>Estudiante</label>' + (c.curso==='Otro…'
-        ? '<input class="cell-input" id="dcEstudianteManual" value="'+escapeHtml(c.estudianteManual||'')+'" placeholder="Nombre del estudiante" />'
-        : '<select class="cell-select" id="dcEstudiante" '+(estudiantesOpts.length?'':'disabled')+'>' + estudianteOptsHtml + '</select>') + '</div>'
-  + '    </div>'
+  + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
+  + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">Esta informaci&oacute;n es confidencial. Solo la puede ver personal de Administraci&oacute;n, Directivos y DECE.</div></div>'
+  + fdiCuerpoHtml(e, true)
+  + '  <div class="pca-band band-section">Firma</div>'
+  + '  <div class="signature-grid" style="grid-template-columns:1fr;">'
+  + '    <div class="signature-box"><div class="role">Firma del Representante Legal</div><div class="hint">' + (e.origen==='publico' ? 'Recibido desde el formulario p&uacute;blico el ' + fmtDateTime(e.createdAt) : 'Registrado directamente por el DECE') + '</div></div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">Datos del caso</div>'
-  + '  <div class="pca-section">'
-  + '    <div class="grid-3">'
-  + '      <div class="field"><label>Fecha de apertura</label><input class="cell-input" type="date" id="dcFecha" value="'+escapeHtml(c.fecha)+'" /></div>'
-  + '      <div class="field"><label>Estado</label><select class="cell-select" id="dcEstado">' + optionsHtml(DECE_ESTADOS, c.estado, null) + '</select></div>'
-  + '      <div class="field"><label>Atendido por</label><input class="cell-input" id="dcAtendidoPor" value="'+escapeHtml(c.atendidoPor||'')+'" /></div>'
-  + '    </div>'
-  + '    <div class="field" style="margin-top:14px;"><label>Tipo de caso</label>' + tipoHtml + '</div>'
-  + '    <div class="field" style="margin-top:14px;"><label>Descripción / motivo (confidencial)</label>' + richEditorHtml('descripcion', c.id, c.descripcion, 'Describe la situación del caso…') + '</div>'
-  + '    <div class="field" style="margin-top:14px;"><label>Acciones tomadas</label>' + richEditorHtml('accionesTomadas', c.id, c.accionesTomadas, 'Registra las acciones realizadas…') + '</div>'
-  + '  </div>'
-  + '  <div class="pca-band band-section">Bitácora de seguimientos</div>'
-  + '  <div class="pca-section">'
-  + '    <div id="dcSeguimientosWrap">' + seguimientosHtml + '</div>'
-  + '    <button class="btn btn-ghost btn-sm no-print" id="btnDeceAddSeguimiento">+ Agregar seguimiento</button>'
-  + '  </div>'
-  + '  <div class="pca-band band-section">Derivación externa</div>'
-  + '  <div class="pca-section">'
-  + '    <div class="field-row">'
-  + '      <div class="field"><label class="checkbox-pill" style="display:inline-flex;"><input type="checkbox" id="dcDerivActiva" ' + (c.derivacionActiva?'checked':'') + ' /> Este caso fue derivado a una institución externa</label></div>'
-  + '    </div>'
-  + (c.derivacionActiva ? '    <div class="field"><label>Institución / profesional de derivación</label><input class="cell-input" id="dcDerivInstitucion" value="'+escapeHtml(c.derivacionInstitucion||'')+'" /></div>' : '')
-  + '  </div>'
-  + '  <div class="pca-band band-section">Firmas</div>'
-  + '  <div class="signature-grid">'
-  + '    <div class="signature-box"><div class="role">Encargado del caso</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(nombreFormal(firmante)) + '</div><div class="hint">CI: ' + escapeHtml(firmante.ci||'—') + '</div></div>'
-  + '  </div>'
-  + '  <div class="no-print" style="display:flex; gap:10px; padding:0 20px 20px; align-items:center;">'
-  + (existsInDb ? '<button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar caso</button>' : '')
-  + '  </div>'
+  + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null) + '</select></div></div>'
+  + (existsInDb ? '  <div class="no-print" style="padding:0 20px 20px;"><button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar ficha</button></div>' : '')
   + '</div>';
 }
 function bindDeceFormEvents(){
-  var c = state.editingDece;
+  var e = state.editingDece;
   document.getElementById('btnDeceVolver').onclick = function(){ state.editingDece=null; state.deceView='lista'; render(); };
   document.getElementById('btnDecePrint').onclick = printAsPdf;
-  document.getElementById('btnDeceGuardar').onclick = doSaveDeceCaso;
+  document.getElementById('btnDeceGuardar').onclick = doSaveFichaDatos;
+  document.getElementById('dcEstado').onchange = function(ev){ e.estado = ev.target.value; };
 
-  document.getElementById('dcNivel').onchange = function(e){ c.nivel = e.target.value; c.curso=''; c.estudianteId=''; c.estudianteManual=''; render(); };
-  document.getElementById('dcCurso').onchange = function(e){ c.curso = e.target.value; c.estudianteId=''; c.estudianteManual=''; render(); };
-  var estSel = document.getElementById('dcEstudiante');
-  if(estSel) estSel.onchange = function(e){ c.estudianteId = e.target.value; };
-  var estManual = document.getElementById('dcEstudianteManual');
-  if(estManual) estManual.oninput = function(e){ c.estudianteManual = e.target.value; };
+  bindFdiCamposGenericos(document.getElementById('dcDoc'), e, true, function(){ state.editingDece = e; render(); });
 
-  document.getElementById('dcFecha').oninput = function(e){ c.fecha = e.target.value; };
-  document.getElementById('dcEstado').onchange = function(e){ c.estado = e.target.value; };
-  document.getElementById('dcAtendidoPor').oninput = function(e){ c.atendidoPor = e.target.value; };
-
-  document.querySelectorAll('.dece-tipo-cb').forEach(function(cb){
-    cb.addEventListener('change', function(){
-      var seleccion = Array.from(document.querySelectorAll('.dece-tipo-cb:checked')).map(function(x){ return x.value; });
-      c.tipo = seleccion.join('; ');
-    });
-  });
-
-  document.querySelectorAll('.rte-editable').forEach(function(el){
-    var key = el.getAttribute('data-rte-field');
-    el.addEventListener('input', function(){ c[key] = el.innerHTML; });
-  });
-  bindRteToolbars(document.getElementById('dcDoc'));
-
-  document.querySelectorAll('[data-seg-fecha]').forEach(function(el){
-    el.addEventListener('input', function(){
-      var s = c.seguimientos.find(function(x){ return x.id===el.getAttribute('data-seg-fecha'); });
-      if(s) s.fecha = el.value;
-    });
-  });
-  document.querySelectorAll('[data-seg-nota]').forEach(function(el){
-    el.addEventListener('input', function(){
-      var s = c.seguimientos.find(function(x){ return x.id===el.getAttribute('data-seg-nota'); });
-      if(s) s.nota = el.value;
-    });
-  });
-  document.querySelectorAll('[data-seg-remove]').forEach(function(btn){
-    btn.onclick = function(){
-      c.seguimientos = c.seguimientos.filter(function(x){ return x.id!==btn.getAttribute('data-seg-remove'); });
-      render();
-    };
-  });
-  document.getElementById('btnDeceAddSeguimiento').onclick = function(){
-    c.seguimientos = (c.seguimientos||[]).concat([{id: uid('seg'), fecha: todayISO(), nota:''}]);
-    render();
+  var fotoInput = document.getElementById('fdiFotoInput');
+  if(fotoInput) fotoInput.onchange = function(ev){
+    var file = ev.target.files[0];
+    if(!file) return;
+    if(file.size > 15*1024*1024){ toast('La imagen es demasiado pesada (maximo 15 MB).', 'error'); return; }
+    resizeImageFileToDataUrl(file, 220, 280, 0.82, function(dataUrl){ e.fotoEstudiante = dataUrl; render(); });
   };
-
-  var derivChk = document.getElementById('dcDerivActiva');
-  derivChk.addEventListener('change', function(){ c.derivacionActiva = derivChk.checked; render(); });
-  var derivInst = document.getElementById('dcDerivInstitucion');
-  if(derivInst) derivInst.oninput = function(e){ c.derivacionInstitucion = e.target.value; };
+  var btnQuitarFoto = document.getElementById('btnFdiFotoQuitar');
+  if(btnQuitarFoto) btnQuitarFoto.onclick = function(){ e.fotoEstudiante = ''; render(); };
 
   var delBtn = document.getElementById('btnDeceEliminar');
   if(delBtn) delBtn.onclick = function(){
-    confirmDialog('¿Eliminar este caso DECE? Esta acción no se puede deshacer.', function(){
-      save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==c.id; }));
+    confirmDialog('&iquest;Eliminar esta ficha? Esta accion no se puede deshacer.', function(){
+      save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==e.id; }));
       state.editingDece=null; state.deceView='lista'; render();
-      toast('Caso eliminado.', 'success');
+      toast('Ficha eliminada.', 'success');
     });
   };
 
   document.getElementById('dcError').classList.remove('show');
 }
-function doSaveDeceCaso(){
-  var c = state.editingDece;
+function doSaveFichaDatos(){
+  var e = state.editingDece;
   var errEl = document.getElementById('dcError');
+  function fail(msg){ if(errEl){ errEl.textContent = msg; errEl.classList.add('show'); } }
+  if(errEl) errEl.classList.remove('show');
+  if(!(e.estudianteNombre||'').trim()) return fail('Escribe los apellidos y nombres del/la estudiante.');
+  var toSave = Object.assign({}, e, { createdAt: e.createdAt || nowISO(), updatedAt: nowISO() });
+  var all = load(LS.DECE);
+  var exists = all.some(function(x){ return x.id===e.id; });
+  save(LS.DECE, exists ? all.map(function(x){ return x.id===e.id?toSave:x; }) : all.concat([toSave]));
+  state.editingDece=null; state.deceView='lista'; render();
+  toast('Ficha guardada correctamente.', 'success');
+}
+/* ============================= FORMULARIO PÚBLICO (representante legal) =============================
+   Activado por ?formulario=fichadatos en la URL: pantalla independiente, sin login ni menú,
+   pensada para que el representante legal del estudiante llene la Ficha de Datos Informativos
+   desde un enlace que se le comparte directamente (WhatsApp, correo, etc.). Usa Firebase Auth
+   anónimo (ver el bootstrap más abajo) solo para poder escribir en Firestore; nunca lee datos
+   de otros estudiantes ni necesita registrarse. */
+function renderFormularioPublico(){
+  var root = document.getElementById('app');
+  if(!FB_READY){ root.innerHTML = '<div class="center-screen"><div class="hint">Conectando…</div></div>'; return; }
+  if(state.formularioPublicoEnviado){
+    root.innerHTML = ''
+      + '<div class="center-screen">'
+      + '  <div class="auth-wrap">'
+      + '    <div class="auth-form" style="text-align:center;">'
+      + '      <div class="brand-row" style="justify-content:center;"><img src="data:image/jpeg;base64,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" alt="Logo" style="height:56px;" /></div>'
+      + '      <h1>¡Gracias!</h1>'
+      + '      <p class="hint">La información fue enviada correctamente al Departamento de Consejería Estudiantil (DECE) de la Unidad Educativa Particular “Simón Bolívar”.</p>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>';
+    return;
+  }
+  var e = state.formularioPublico || (state.formularioPublico = blankFichaDatos());
+  root.innerHTML = ''
+    + '<div class="center-screen" style="align-items:flex-start;">'
+    + '  <div style="max-width:900px; width:100%; margin:0 auto;">'
+    + '    <div class="form-error" id="fpError" style="margin-bottom:10px;"></div>'
+    + '    <div class="pca-doc dece-doc" id="fpDoc">'
+    + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
+    + '      <div class="pca-section" style="padding-bottom:0;"><div class="hint">Formulario para el representante legal del/la estudiante. Complete la mayor cantidad de datos posible; esta información llegará de forma confidencial al Departamento de Consejería Estudiantil (DECE).</div></div>'
+    + fdiCuerpoHtml(e, true)
+    + '      <div class="pca-section" style="text-align:right;"><button class="btn btn-primary" id="btnEnviarFormularioPublico">Enviar al DECE</button></div>'
+    + '    </div>'
+    + '  </div>'
+    + '</div>';
+  bindFdiCamposGenericos(document.getElementById('fpDoc'), e, true, function(){ render(); });
+  var fotoInput = document.getElementById('fdiFotoInput');
+  if(fotoInput) fotoInput.onchange = function(ev){
+    var file = ev.target.files[0];
+    if(!file) return;
+    if(file.size > 15*1024*1024){ toast('La imagen es demasiado pesada (máximo 15 MB).', 'error'); return; }
+    resizeImageFileToDataUrl(file, 220, 280, 0.82, function(dataUrl){ e.fotoEstudiante = dataUrl; render(); });
+  };
+  var btnQuitarFoto = document.getElementById('btnFdiFotoQuitar');
+  if(btnQuitarFoto) btnQuitarFoto.onclick = function(){ e.fotoEstudiante = ''; render(); };
+  document.getElementById('btnEnviarFormularioPublico').onclick = doEnviarFormularioPublico;
+}
+function doEnviarFormularioPublico(){
+  var e = state.formularioPublico;
+  var errEl = document.getElementById('fpError');
   function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
   errEl.classList.remove('show');
-  if(!c.fecha || !c.nivel || !c.curso) return fail('Completa la fecha, el nivel y el curso.');
-  if(c.curso==='Otro…' && !(c.estudianteManual||'').trim()) return fail('Escribe el nombre del estudiante.');
-  if(c.curso!=='Otro…' && !c.estudianteId) return fail('Elige el estudiante.');
-  var d = currentDocente();
-  var toSave = Object.assign({}, c, {
-    descripcion: sanitizeRte(c.descripcion), accionesTomadas: sanitizeRte(c.accionesTomadas),
-    seguimientos: (c.seguimientos||[]).map(function(s){ return Object.assign({}, s); }),
-    registradoPor: c.registradoPor || d.id, createdAt: c.createdAt || nowISO(), updatedAt: nowISO()
+  if(!(e.estudianteNombre||'').trim()) return fail('Escribe los apellidos y nombres del/la estudiante.');
+  var btn = document.getElementById('btnEnviarFormularioPublico');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  e.origen = 'publico';
+  e.createdAt = e.createdAt || nowISO();
+  e.updatedAt = nowISO();
+  e.docenteId = (window.FB.auth.currentUser && window.FB.auth.currentUser.uid) || '';
+  window.FB.setDoc(window.FB.doc(window.FB.db, FS_COLLECTION.DECE, String(e.id)), e).then(function(){
+    state.formularioPublicoEnviado = true;
+    render();
+  }).catch(function(err){
+    console.error('Error enviando formulario público', err);
+    btn.disabled = false; btn.textContent = 'Enviar al DECE';
+    fail('No se pudo enviar. Revisa tu conexión e intenta de nuevo. (' + (err.message||err.code||err) + ')');
   });
-  var all = load(LS.DECE);
-  var exists = all.some(function(x){ return x.id===c.id; });
-  save(LS.DECE, exists ? all.map(function(x){ return x.id===c.id?toSave:x; }) : all.concat([toSave]));
-  state.editingDece=null; state.deceView='lista'; render();
-  toast('Caso guardado correctamente.', 'success');
 }
-
-/* ============================= ALERTA AL DECE (docente) =============================
-   A diferencia de los Casos DECE (exclusivos de personal administrativo), cualquier docente
-   puede crear una Alerta para notificar al DECE sobre una situación de un estudiante. El docente
-   ve y crea solo las suyas, y una vez guardada queda bloqueada para él (igual que PCA/Plan
-   Semanal); el personal de Administración/Directivos/DECE ve y gestiona todas. Como el docente
-   no tiene acceso a la colección de estudiantes de Inspección General, el nombre del estudiante
-   se escribe en texto libre. */
-var ALERTA_ESTADOS = ['Nueva','En revisión','Atendida','Derivada a caso'];
 /* ============================= FICHA DE DETECCIÓN DE DIFICULTADES (DOCENTE → DECE) =============
    Reemplaza al antiguo módulo "Alertar al DECE": mapea 1:1 la ficha institucional en papel que el
    docente llena cuando detecta una dificultad en un estudiante ("FICHA DE DETECCIÓN DOCENTE"),
@@ -7317,9 +7477,10 @@ function detachRealtimeListeners(){
    exactamente con la regla de seguridad basada en resource.data, así que hace falta saber el rol
    ANTES de armar la consulta — por eso esta única lectura puntual (no en tiempo real) de la
    colección "docentes" (de lectura pública) se hace primero y se espera antes de suscribirse. */
-/* Estudiantes, Asistencia, Incidentes y Casos DECE son de acceso exclusivo para roles con acceso
-   administrativo (ver firestore.rules: allow read, write: if isStaff()) — ni siquiera de forma
-   acotada a lo propio, como sí ocurre con Observaciones/Alertas al DECE. Un docente jamás navega
+/* Estudiantes, Asistencia, Incidentes y la Ficha de Datos Informativos (DECE) son de acceso
+   exclusivo para roles con acceso administrativo (ver firestore.rules: solo isStaff() puede leer)
+   — ni siquiera de forma acotada a lo propio, como sí ocurre con Observaciones/Fichas de
+   Detección. Un docente jamás navega
    a esas secciones (no aparecen en su menú), así que no tiene sentido intentar sincronizarlas
    para él: Firestore rechazaría la lectura y solo generaría avisos de error en pantalla. */
 var COLECCIONES_SOLO_STAFF = ['ESTUDIANTES', 'ASISTENCIA', 'INCIDENTES', 'DECE'];
@@ -7351,6 +7512,20 @@ async function attachRealtimeListeners(){
 }
 
 window.addEventListener('firebase-ready', function(){
+  if(ES_FORMULARIO_PUBLICO){
+    /* Modo formulario público: solo necesita una sesión anónima para poder ESCRIBIR una ficha
+       nueva; nunca activa los listeners en tiempo real ni carga el perfil docente. */
+    window.FB.onAuthStateChanged(window.FB.auth, function(user){
+      FB_READY = true;
+      if(!user){
+        window.FB.signInAnonymously(window.FB.auth).catch(function(e){
+          console.error('Error de autenticación anónima', e);
+        });
+      }
+      render();
+    });
+    return;
+  }
   window.FB.onAuthStateChanged(window.FB.auth, function(user){
     if(user){
       CURRENT_UID = user.uid;
@@ -7377,7 +7552,7 @@ render();
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
   import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signOut, sendPasswordResetEmail, updatePassword
+    signOut, sendPasswordResetEmail, updatePassword, signInAnonymously
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
   import {
     getFirestore, doc, setDoc, deleteDoc, getDocs, collection, onSnapshot, query, where
@@ -7405,7 +7580,7 @@ render();
   window.FB = {
     auth: auth, db: db, secondaryAuth: secondaryAuth,
     onAuthStateChanged: onAuthStateChanged, signInWithEmailAndPassword: signInWithEmailAndPassword,
-    createUserWithEmailAndPassword: createUserWithEmailAndPassword, signOut: signOut,
+    createUserWithEmailAndPassword: createUserWithEmailAndPassword, signOut: signOut, signInAnonymously: signInAnonymously,
     sendPasswordResetEmail: sendPasswordResetEmail, updatePassword: updatePassword,
     doc: doc, setDoc: setDoc, deleteDoc: deleteDoc, getDocs: getDocs, collection: collection, onSnapshot: onSnapshot,
     query: query, where: where
