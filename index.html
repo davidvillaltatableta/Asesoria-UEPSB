@@ -91,6 +91,12 @@
   button{font-family:var(--sans);}
   input,select,textarea{font-family:var(--sans); color:var(--ink);}
   ::selection{background:var(--gold-100);}
+  /* Cuando el docente selecciona texto en un campo enriquecido y luego usa un control de la
+     barra (color, símbolo, enlace) que le quita el foco al campo, el navegador normalmente borra
+     el resaltado visual de la selección aunque el texto siga "seleccionado" internamente. Este
+     resaltado persistente (ver RTE_HIGHLIGHT en el script) lo mantiene visible hasta que el
+     propio docente vuelve a hacer clic o a escribir en el texto. */
+  ::highlight(rte-manual-selection){background:var(--gold-100);}
   .tabular{font-variant-numeric:tabular-nums; font-family:var(--mono);}
 
   #app{min-height:100vh;}
@@ -5016,6 +5022,23 @@ function actualizarBarraRteActiva(editable){
     btn.classList.toggle('active', activo);
   });
 }
+/* Resaltado persistente de selección: cuando el docente selecciona texto y luego hace clic en un
+   control que le quita el foco al campo (color, símbolo, "Insertar enlace"), el navegador borra
+   el resaltado azul nativo aunque la selección siga existiendo internamente. Usamos la CSS Custom
+   Highlight API para redibujar esa selección manualmente hasta que el propio docente vuelva a
+   hacer clic o a escribir dentro del texto (momento en el que se considera "quitada"). Se degrada
+   sin errores en navegadores que no soporten la API (queda el comportamiento anterior). */
+var RTE_HIGHLIGHT = (typeof Highlight !== 'undefined' && window.CSS && CSS.highlights) ? new Highlight() : null;
+if(RTE_HIGHLIGHT) CSS.highlights.set('rte-manual-selection', RTE_HIGHLIGHT);
+function limpiarSeleccionPersistenteRte(){ if(RTE_HIGHLIGHT) RTE_HIGHLIGHT.clear(); }
+function guardarSeleccionPersistenteRte(editable){
+  if(!RTE_HIGHLIGHT) return;
+  var sel = window.getSelection();
+  if(sel && sel.rangeCount && !sel.isCollapsed && editable.contains(sel.anchorNode) && editable.contains(sel.focusNode)){
+    RTE_HIGHLIGHT.clear();
+    RTE_HIGHLIGHT.add(sel.getRangeAt(0).cloneRange());
+  }
+}
 function bindRteToolbars(root){
   if(!root) return;
   root.querySelectorAll('[data-rte-cmd]').forEach(function(btn){
@@ -5028,6 +5051,7 @@ function bindRteToolbars(root){
         var sel = window.getSelection();
         var savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
         promptDialog('Ingresa la URL del enlace:', 'https://', function(url){
+          limpiarSeleccionPersistenteRte();
           editable.focus();
           if(savedRange){ var sel2 = window.getSelection(); sel2.removeAllRanges(); sel2.addRange(savedRange); }
           document.execCommand('createLink', false, url);
@@ -5048,10 +5072,12 @@ function bindRteToolbars(root){
     ['keyup','mouseup','focus','input'].forEach(function(evt){
       editable.addEventListener(evt, function(){ actualizarBarraRteActiva(editable); });
     });
+    editable.addEventListener('mousedown', limpiarSeleccionPersistenteRte);
+    editable.addEventListener('keydown', limpiarSeleccionPersistenteRte);
     editable.addEventListener('blur', function(){
       var wrap = editable.closest('.rte');
-      if(!wrap) return;
-      wrap.querySelectorAll('.rte-toolbar [data-rte-cmd].active').forEach(function(b){ b.classList.remove('active'); });
+      if(wrap) wrap.querySelectorAll('.rte-toolbar [data-rte-cmd].active').forEach(function(b){ b.classList.remove('active'); });
+      guardarSeleccionPersistenteRte(editable);
     });
   });
   root.querySelectorAll('[data-rte-symbol]').forEach(function(sel){
@@ -5065,6 +5091,7 @@ function bindRteToolbars(root){
       if(!symbol) return;
       var wrap = sel.closest('.rte');
       var editable = wrap.querySelector('.rte-editable');
+      limpiarSeleccionPersistenteRte();
       editable.focus();
       if(savedRange){ var s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(savedRange); }
       document.execCommand('insertText', false, symbol);
@@ -5080,6 +5107,7 @@ function bindRteToolbars(root){
     inp.addEventListener('input', function(){
       var wrap = inp.closest('.rte');
       var editable = wrap.querySelector('.rte-editable');
+      limpiarSeleccionPersistenteRte();
       editable.focus();
       if(savedRange){ var sel2 = window.getSelection(); sel2.removeAllRanges(); sel2.addRange(savedRange); }
       document.execCommand('foreColor', false, inp.value);
@@ -5119,6 +5147,7 @@ function mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, x,
   document.body.appendChild(menu);
 
   function insertar(modo){
+    limpiarSeleccionPersistenteRte();
     editable.focus();
     var sel = window.getSelection();
     sel.removeAllRanges();
@@ -5149,6 +5178,13 @@ function mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, x,
 /* Versión más simple que sanitizeRte para "Combinar formato": conserva negrita/subrayado y
    saltos de línea/párrafo, pero descarta listas, enlaces, colores y demás formato del origen
    (las viñetas de listas se convierten en líneas separadas para no perder la separación). */
+/* Etiquetas cuyo contenido NUNCA debe mostrarse como texto (a diferencia de una etiqueta de
+   formato desconocida, donde sí queremos conservar el texto interior): Word (y en general
+   "Pegar desde Office") agrega un bloque <style> completo con las definiciones de fuentes —
+   @font-face, mso-*, etc. — antes del contenido real. Si esas etiquetas se tratan igual que
+   cualquier otra etiqueta no permitida (conservando su textContent), ese bloque de CSS aparece
+   como texto visible pegado al inicio del documento. */
+var RTE_PASTE_TAGS_DESCARTAR = {STYLE:1, SCRIPT:1, HEAD:1, TITLE:1, META:1, LINK:1, 'O:P':1, XML:1};
 function limpiarHtmlPegadoCombinado(html){
   if(!html) return '';
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
@@ -5157,6 +5193,7 @@ function limpiarHtmlPegadoCombinado(html){
     Array.from(node.childNodes).forEach(function(ch){
       if(ch.nodeType === 3) return;
       if(ch.nodeType !== 1){ node.removeChild(ch); return; }
+      if(RTE_PASTE_TAGS_DESCARTAR[ch.tagName]){ node.removeChild(ch); return; }
       if(ch.tagName === 'LI') node.insertBefore(document.createElement('br'), ch);
       if(!allowed[ch.tagName]){
         var text = document.createTextNode(ch.textContent || '');
@@ -5181,6 +5218,7 @@ function sanitizeRte(html){
     Array.from(node.childNodes).forEach(function(ch){
       if(ch.nodeType === 3) return;
       if(ch.nodeType !== 1){ node.removeChild(ch); return; }
+      if(RTE_PASTE_TAGS_DESCARTAR[ch.tagName]){ node.removeChild(ch); return; }
       if(!allowed[ch.tagName]){
         var text = document.createTextNode(ch.textContent || '');
         node.replaceChild(text, ch);
