@@ -118,6 +118,7 @@
   .auth-sub{color:var(--muted); font-size:13.5px; margin-top:-10px;}
   .field{display:flex; flex-direction:column; gap:6px; min-width:0;}
   .field label{font-size:12.5px; font-weight:600; color:var(--muted); letter-spacing:.01em;}
+  .field label.semanal-section-title{display:block; text-align:center; font-size:16px; color:var(--blue-900);}
   .field .required{color:var(--red-600);}
   .field input, .field select, .field textarea{
     padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--radius-sm);
@@ -239,12 +240,15 @@
   table{width:100%; border-collapse:collapse; font-size:13.5px;}
   .table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius-sm);}
   table thead th{background:var(--blue-50); color:var(--blue-900); text-align:left; padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid var(--line); white-space:nowrap;}
+  .unit-block table thead th{text-align:center;}
   table td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
   table tbody tr:last-child td{border-bottom:none;}
   table tbody tr.group-head-row td{background:var(--blue-50); color:var(--blue-900); font-weight:700; font-size:12.5px; padding:10px 10px; border-top:2px solid var(--line-strong); border-bottom:1px solid var(--line-strong);}
   table tbody tr.group-head-row:first-child td{border-top:none;}
   table tbody tr:hover{background:var(--surface-2);}
   .cell-input, .cell-select{width:100%; min-width:120px; padding:7px 8px; border:1px solid var(--line-strong); border-radius:6px; background:var(--surface-2); font-size:13px;}
+  .cell-select-lg{padding:12px 14px !important; font-size:16px !important; font-weight:600;}
+  .signature-line{border-bottom:1px solid var(--ink); height:36px; margin-bottom:6px;}
   .carga-table{table-layout:auto; width:auto;}
   .carga-table th, .carga-table td{width:auto; white-space:nowrap;}
   .carga-table .cell-select{width:auto; min-width:150px;}
@@ -312,6 +316,8 @@
 
   .kbd{font-family:var(--mono); font-size:11px; background:var(--surface-2); border:1px solid var(--line-strong); padding:1px 6px; border-radius:4px;}
   .checkbox-grid{display:flex; flex-wrap:wrap; gap:6px; padding:8px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--surface-2); min-height:20px;}
+  .checkbox-grid.checkbox-grid-2col{display:grid; grid-template-columns:1fr 1fr; gap:6px 14px;}
+  @media (max-width:560px){ .checkbox-grid.checkbox-grid-2col{grid-template-columns:1fr;} }
   .checkbox-pill{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--line); border-radius:99px; padding:5px 10px 5px 8px; font-size:12px; font-weight:600; color:var(--ink); cursor:pointer; user-select:none; white-space:nowrap;}
   .checkbox-pill:has(input:checked){background:var(--blue-100); border-color:var(--blue-500); color:var(--blue-700);}
   .checkbox-pill input{accent-color:var(--blue-600); cursor:pointer; margin:0;}
@@ -378,7 +384,7 @@
        documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
        el cuadro de diálogo de impresión al guardar como PDF. */
     @page manualpage{ size: A4 portrait; margin: 18mm; }
-    .manual-doc, .insp-report-doc, .obs-doc{ page: manualpage; }
+    .manual-doc, .insp-report-doc, .obs-doc, .dece-doc{ page: manualpage; }
   }
 
   /* ============================= MANUALES DE USUARIO ============================= */
@@ -915,6 +921,7 @@ function programarAutoguardado(tipo){
     AUTOSAVE_TIMERS[tipo] = null;
     if(tipo==='pca' && state.editingPca) savePca(state.editingPca, true);
     else if(tipo==='semanal' && state.editingSemanal) saveSemanal(state.editingSemanal, true);
+    else if(tipo==='fichadeteccion' && state.editingFichaDeteccion) saveFichaDeteccion(state.editingFichaDeteccion, true);
     AUTOSAVE_ULTIMO[tipo] = Date.now();
     actualizarIndicadorAutoguardado(tipo);
     setTimeout(function(){ actualizarIndicadorAutoguardado(tipo); }, 6200);
@@ -925,8 +932,9 @@ function autoguardadoHintTexto(tipo){
   if(!ts || Date.now() - ts > 6000) return '';
   return '✓ Guardado automáticamente · ' + fmtDateTime(new Date(ts).toISOString());
 }
+var AUTOSAVE_HINT_ID = {pca:'pcaAutosaveHint', semanal:'semanalAutosaveHint', fichadeteccion:'fdAutosaveHint'};
 function actualizarIndicadorAutoguardado(tipo){
-  var el = document.getElementById(tipo==='pca' ? 'pcaAutosaveHint' : 'semanalAutosaveHint');
+  var el = document.getElementById(AUTOSAVE_HINT_ID[tipo]);
   if(el) el.textContent = autoguardadoHintTexto(tipo);
 }
 /* Escucha "input"/"change" delegado en todo el documento del formulario (burbujea desde
@@ -1308,7 +1316,8 @@ var NAV_GROUPS = [
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
     {key:'fichadeteccion', label:'Ficha de Detección', ic:'🚨'},
-    {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true}
+    {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true},
+    {key:'dececonsultas', label:'Consultas', ic:'🔎', adminOnly:true}
   ]},
   {label:'Administración y Base de Datos', hue:'rose', items:[
     {key:'admin', label:'Administración', ic:'🛡️', adminOnly:true},
@@ -1319,7 +1328,7 @@ var NAV_GROUPS = [
 function renderShell(){
   var d = currentDocente();
   var isAdmin = isStaffRole(d.role);
-  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion' || state.subview === 'dece')) state.subview = 'dashboard';
+  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion' || state.subview === 'dece' || state.subview === 'dececonsultas')) state.subview = 'dashboard';
   function navItemActive(item){
     return (state.subview === item.key
       || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
@@ -1365,6 +1374,7 @@ function renderShell(){
   else if(state.subview === 'observacion') sub = renderObservacion(d);
   else if(state.subview === 'dece') sub = renderDece(d);
   else if(state.subview === 'fichadeteccion') sub = renderFichaDeteccion(d);
+  else if(state.subview === 'dececonsultas') sub = renderDeceConsultas(d);
   else sub = renderDashboard(d);
 
   return ''
@@ -1420,6 +1430,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'observacion') bindObservacionEvents();
   else if(state.subview === 'dece') bindDeceEvents();
   else if(state.subview === 'fichadeteccion') bindFichaDeteccionEvents();
+  else if(state.subview === 'dececonsultas') bindDeceConsultasEvents();
   else bindDashboardEvents();
 }
 
@@ -1693,7 +1704,7 @@ function renderManualDocente(){
   var secAlerta = manualSection('sec-9', '9. Ficha de Detección (DECE)', ''
     + '<p>Si detectas una dificultad académica, conductual o emocional en un estudiante que requiere la atención del <b>Departamento de Consejería Estudiantil (DECE)</b>, puedes enviarles la Ficha de Detección directamente desde el sistema — es la misma ficha institucional en papel, pero digital.</p>'
     + manualStep(1, 'Ve a <b>Ficha de Detección</b> (categoría “Departamento de Consejería Estudiantil”) y haz clic en <b>“+ Nueva ficha”</b>.')
-    + manualStep(2, 'Completa el <b>nombre del estudiante</b>, el <b>EGB/BGU</b>, la <b>fecha</b> y marca las casillas que correspondan en <b>Dificultades académicas</b>, <b>Aspectos a considerarse</b> y <b>Padres de familia</b>.')
+    + manualStep(2, 'Elige el <b>Nivel Educativo</b> y el <b>Curso</b>, completa el <b>nombre del estudiante</b> y la <b>fecha</b>, y marca las casillas que correspondan en <b>Dificultades académicas</b>, <b>Aspectos a considerarse</b> y <b>Padres de familia</b>.')
     + manualStep(3, 'Registra en la sección <b>Docentes</b> las acciones que ya intentaste y los logros obtenidos, y describe al estudiante y tu pedido específico al DECE.')
     + manualStep(4, 'Tu nombre completo y tu cédula quedan registrados automáticamente como firma de quien reporta, al pie del documento.')
     + manualStep(5, 'Haz clic en <b>“Guardar”</b>.')
@@ -1871,6 +1882,9 @@ function renderManualAdmin(){
     + manualStep(2, 'O la registras tú mismo desde <b>“+ Nueva ficha”</b>, llenando el mismo formulario completo.')
     + manualStep(3, 'Abre cualquier ficha para revisarla o completarla, y usa el campo <b>Estado</b> (Nueva, En revisión, Completa) para llevar seguimiento.')
     + manualWarn('La información de la Ficha de Datos Informativos es confidencial: ningún docente puede verla, ni siquiera el docente del estudiante involucrado. El representante legal que la envía tampoco puede verla ni editarla después de enviada — solo Administración, Directivos y DECE.')
+    + '<h3>Consultas</h3>'
+    + '<p>Busca a un estudiante por su <b>número de cédula</b> para encontrar su Registro Acumulativo General y, a partir de su nombre, su historial de Fichas de Detección. También muestra todas las Fichas de Detección recibidas, agrupadas por curso y ordenadas alfabéticamente por estudiante.</p>'
+    + manualTip('Si al buscar una cédula aparece más de un Registro Acumulativo General, es un duplicado — ábrelos y elimina el que sobre.')
     + '<h3>Fichas de Detección</h3>'
     + '<p>Cuando un docente detecta una dificultad y envía una Ficha de Detección desde su propio menú, la verás aquí junto con las tuyas propias — es la ficha institucional en papel (dificultades académicas, aspectos a considerarse, padres de familia, acciones y logros) mapeada tal cual al sistema. A diferencia de la Ficha de Datos, esta la <b>crea el docente</b>, no tú — tu trabajo es revisarla, completar <b>“Recibido por”</b> y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida) conforme le das seguimiento.</p>'
     + manualTip('Si una ficha de detección amerita abrir el registro completo del estudiante, puedes crear una Ficha de Datos Informativos nueva con su información.')
@@ -3632,13 +3646,120 @@ function doSaveFichaDatos(){
   function fail(msg){ if(errEl){ errEl.textContent = msg; errEl.classList.add('show'); } }
   if(errEl) errEl.classList.remove('show');
   if(!(e.estudianteNombre||'').trim()) return fail('Escribe los apellidos y nombres del/la estudiante.');
-  var toSave = Object.assign({}, e, { createdAt: e.createdAt || nowISO(), updatedAt: nowISO() });
   var all = load(LS.DECE);
+  if((e.cedulaEstudiante||'').trim()){
+    var duplicado = all.find(function(x){ return x.id!==e.id && (x.cedulaEstudiante||'').trim() === e.cedulaEstudiante.trim(); });
+    if(duplicado) return fail('Ya existe un Registro Acumulativo General con esta cédula (' + (duplicado.estudianteNombre||'estudiante sin nombre') + '). Ábrelo desde Consultas en vez de crear uno nuevo.');
+  }
+  var toSave = Object.assign({}, e, { createdAt: e.createdAt || nowISO(), updatedAt: nowISO() });
   var exists = all.some(function(x){ return x.id===e.id; });
   save(LS.DECE, exists ? all.map(function(x){ return x.id===e.id?toSave:x; }) : all.concat([toSave]));
   state.editingDece=null; state.deceView='lista'; render();
   toast('Ficha guardada correctamente.', 'success');
 }
+
+/* ============================= CONSULTAS DEL DECE =============================
+   Búsqueda para el DECE: por cédula encuentra el Registro Acumulativo General (Ficha de Datos
+   Informativos, que sí guarda cédula) y, a partir del nombre de ese estudiante, su historial de
+   Fichas de Detección (que NO guardan cédula — el docente que las envía normalmente no tiene
+   acceso a esa información — por eso se correlacionan por nombre). También agrupa todas las
+   Fichas de Detección recibidas por curso y, dentro de cada curso, alfabéticamente por
+   estudiante, para que el DECE pueda revisar todo un curso de un vistazo. */
+function nombresCoinciden(a, b){
+  var na = normImportHeader(a), nb = normImportHeader(b);
+  if(!na || !nb) return false;
+  return na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
+}
+function fichasDeteccionAgrupadasHtml(){
+  var todas = load(LS.FICHA_DETECCION);
+  var grupos = {};
+  todas.forEach(function(f){
+    var clave = (f.nivelBgu||'Sin nivel') + ' - ' + (f.curso||'Sin curso');
+    (grupos[clave] = grupos[clave] || []).push(f);
+  });
+  var claves = Object.keys(grupos).sort();
+  if(!claves.length) return '<div class="hint">Todavía no hay fichas de detección registradas.</div>';
+  return claves.map(function(clave){
+    var filas = grupos[clave].slice().sort(function(a,b){ return (a.estudianteNombre||'').localeCompare(b.estudianteNombre||''); });
+    return '<div style="margin-bottom:18px;">'
+      + '<div class="pill pill-blue" style="margin-bottom:8px;">' + escapeHtml(clave) + ' - ' + filas.length + '</div>'
+      + '<div class="table-wrap"><table><thead><tr><th>Estudiante</th><th>Fecha</th><th>Docente</th><th>Estado</th><th></th></tr></thead><tbody>'
+      + filas.map(function(f){
+          return '<tr><td>' + escapeHtml(f.estudianteNombre||'—') + '</td><td class="tabular">' + fmtDate(f.fecha) + '</td><td>' + escapeHtml(f.docenteNombreFormal||'—') + '</td><td>' + fdEstadoPillHtml(f.estado) + '</td><td><button class="btn btn-ghost btn-sm" data-consulta-abrir-fd="'+f.id+'">Abrir</button></td></tr>';
+        }).join('')
+      + '</tbody></table></div>'
+      + '</div>';
+  }).join('');
+}
+function renderDeceConsultas(d){
+  var q = (state.deceConsultaQuery || '').trim();
+  var fichaDatos = q ? load(LS.DECE).filter(function(x){ return (x.cedulaEstudiante||'').trim() === q; }) : [];
+  var nombreRef = fichaDatos.length ? fichaDatos[0].estudianteNombre : (q.length >= 3 ? q : '');
+  var fichasDeteccion = nombreRef ? load(LS.FICHA_DETECCION).filter(function(f){ return nombresCoinciden(f.estudianteNombre, nombreRef); }) : [];
+  fichasDeteccion = fichasDeteccion.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+
+  var resultadoHtml = '';
+  if(q){
+    if(!fichaDatos.length && !fichasDeteccion.length){
+      resultadoHtml = '<div class="hint">No se encontraron registros con "' + escapeHtml(q) + '". Busca por número de cédula (Registro Acumulativo General) o por nombre del estudiante (Fichas de Detección).</div>';
+    } else {
+      if(fichaDatos.length > 1){
+        resultadoHtml += '<div class="lock-banner" style="background:var(--red-100); color:var(--red-600); border:none;">Se encontraron ' + fichaDatos.length + ' Registros Acumulativos con la misma cédula - revisa si hay un duplicado para eliminar.</div>';
+      }
+      if(fichaDatos.length){
+        resultadoHtml += fichaDatos.map(function(e){
+          return '<div style="border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px; margin-bottom:14px;">'
+            + '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">'
+            + '  <div><div style="font-weight:700; font-size:15px;">' + escapeHtml(e.estudianteNombre||'—') + '</div><div class="hint">Cédula: ' + escapeHtml(e.cedulaEstudiante||'—') + ' · ' + fdiEstadoPillHtml(e.estado) + '</div></div>'
+            + '  <button class="btn btn-primary btn-sm" data-consulta-abrir-datos="' + e.id + '">Ver Registro Acumulativo General</button>'
+            + '</div></div>';
+        }).join('');
+      }
+      resultadoHtml += '<div class="hint" style="font-weight:700; margin:14px 0 6px;">Historial de Fichas de Detección' + (fichasDeteccion.length ? '' : ' - ninguna encontrada') + '</div>';
+      if(fichasDeteccion.length){
+        resultadoHtml += '<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Docente</th><th>Nivel / Curso</th><th>Estado</th><th></th></tr></thead><tbody>'
+          + fichasDeteccion.map(function(f){
+              return '<tr><td class="tabular">' + fmtDate(f.fecha) + '</td><td>' + escapeHtml(f.docenteNombreFormal||'—') + '</td><td>' + escapeHtml(f.nivelBgu||'—') + (f.curso?' · '+escapeHtml(f.curso):'') + '</td><td>' + fdEstadoPillHtml(f.estado) + '</td><td><button class="btn btn-ghost btn-sm" data-consulta-abrir-fd="'+f.id+'">Abrir</button></td></tr>';
+            }).join('')
+          + '</tbody></table></div>';
+      }
+    }
+  }
+
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>Consultas</h1><p>Busca a un estudiante por su número de cédula para ver su Registro Acumulativo General y su historial de Fichas de Detección.</p></div></div>'
+  + '<div class="card" style="margin-bottom:20px;">'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Buscar por cédula (o nombre del estudiante)</label><input class="cell-input" id="dcConsultaInput" value="' + escapeHtml(q) + '" placeholder="N.º de cédula o nombre…" /></div>'
+  + '  </div>'
+  + '  <button class="btn btn-primary btn-sm" id="btnDeceConsultaBuscar" style="margin-top:10px;">Buscar</button>'
+  + '</div>'
+  + (q ? '<div class="card" style="margin-bottom:20px;">' + resultadoHtml + '</div>' : '')
+  + '<div class="card">'
+  + '  <h3 style="margin-top:0;">Fichas de Detección recibidas, agrupadas por curso</h3>'
+  + fichasDeteccionAgrupadasHtml()
+  + '</div>';
+}
+function bindDeceConsultasEvents(){
+  var input = document.getElementById('dcConsultaInput');
+  var buscar = document.getElementById('btnDeceConsultaBuscar');
+  function ejecutarBusqueda(){ state.deceConsultaQuery = (input.value||'').trim(); render(); }
+  if(buscar) buscar.onclick = ejecutarBusqueda;
+  if(input) input.addEventListener('keydown', function(e){ if(e.key==='Enter') ejecutarBusqueda(); });
+  document.querySelectorAll('[data-consulta-abrir-datos]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.DECE).find(function(x){ return x.id===btn.getAttribute('data-consulta-abrir-datos'); });
+      if(target){ state.editingDece = JSON.parse(JSON.stringify(target)); state.deceView='form'; go('dece'); }
+    };
+  });
+  document.querySelectorAll('[data-consulta-abrir-fd]').forEach(function(btn){
+    btn.onclick = function(){
+      var target = load(LS.FICHA_DETECCION).find(function(x){ return x.id===btn.getAttribute('data-consulta-abrir-fd'); });
+      if(target){ state.editingFichaDeteccion = Object.assign({}, target, {acciones:(target.acciones||[]).slice(), logros:(target.logros||[]).slice()}); state.fichaDeteccionView='form'; go('fichadeteccion'); }
+    };
+  });
+}
+
 /* ============================= FORMULARIO PÚBLICO (representante legal) =============================
    Activado por ?formulario=fichadatos en la URL: pantalla independiente, sin login ni menú,
    pensada para que el representante legal del estudiante llene la Ficha de Datos Informativos
@@ -3749,7 +3870,7 @@ var FD_ESTADOS = ['Nueva', 'En revisión', 'Atendida'];
 function blankFichaDeteccion(){
   return {
     id: uid('fd'), fecha: todayISO(),
-    estudianteNombre:'', nivelBgu:'', remitidoPor: nombreFormal(currentDocente()),
+    estudianteNombre:'', nivelBgu:'', curso:'', remitidoPor: nombreFormal(currentDocente()),
     cualidadEstudiante:'',
     dificultadesAcademicas:'', dificultadMatematicaEspecifique:'', dificultadOtrasEspecifique:'',
     aspectosConsiderar:'', padresFamilia:'',
@@ -3757,6 +3878,7 @@ function blankFichaDeteccion(){
     descripcionEstudiante:'', pedidoEspecifico:'',
     estado:'Nueva', recibidoPor:'',
     docenteId:'', docenteNombreFormal:'', docenteCi:'',
+    borrador:true,
     createdAt:'', updatedAt:''
   };
 }
@@ -3776,7 +3898,7 @@ function deceFormLogoHeaderHtml(titulo){
     + '<div class="pca-band band-title">' + titulo + '</div>';
 }
 function fdCheckboxGridHtml(items, seleccionActual, cssClass){
-  return '<div class="checkbox-grid">' + items.map(function(it){
+  return '<div class="checkbox-grid checkbox-grid-2col">' + items.map(function(it){
     return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="'+cssClass+'" value="' + escapeHtml(it) + '" ' + (seleccionActual.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
   }).join('') + '</div>';
 }
@@ -3796,7 +3918,7 @@ function renderFichaDeteccionLista(d){
       + '<td class="tabular">' + fmtDate(f.fecha) + '</td>'
       + (isStaff ? '<td>' + escapeHtml(f.docenteNombreFormal||'—') + '</td>' : '')
       + '<td>' + escapeHtml(f.estudianteNombre||'—') + '</td>'
-      + '<td>' + escapeHtml(f.nivelBgu||'—') + '</td>'
+      + '<td>' + escapeHtml(f.nivelBgu||'—') + (f.curso?' · '+escapeHtml(f.curso):'') + '</td>'
       + '<td>' + fdEstadoPillHtml(f.estado) + '</td>'
       + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-fd-open="'+f.id+'">' + (isStaff?'Abrir':'Ver') + '</button>' + (isStaff ? ' <button class="btn btn-danger btn-sm" data-fd-delete="'+f.id+'">Eliminar</button>' : '') + '</td>'
       + '</tr>';
@@ -3805,7 +3927,7 @@ function renderFichaDeteccionLista(d){
   + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>' + (isStaff ? 'Fichas de detección recibidas' : 'Mis fichas de detección') + '</h1><p>' + (isStaff ? 'Fichas de detección de dificultades enviadas por los docentes.' : 'Notifica al DECE sobre una dificultad detectada en un estudiante. Una vez guardada, la ficha queda registrada y no puede editarse.') + '</p></div></div>'
   + '<div class="card">'
   + '  <button class="btn btn-primary btn-sm" id="btnFdNueva" style="margin-bottom:14px;">+ Nueva ficha</button>'
-  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th>' + (isStaff?'<th>Docente</th>':'') + '<th>Estudiante</th><th>EGB/BGU</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th>' + (isStaff?'<th>Docente</th>':'') + '<th>Estudiante</th><th>Nivel / Curso</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function bindFichaDeteccionListaEvents(){
@@ -3830,10 +3952,17 @@ function renderFichaDeteccionForm(d){
   var f = state.editingFichaDeteccion || blankFichaDeteccion();
   state.editingFichaDeteccion = f;
   var isStaff = isStaffRole(d.role);
-  var existsInDb = load(LS.FICHA_DETECCION).some(function(x){ return x.id===f.id; });
-  var editable = isStaff || !existsInDb;
+  // Con autoguardado, la ficha ya puede existir en Firestore como borrador antes de que el
+  // docente termine de llenarla — por eso el bloqueo para el docente ya no depende de si el
+  // registro EXISTE, sino de si ya fue enviada formalmente (f.borrador === false, que solo pone
+  // el botón "Guardar"/doSaveFichaDeteccion).
+  var editable = isStaff || f.borrador !== false;
   var firmanteNombre = f.docenteNombreFormal || nombreFormal(currentDocente());
   var firmanteCi = f.docenteCi || currentDocente().ci || '—';
+
+  var cursoOpts = f.nivelBgu ? cursosFor(f.nivelBgu) : [];
+  var psicologoDece = load(LS.DOCENTES).find(function(x){ return x.role==='dece'; });
+  var recibidoPorValor = f.recibidoPor || (psicologoDece ? nombreFormal(psicologoDece) : '');
 
   var dificultadesSel = (f.dificultadesAcademicas||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   var aspectosSel = (f.aspectosConsiderar||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
@@ -3852,18 +3981,22 @@ function renderFichaDeteccionForm(d){
   }
 
   return ''
-  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnFdVolver">← Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnFdPrint" title="Genera un PDF en A4 horizontal">PDF ✓</button>' + (editable ? '<button class="btn btn-primary btn-sm" id="btnFdGuardar">Guardar</button>' : '') + '</div>'
+  + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnFdVolver">← Volver a la lista</button>' + (editable ? '<span class="hint" id="fdAutosaveHint">' + escapeHtml(autoguardadoHintTexto('fichadeteccion')) + '</span>' : '') + '<div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnFdPrint" title="Genera un PDF en A4 vertical">PDF ✓</button>' + (editable ? '<button class="btn btn-primary btn-sm" id="btnFdGuardar">Guardar</button>' : '') + '</div>'
   + (editable ? '<div class="form-error no-print" id="fdError" style="margin-bottom:10px;"></div>' : '<div class="lock-banner no-print">🔒 Esta ficha ya fue enviada y no puede editarse. Si necesitas corregirla, contacta al DECE.</div>')
   + '<div class="pca-doc dece-doc" id="fdDoc">'
   + deceFormLogoHeaderHtml('FICHA DE DETECCIÓN DE DIFICULTADES')
+  + '  <div class="pca-band band-section">DATOS INFORMATIVOS</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-3">'
+  + '    <div class="grid-2">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" id="fdNivelBgu" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, f.nivelBgu, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" id="fdCurso" '+(editable && f.nivelBgu?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, f.nivelBgu ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
+  + '    </div>'
+  + '    <div class="grid-3" style="margin-top:14px;">'
   + '      <div class="field"><label>Nombre del estudiante</label><input class="cell-input" id="fdEstudiante" value="'+escapeHtml(f.estudianteNombre||'')+'" '+(editable?'':'disabled')+' /></div>'
-  + '      <div class="field"><label>EGB/BGU</label><input class="cell-input" id="fdNivelBgu" value="'+escapeHtml(f.nivelBgu||'')+'" placeholder="p.ej. 7.º EGB A" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="fdFecha" value="'+escapeHtml(f.fecha)+'" '+(editable?'':'disabled')+' /></div>'
+  + '      <div class="field"><label>Remitido por el profesor</label><input class="cell-input" id="fdRemitidoPor" value="'+escapeHtml(f.remitidoPor||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
-  + '      <div class="field"><label>Remitido por el profesor</label><input class="cell-input" id="fdRemitidoPor" value="'+escapeHtml(f.remitidoPor||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Describa una cualidad del estudiante</label><input class="cell-input" id="fdCualidad" value="'+escapeHtml(f.cualidadEstudiante||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
   + '  </div>'
@@ -3887,8 +4020,8 @@ function renderFichaDeteccionForm(d){
   + '  </div>'
   + '  <div class="pca-band band-section">Firma</div>'
   + '  <div class="signature-grid">'
-  + '    <div class="signature-box"><div class="role">Docente</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(firmanteNombre) + '</div><div class="hint">CI: ' + escapeHtml(firmanteCi) + '</div></div>'
-  + '    <div class="signature-box"><div class="role">Recibido por (DECE)</div><input class="cell-input" id="fdRecibidoPor" value="'+escapeHtml(f.recibidoPor||'')+'" placeholder="Nombre de quien recibe" '+(isStaff?'':'disabled')+' /></div>'
+  + '    <div class="signature-box"><div class="role">Docente</div><div class="signature-line"></div><div style="font-weight:700; font-size:14px;">' + escapeHtml(firmanteNombre) + '</div><div class="hint">CI: ' + escapeHtml(firmanteCi) + '</div></div>'
+  + '    <div class="signature-box"><div class="role">Recibido por (DECE)</div><div class="signature-line"></div><input class="cell-input" id="fdRecibidoPor" value="'+escapeHtml(recibidoPorValor)+'" placeholder="Nombre de quien recibe" '+(isStaff?'':'disabled')+' /></div>'
   + '  </div>'
   + '  <div class="pca-section no-print">'
   + '    <div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="fdEstado" '+(isStaff?'':'disabled')+'>' + optionsHtml(FD_ESTADOS, f.estado, null) + '</select></div>'
@@ -3899,8 +4032,7 @@ function bindFichaDeteccionFormEvents(){
   var f = state.editingFichaDeteccion;
   var d = currentDocente();
   var isStaff = isStaffRole(d.role);
-  var existsInDb = load(LS.FICHA_DETECCION).some(function(x){ return x.id===f.id; });
-  var editable = isStaff || !existsInDb;
+  var editable = isStaff || f.borrador !== false;
 
   document.getElementById('btnFdVolver').onclick = function(){ state.editingFichaDeteccion=null; state.fichaDeteccionView='lista'; render(); };
   document.getElementById('btnFdPrint').onclick = printAsPdf;
@@ -3908,7 +4040,10 @@ function bindFichaDeteccionFormEvents(){
   // "Recibido por" y "Estado" son de uso exclusivo del DECE — se editan aunque la ficha ya esté
   // bloqueada para el docente que la envió.
   var recibidoPorInp = document.getElementById('fdRecibidoPor');
-  if(recibidoPorInp && isStaff) recibidoPorInp.addEventListener('input', function(e){ f.recibidoPor = e.target.value; });
+  if(recibidoPorInp){
+    f.recibidoPor = recibidoPorInp.value;
+    if(isStaff) recibidoPorInp.addEventListener('input', function(e){ f.recibidoPor = e.target.value; });
+  }
   var estadoSel = document.getElementById('fdEstado');
   if(estadoSel && isStaff) estadoSel.addEventListener('change', function(e){ f.estado = e.target.value; });
 
@@ -3923,8 +4058,12 @@ function bindFichaDeteccionFormEvents(){
   var guardarBtn = document.getElementById('btnFdGuardar');
   if(guardarBtn) guardarBtn.onclick = doSaveFichaDeteccion;
 
+  bindAutoguardadoDelegado('fdDoc', 'fichadeteccion');
+
   document.getElementById('fdEstudiante').oninput = function(e){ f.estudianteNombre = e.target.value; };
-  document.getElementById('fdNivelBgu').oninput = function(e){ f.nivelBgu = e.target.value; };
+  document.getElementById('fdNivelBgu').onchange = function(e){ f.nivelBgu = e.target.value; f.curso = ''; renderFichaDeteccionFormAgain(); };
+  var fdCursoSel = document.getElementById('fdCurso');
+  if(fdCursoSel) fdCursoSel.onchange = function(e){ f.curso = e.target.value; };
   document.getElementById('fdFecha').oninput = function(e){ f.fecha = e.target.value; };
   document.getElementById('fdRemitidoPor').oninput = function(e){ f.remitidoPor = e.target.value; };
   document.getElementById('fdCualidad').oninput = function(e){ f.cualidadEstudiante = e.target.value; };
@@ -3964,14 +4103,10 @@ function renderFichaDeteccionFormAgain(){
   document.querySelector('main.content').innerHTML = renderFichaDeteccionForm(currentDocente());
   bindFichaDeteccionFormEvents();
 }
-function doSaveFichaDeteccion(){
-  var f = state.editingFichaDeteccion;
-  var errEl = document.getElementById('fdError');
-  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
-  errEl.classList.remove('show');
-  if(!f.fecha || !(f.estudianteNombre||'').trim() || !(f.nivelBgu||'').trim()) return fail('Completa la fecha, el nombre del estudiante y el nivel (EGB/BGU).');
+/* Guarda en Firestore sin validar ni navegar — usada tanto por el autoguardado (silent=true,
+   igual que savePca/saveSemanal) como internamente por doSaveFichaDeteccion. */
+function saveFichaDeteccion(f, silent){
   var d = currentDocente();
-  var isNew = !load(LS.FICHA_DETECCION).some(function(x){ return x.id===f.id; });
   var toSave = Object.assign({}, f, {
     docenteId: f.docenteId || d.id,
     docenteNombreFormal: f.docenteNombreFormal || nombreFormal(d),
@@ -3981,8 +4116,21 @@ function doSaveFichaDeteccion(){
   var all = load(LS.FICHA_DETECCION);
   var exists = all.some(function(x){ return x.id===f.id; });
   save(LS.FICHA_DETECCION, exists ? all.map(function(x){ return x.id===f.id?toSave:x; }) : all.concat([toSave]));
+  state.editingFichaDeteccion = toSave;
+  if(!silent) toast('Ficha actualizada correctamente.', 'success');
+}
+function doSaveFichaDeteccion(){
+  var f = state.editingFichaDeteccion;
+  var errEl = document.getElementById('fdError');
+  function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
+  if(!f.fecha || !(f.estudianteNombre||'').trim() || !(f.nivelBgu||'').trim()) return fail('Completa la fecha, el nombre del estudiante y el Nivel Educativo.');
+  var d = currentDocente();
+  var eraBorrador = f.borrador !== false;
+  f.borrador = false;
+  saveFichaDeteccion(f, true);
   state.editingFichaDeteccion=null; state.fichaDeteccionView='lista'; render();
-  if(isNew && !isStaffRole(d.role)) toast('Ficha enviada al DECE. Quedará registrada y ya no podrás editarla.', 'success');
+  if(eraBorrador && !isStaffRole(d.role)) toast('Ficha enviada al DECE. Quedará registrada y ya no podrás editarla.', 'success');
   else toast('Ficha actualizada correctamente.', 'success');
 }
 
@@ -4768,9 +4916,9 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
     + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
     + '<td style="min-width:640px;">'
     +   '<div class="grid-3" style="align-items:start;">'
-    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles)) + '</div>'
-    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Intermedio', isIngles) + '</div>' + richEditorHtml('nivelLogroIntermedio', f.id, f.nivelLogroIntermedio, te('Nivel de logro intermedio', isIngles)) + '</div>'
-    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px;">' + te('Avanzado', isIngles) + '</div>' + richEditorHtml('nivelLogroAvanzado', f.id, f.nivelLogroAvanzado, te('Nivel de logro avanzado', isIngles)) + '</div>'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px; text-align:center;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles)) + '</div>'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px; text-align:center;">' + te('Intermedio', isIngles) + '</div>' + richEditorHtml('nivelLogroIntermedio', f.id, f.nivelLogroIntermedio, te('Nivel de logro intermedio', isIngles)) + '</div>'
+    +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px; text-align:center;">' + te('Avanzado', isIngles) + '</div>' + richEditorHtml('nivelLogroAvanzado', f.id, f.nivelLogroAvanzado, te('Nivel de logro avanzado', isIngles)) + '</div>'
     +   '</div>'
     + '</td>'
     + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, te('Temas y subtemas', isIngles)) + '</td>'
@@ -5609,7 +5757,7 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
     }
     return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + etiqueta + '</div>' + body + '</div>';
   }).join('');
-  return '<div class="field"><label>' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+  return '<div class="field"><label class="semanal-section-title">' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
 }
 function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles){
   var seleccionados = (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
@@ -5646,7 +5794,7 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, motivoS
   + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">' + te('Eliminar día', isIngles) + '</button>' : '')
   + '  </div>'
   + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles)
-  + '  <div class="field" style="margin-top:12px;"><label>' + te('Contenidos Esenciales', isIngles) + '</label>' + contenidosHtml + '</div>'
+  + '  <div class="field" style="margin-top:12px;"><label class="semanal-section-title">' + te('Contenidos Esenciales', isIngles) + '</label>' + contenidosHtml + '</div>'
   + '  <div class="grid-3" style="margin-top:12px; align-items:start;">'
   + '    <div class="field"><label>' + te('Actividades de Aprendizaje', isIngles) + '</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', te('Escribe las actividades de aprendizaje…', isIngles)) + '</div>'
   + '    <div class="field"><label>' + te('Recursos', isIngles) + '</label>' + richEditorHtml('recursos', dia.id, dia.recursos||'', te('Escribe los recursos…', isIngles)) + '</div>'
