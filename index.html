@@ -338,13 +338,26 @@
   .rte-toolbar button.active{background:var(--blue-600); border-color:var(--blue-600); color:#fff;}
   .rte-toolbar button.active:hover{background:var(--blue-700);}
   .rte-editable{min-height:90px; height:auto; overflow-y:visible; padding:9px 10px; font-size:13.5px; line-height:1.5; outline:none;}
-  .rte-color{width:26px !important; height:26px !important; padding:1px; border:1px solid transparent; border-radius:5px; cursor:pointer; background:none;}
-  .rte-color:hover{border-color:var(--line);}
+  .rte-color-btn{width:30px; height:26px; padding:2px 4px 4px; border:1px solid var(--line); border-radius:5px; cursor:pointer; background:var(--surface); display:flex; flex-direction:column; align-items:center; gap:1px;}
+  .rte-color-btn:hover{background:var(--blue-100);}
+  .rte-color-btn-a{font-weight:700; font-size:12px; line-height:1; color:var(--ink);}
+  .rte-color-btn-bar{width:16px; height:3px; border-radius:1px;}
   .rte-symbol{height:26px; font-size:12px; color:var(--ink); border:1px solid var(--line); border-radius:5px; background:var(--surface); cursor:pointer; max-width:92px;}
+  .rte-font{height:26px; font-size:12px; color:var(--ink); border:1px solid var(--line); border-radius:5px; background:var(--surface); cursor:pointer; max-width:110px;}
   .rte-editable sup, .rte-editable sub{font-size:.75em;}
   .rte-paste-menu{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-2); padding:5px; display:flex; flex-direction:column; gap:2px; min-width:180px;}
   .rte-paste-menu button{background:none; border:none; text-align:left; padding:7px 9px; font-size:12.5px; color:var(--ink); border-radius:5px; cursor:pointer;}
   .rte-paste-menu button:hover{background:var(--blue-100);}
+  .rte-color-menu{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-2); padding:8px; width:196px;}
+  .rte-color-auto{width:100%; display:flex; align-items:center; gap:8px; background:none; border:none; text-align:left; padding:6px 5px; font-size:12.5px; color:var(--ink); border-radius:5px; cursor:pointer; margin-bottom:4px;}
+  .rte-color-auto:hover{background:var(--blue-100);}
+  .rte-color-auto-swatch{width:16px; height:16px; border-radius:3px; border:1px solid var(--line-strong); background:#000;}
+  .rte-color-label{font-size:11px; color:var(--muted); font-weight:600; margin:6px 2px 4px;}
+  .rte-color-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:5px;}
+  .rte-color-swatch{width:100%; aspect-ratio:1; border-radius:4px; border:1px solid var(--line-strong); cursor:pointer; padding:0;}
+  .rte-color-swatch:hover{outline:2px solid var(--blue-500); outline-offset:1px;}
+  .rte-color-more{width:100%; margin-top:8px; background:none; border:1px solid var(--line); border-radius:6px; text-align:left; padding:6px 8px; font-size:12.5px; color:var(--ink); cursor:pointer;}
+  .rte-color-more:hover{background:var(--blue-100);}
   .rte-editable ul, .rte-editable ol{margin:4px 0; padding-left:22px;}
   .rte-editable a{color:var(--blue-600); text-decoration:underline;}
   .rte-editable:empty:before{content:attr(data-placeholder); color:var(--muted);}
@@ -1315,8 +1328,8 @@ var NAV_GROUPS = [
     {key:'inspeccion', label:'Inspección General', ic:'🧭', adminOnly:true}
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
-    {key:'fichadeteccion', label:'Ficha de Detección', ic:'🚨'},
     {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true},
+    {key:'fichadeteccion', label:'Ficha de Detección', ic:'🚨'},
     {key:'dececonsultas', label:'Consultas', ic:'🔎', adminOnly:true}
   ]},
   {label:'Administración y Base de Datos', hue:'rose', items:[
@@ -3695,7 +3708,9 @@ function renderDeceConsultas(d){
   var q = (state.deceConsultaQuery || '').trim();
   var fichaDatos = q ? load(LS.DECE).filter(function(x){ return (x.cedulaEstudiante||'').trim() === q; }) : [];
   var nombreRef = fichaDatos.length ? fichaDatos[0].estudianteNombre : (q.length >= 3 ? q : '');
-  var fichasDeteccion = nombreRef ? load(LS.FICHA_DETECCION).filter(function(f){ return nombresCoinciden(f.estudianteNombre, nombreRef); }) : [];
+  var fichasDeteccion = q ? load(LS.FICHA_DETECCION).filter(function(f){
+    return (f.cedulaEstudiante||'').trim() === q || (nombreRef && nombresCoinciden(f.estudianteNombre, nombreRef));
+  }) : [];
   fichasDeteccion = fichasDeteccion.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
 
   var resultadoHtml = '';
@@ -3870,7 +3885,7 @@ var FD_ESTADOS = ['Nueva', 'En revisión', 'Atendida'];
 function blankFichaDeteccion(){
   return {
     id: uid('fd'), fecha: todayISO(),
-    estudianteNombre:'', nivelBgu:'', curso:'', remitidoPor: nombreFormal(currentDocente()),
+    cedulaEstudiante:'', estudianteNombre:'', nivelBgu:'', curso:'', remitidoPor: nombreFormal(currentDocente()),
     cualidadEstudiante:'',
     dificultadesAcademicas:'', dificultadMatematicaEspecifique:'', dificultadOtrasEspecifique:'',
     aspectosConsiderar:'', padresFamilia:'',
@@ -3992,11 +4007,12 @@ function renderFichaDeteccionForm(d){
   + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" id="fdCurso" '+(editable && f.nivelBgu?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, f.nivelBgu ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
   + '    </div>'
   + '    <div class="grid-3" style="margin-top:14px;">'
+  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en el Registro Acumulativo General y llena el nombre del estudiante automáticamente.</div>' : '') + '</div>'
   + '      <div class="field"><label>Nombre del estudiante</label><input class="cell-input" id="fdEstudiante" value="'+escapeHtml(f.estudianteNombre||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="fdFecha" value="'+escapeHtml(f.fecha)+'" '+(editable?'':'disabled')+' /></div>'
-  + '      <div class="field"><label>Remitido por el profesor</label><input class="cell-input" id="fdRemitidoPor" value="'+escapeHtml(f.remitidoPor||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
+  + '      <div class="field"><label>Remitido por el profesor</label><input class="cell-input" id="fdRemitidoPor" value="'+escapeHtml(f.remitidoPor||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Describa una cualidad del estudiante</label><input class="cell-input" id="fdCualidad" value="'+escapeHtml(f.cualidadEstudiante||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
   + '  </div>'
@@ -4065,6 +4081,17 @@ function bindFichaDeteccionFormEvents(){
   var fdCursoSel = document.getElementById('fdCurso');
   if(fdCursoSel) fdCursoSel.onchange = function(e){ f.curso = e.target.value; };
   document.getElementById('fdFecha').oninput = function(e){ f.fecha = e.target.value; };
+  document.getElementById('fdCedula').oninput = function(e){ f.cedulaEstudiante = e.target.value; };
+  var btnBuscarCedula = document.getElementById('btnFdBuscarCedula');
+  if(btnBuscarCedula) btnBuscarCedula.onclick = function(){
+    var cedula = (f.cedulaEstudiante||'').trim();
+    if(!cedula) return toast('Escribe una cédula para buscar.', 'error');
+    var encontrado = load(LS.DECE).find(function(x){ return (x.cedulaEstudiante||'').trim() === cedula; });
+    if(!encontrado) return toast('No se encontró ningún Registro Acumulativo General con esa cédula.', 'error');
+    f.estudianteNombre = encontrado.estudianteNombre || f.estudianteNombre;
+    renderFichaDeteccionFormAgain();
+    toast('Estudiante encontrado: se completó el nombre desde el Registro Acumulativo General.', 'success');
+  };
   document.getElementById('fdRemitidoPor').oninput = function(e){ f.remitidoPor = e.target.value; };
   document.getElementById('fdCualidad').oninput = function(e){ f.cualidadEstudiante = e.target.value; };
   document.getElementById('fdDescripcion').oninput = function(e){ f.descripcionEstudiante = e.target.value; };
@@ -5128,7 +5155,19 @@ function richEditorHtml(fieldKey, ownerId, html, placeholder){
   + '    <button type="button" data-rte-cmd="insertOrderedList" title="Numeración">1≡</button>'
   + '    <button type="button" data-rte-cmd="indent" title="Sangría">→|</button>'
   + '    <button type="button" data-rte-cmd="outdent" title="Quitar sangría">|←</button>'
-  + '    <input type="color" class="rte-color" data-rte-color title="Color de texto" value="#16233A" />'
+  + '    <button type="button" class="rte-color-btn" data-rte-colorbtn title="Color de texto" data-color="#16233A"><span class="rte-color-btn-a">A</span><span class="rte-color-btn-bar" style="background:#16233A;"></span></button>'
+  + '    <select class="rte-font" data-rte-font title="Tipo de letra">'
+  + '      <option value="">Tipo de letra…</option>'
+  + '      <option value="Arial" style="font-family:Arial;">Arial</option>'
+  + '      <option value="Georgia" style="font-family:Georgia;">Georgia</option>'
+  + '      <option value="'+"'Times New Roman'"+'" style="font-family:\'Times New Roman\';">Times New Roman</option>'
+  + '      <option value="Verdana" style="font-family:Verdana;">Verdana</option>'
+  + '      <option value="Calibri" style="font-family:Calibri;">Calibri</option>'
+  + '      <option value="Tahoma" style="font-family:Tahoma;">Tahoma</option>'
+  + '      <option value="'+"'Trebuchet MS'"+'" style="font-family:\'Trebuchet MS\';">Trebuchet MS</option>'
+  + '      <option value="'+"'Courier New'"+'" style="font-family:\'Courier New\';">Courier New</option>'
+  + '      <option value="'+"'Comic Sans MS'"+'" style="font-family:\'Comic Sans MS\';">Comic Sans MS</option>'
+  + '    </select>'
   + '    <button type="button" data-rte-cmd="createLink" title="Insertar enlace">🔗</button>'
   + '    <button type="button" data-rte-cmd="superscript" title="Exponente / superíndice">x²</button>'
   + '    <button type="button" data-rte-cmd="subscript" title="Subíndice">x₂</button>'
@@ -5246,19 +5285,30 @@ function bindRteToolbars(root){
       sel.value = '';
     });
   });
-  root.querySelectorAll('[data-rte-color]').forEach(function(inp){
-    var savedRange = null;
-    inp.addEventListener('mousedown', function(){
-      var sel = window.getSelection();
-      savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+  root.querySelectorAll('[data-rte-colorbtn]').forEach(function(btn){
+    btn.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    btn.addEventListener('click', function(){
+      var wrap = btn.closest('.rte');
+      var editable = wrap.querySelector('.rte-editable');
+      mostrarMenuColorRte(btn, editable);
     });
-    inp.addEventListener('input', function(){
-      var wrap = inp.closest('.rte');
+  });
+  root.querySelectorAll('[data-rte-font]').forEach(function(sel){
+    var savedRange = null;
+    sel.addEventListener('mousedown', function(){
+      var s = window.getSelection();
+      savedRange = (s && s.rangeCount) ? s.getRangeAt(0).cloneRange() : null;
+    });
+    sel.addEventListener('change', function(){
+      var fuente = sel.value;
+      if(!fuente) return;
+      var wrap = sel.closest('.rte');
       var editable = wrap.querySelector('.rte-editable');
       limpiarSeleccionPersistenteRte();
       editable.focus();
-      if(savedRange){ var sel2 = window.getSelection(); sel2.removeAllRanges(); sel2.addRange(savedRange); }
-      document.execCommand('foreColor', false, inp.value);
+      if(savedRange){ var s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(savedRange); }
+      document.execCommand('fontName', false, fuente);
+      sel.value = '';
     });
   });
   root.querySelectorAll('.rte-editable').forEach(function(editable){
@@ -5274,6 +5324,75 @@ function bindRteToolbars(root){
       mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, e.clientX, e.clientY);
     });
   });
+}
+/* Colores del tema (paleta institucional de la app) y colores estándar (la fila clásica que usan
+   Word/Excel) para el menú de color de texto — ver mostrarMenuColorRte. */
+var RTE_COLORES_TEMA = ['#000000','#FFFFFF','#5B6B85','#16233A','#0A2A5E','#1848A0','#5C93EF','#D6A419','#B01C1C','#1E7B45'];
+var RTE_COLORES_ESTANDAR = ['#C00000','#FF0000','#FFC000','#FFFF00','#92D050','#00B050','#00B0F0','#0070C0','#002060','#7030A0'];
+var RTE_COLOR_AUTOMATICO = '#16233A';
+/* Menú de color de texto al estilo Word/Office: "Automático", una fila de colores del tema, una
+   fila de colores estándar, y "Más colores…" que abre el selector nativo del sistema operativo
+   para cualquier color personalizado. Reemplaza al <input type="color"> plano de antes. */
+function mostrarMenuColorRte(btn, editable){
+  var previo = document.getElementById('rteColorMenu');
+  if(previo) previo.remove();
+  var sel = window.getSelection();
+  var savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+  var rect = btn.getBoundingClientRect();
+  var menu = document.createElement('div');
+  menu.id = 'rteColorMenu';
+  menu.className = 'rte-color-menu';
+  menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 210)) + 'px';
+  menu.style.top = (rect.bottom + 4) + 'px';
+
+  function swatchesHtml(colores){
+    return colores.map(function(c){
+      return '<button type="button" class="rte-color-swatch" data-color="'+c+'" style="background:'+c+';" title="'+c+'"></button>';
+    }).join('');
+  }
+  menu.innerHTML = ''
+    + '<button type="button" class="rte-color-auto" data-color="'+RTE_COLOR_AUTOMATICO+'"><span class="rte-color-auto-swatch"></span>Automático</button>'
+    + '<div class="rte-color-label">Colores del tema</div>'
+    + '<div class="rte-color-grid">' + swatchesHtml(RTE_COLORES_TEMA) + '</div>'
+    + '<div class="rte-color-label">Colores estándar</div>'
+    + '<div class="rte-color-grid">' + swatchesHtml(RTE_COLORES_ESTANDAR) + '</div>'
+    + '<button type="button" class="rte-color-more" id="rteColorMoreBtn">🎨 Más colores…</button>';
+  document.body.appendChild(menu);
+
+  var nativePicker = document.createElement('input');
+  nativePicker.type = 'color';
+  nativePicker.style.cssText = 'position:fixed; left:' + rect.left + 'px; top:' + rect.bottom + 'px; width:1px; height:1px; opacity:0; pointer-events:none;';
+  document.body.appendChild(nativePicker);
+
+  function aplicar(color){
+    limpiarSeleccionPersistenteRte();
+    editable.focus();
+    if(savedRange){ var s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(savedRange); }
+    document.execCommand('foreColor', false, color);
+    btn.setAttribute('data-color', color);
+    var barra = btn.querySelector('.rte-color-btn-bar');
+    if(barra) barra.style.background = color;
+    cerrar();
+  }
+  menu.querySelectorAll('[data-color]').forEach(function(el){
+    el.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    el.addEventListener('click', function(){ aplicar(el.getAttribute('data-color')); });
+  });
+  var moreBtn = document.getElementById('rteColorMoreBtn');
+  moreBtn.addEventListener('mousedown', function(e){ e.preventDefault(); });
+  moreBtn.addEventListener('click', function(){ nativePicker.click(); });
+  nativePicker.addEventListener('input', function(){ aplicar(nativePicker.value); });
+
+  function onOutside(ev){
+    if(menu.contains(ev.target) || ev.target === btn || ev.target === nativePicker) return;
+    cerrar();
+  }
+  function cerrar(){
+    menu.remove();
+    nativePicker.remove();
+    document.removeEventListener('mousedown', onOutside, true);
+  }
+  setTimeout(function(){ document.addEventListener('mousedown', onOutside, true); }, 0);
 }
 /* Al pegar contenido con formato en un campo de texto enriquecido, ofrece un pequeño menú (como
    en Word) para elegir cómo incorporarlo: manteniendo el formato de origen, combinándolo con uno
@@ -5303,9 +5422,9 @@ function mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, x,
     if(modo === 'texto'){
       document.execCommand('insertHTML', false, escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
     } else if(modo === 'combinar'){
-      document.execCommand('insertHTML', false, htmlRaw ? limpiarHtmlPegadoCombinado(htmlRaw) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
+      document.execCommand('insertHTML', false, htmlRaw ? quitarFuenteHtml(limpiarHtmlPegadoCombinado(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
     } else {
-      document.execCommand('insertHTML', false, htmlRaw ? sanitizeRte(htmlRaw) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
+      document.execCommand('insertHTML', false, htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
     }
     editable.dispatchEvent(new Event('input', {bubbles:true}));
     cerrar();
@@ -5355,12 +5474,26 @@ function limpiarHtmlPegadoCombinado(html){
   clean(doc.body.firstChild);
   return doc.body.firstChild.innerHTML;
 }
+/* Por defecto, el texto pegado adopta el tipo de letra que ya tiene el casillero en vez de traer
+   consigo la fuente de origen (Word, otra página, etc.) — se aplica a las 2 opciones de pegado
+   que conservan formato ("Mantener formato de origen" y "Combinar formato"); "Pegar solo texto"
+   ya es texto plano sin fuente. Quita <font face="..."> y cualquier font-family en "style". */
+function quitarFuenteHtml(html){
+  if(!html) return html;
+  var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  doc.querySelectorAll('[face]').forEach(function(el){ el.removeAttribute('face'); });
+  doc.querySelectorAll('[style]').forEach(function(el){
+    el.style.removeProperty('font-family');
+    if(!el.getAttribute('style')) el.removeAttribute('style');
+  });
+  return doc.body.firstChild.innerHTML;
+}
 /* Whitelist sanitizer applied at save time: strips any tag/attribute outside a small allowed
    set (bold/underline/lists/links/line-breaks) so pasted content can't smuggle scripts or
    event-handler attributes into localStorage. */
 function sanitizeRte(html){
   if(!html) return '';
-  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1,SUP:1,SUB:1};
+  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1,SUP:1,SUB:1,FONT:1};
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
   function clean(node){
     Array.from(node.childNodes).forEach(function(ch){
@@ -5376,6 +5509,10 @@ function sanitizeRte(html){
         if(ch.tagName === 'A' && attr.name === 'href'){
           var v = attr.value || '';
           if(!/^https?:\/\//i.test(v) && !/^mailto:/i.test(v)) ch.removeAttribute('href');
+        } else if(ch.tagName === 'FONT' && (attr.name === 'color' || attr.name === 'face')){
+          // El selector de color y de tipo de letra de la barra de herramientas usan execCommand,
+          // que en este navegador produce <font color="..." face="...">, no <span style="...">
+          // — por eso son las únicas etiquetas/atributos de formato "en crudo" que se conservan.
         } else {
           ch.removeAttribute(attr.name);
         }
