@@ -763,6 +763,26 @@ function misCursosTodos(docenteId){
 var NIVELES_BANDA_A = ['Iniciales y Preparatoria','Básica Elemental','Básica Media'];
 function nivelEsBandaA(nivel){ return NIVELES_BANDA_A.indexOf(nivel) !== -1; }
 
+/* "Escuela" (Inicial a 6.º EGB) vs "Colegio" (7.º EGB a 3.º Bachillerato): distinción
+   administrativa aparte de "Banda A/B" de arriba — esta corta "Básica Media" a la mitad, porque
+   ese nivel agrupa 5.º/6.º/7.º EGB pero 7.º ya pertenece a Colegio. Se usa solo para agrupar y
+   ordenar las pestañas de Planes Semanales y Presentación de PCA en Administración. */
+function esEscuelaPorNivelCurso(nivel, curso){
+  if(nivel==='Iniciales y Preparatoria' || nivel==='Básica Elemental') return true;
+  if(nivel==='Básica Media') return (curso||'').indexOf('7.º EGB') !== 0;
+  return false;
+}
+/* Orden pedagógico (no alfabético) de los cursos de Escuela, para agrupar a sus docentes en ese
+   orden en vez de por nombre — cada docente de Escuela suele tener un solo curso a cargo, así que
+   ordenar "por docente" en la práctica es ordenar por el curso que dicta. */
+var ORDEN_CURSOS_ESCUELA = CURSOS['Iniciales y Preparatoria']
+  .concat(CURSOS['Básica Elemental'])
+  .concat(conParalelos(['5.º EGB','6.º EGB']));
+function ordenCursoEscuela(curso){
+  var idx = ORDEN_CURSOS_ESCUELA.indexOf(curso);
+  return idx===-1 ? ORDEN_CURSOS_ESCUELA.length : idx;
+}
+
 /* ============================= INSPECCIÓN GENERAL ============================= */
 /* Jornada fija: 11 horas curriculares de 45 min desde las 07:15, con receso de 45 min
    (10:15-11:00) entre la 4.ª y la 5.ª hora. */
@@ -4913,6 +4933,22 @@ function blankPca(d){
 }
 function weekRow(n){ return {id:uid('wk'), semana:n, fechaInicio:'', fechaFin:'', destreza:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', temas:'', pagina:'', observacion:''}; }
 
+/* Para "Presentación de PCA": un PCA cuenta como lleno "hasta la Unidad 3" si tiene al menos 3
+   unidades creadas y, en cada una de las 3 primeras, al menos una fila de semana con contenido
+   real (destreza, temas o algún nivel de logro) — no basta con que la unidad exista vacía. */
+function pcaCompletoHastaUnidad3(p){
+  var unidades = (p.unidades||[]).slice(0,3);
+  if(unidades.length < 3) return false;
+  return unidades.every(function(u){
+    return (u.filas||[]).some(function(f){
+      return richTextToPlain(f.destreza||'').trim()
+        || richTextToPlain(f.temas||'').trim()
+        || richTextToPlain(f.nivelLogroIntermedio||'').trim()
+        || richTextToPlain(f.nivelLogroAvanzado||'').trim();
+    });
+  });
+}
+
 function openPcaForm(pcaId, returnTo){
   state.pcaReturnTo = returnTo || 'pcalist';
   var d = currentDocente();
@@ -5893,7 +5929,7 @@ function nivelLogroHtmlCompleto(f){
 
 /* ============================= PLAN SEMANAL — LIST ============================= */
 function renderSemanalList(d){ return renderSemanalListInner(d, false); }
-function renderAdminSemanal(){ return renderSemanalListInner(currentDocente(), true); }
+function renderAdminSemanal(banda){ return renderSemanalListInner(currentDocente(), true, banda); }
 
 /* Numeración de Planes Semanales: cada uno guarda su propio número (no es la posición en la
    lista), así que borrar uno no renumera a los demás. El siguiente plan que se crea continúa
@@ -5927,12 +5963,42 @@ function trimestreYMesDe(fechaIso){
 }
 
 var TRIMESTRE_LABELS = {1:'1er Trimestre', 2:'2do Trimestre', 3:'3er Trimestre'};
-function renderSemanalListInner(d, scopeAll){
+/* Ordena y agrupa por docente los planes de un mismo mes: en Escuela el criterio es el curso que
+   dicta cada docente (orden pedagógico, no alfabético — en Escuela cada docente suele tener un
+   solo curso a cargo); en Colegio, donde un mismo docente dicta varios cursos, el criterio es su
+   nombre en orden alfabético. */
+function semanalDocenteGruposHtml(planesDelMes, docentesById, banda, theadHtml, rowHtml){
+  var porDocente = {}; var orden = [];
+  planesDelMes.forEach(function(s){
+    var key = s.docenteId || '__sin__';
+    if(!porDocente[key]){ porDocente[key] = {docenteId: s.docenteId, docente: docentesById[s.docenteId], planes: []}; orden.push(key); }
+    porDocente[key].planes.push(s);
+  });
+  var grupos = orden.map(function(k){ return porDocente[k]; });
+  function nombreOrden(g){ return g.docente ? ((g.docente.apellidos||'')+(g.docente.nombres||'')) : ''; }
+  grupos.sort(function(a,b){
+    if(!a.docente && !b.docente) return 0;
+    if(!a.docente) return 1;
+    if(!b.docente) return -1;
+    if(banda === 'colegio') return nombreOrden(a).localeCompare(nombreOrden(b));
+    var rankA = Math.min.apply(null, a.planes.map(function(s){ return ordenCursoEscuela(s.curso); }));
+    var rankB = Math.min.apply(null, b.planes.map(function(s){ return ordenCursoEscuela(s.curso); }));
+    return rankA !== rankB ? rankA - rankB : nombreOrden(a).localeCompare(nombreOrden(b));
+  });
+  return grupos.map(function(g){
+    var nombre = g.docente ? nombreFormal(g.docente) : '(docente eliminado)';
+    var filas = g.planes.slice().sort(function(a,b){ return (a.fechaInicio||'').localeCompare(b.fechaInicio||''); }).map(rowHtml).join('');
+    return '<div style="margin-top:10px;"><h4 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; font-weight:700;">' + escapeHtml(nombre) + '</h4><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
+  }).join('');
+}
+function renderSemanalListInner(d, scopeAll, banda){
   var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.SEMANAL);
   var planes = scopeAll ? all : all.filter(function(s){ return s.docenteId===d.id; });
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+
+  if(scopeAll && banda) planes = planes.filter(function(s){ return esEscuelaPorNivelCurso(s.nivel, s.curso) === (banda==='escuela'); });
 
   var filtroHtml = '';
   if(scopeAll){
@@ -5950,24 +6016,23 @@ function renderSemanalListInner(d, scopeAll){
   }
 
   function rowHtml(s){
-    var lockedForViewer = !!s.locked && !isAdmin;
     var owner = scopeAll ? docentesById[s.docenteId] : null;
     var docenteCell = scopeAll ? '<td>' + (owner ? escapeHtml(nombreFormal(owner)) : '<span class="hint">(docente eliminado)</span>') + '</td>' : '';
     return ''
     + '<tr>'
     + '  <td class="tabular">' + (s.numero ? 'N.º ' + s.numero : '—') + '</td>'
     + docenteCell
-    + '  <td><strong>' + escapeHtml(s.asignatura||'(sin asignatura)') + '</strong>' + (s.locked ? ' <span class="pill pill-muted" title="Bloqueado para el docente">🔒</span>' : '') + '</td>'
+    + '  <td><strong>' + escapeHtml(s.asignatura||'(sin asignatura)') + '</strong></td>'
     + '  <td>' + escapeHtml(s.curso||'—') + '</td>'
     + '  <td>' + fmtDate(s.fechaInicio) + ' al ' + fmtDate(s.fechaFin) + '</td>'
     + '  <td class="tabular">' + (s.dias||[]).length + '</td>'
     + '  <td>' + fmtDateTime(s.updatedAt) + '</td>'
     + '  <td style="white-space:nowrap;">'
-    + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">' + (lockedForViewer ? 'Ver' : 'Ver / Editar') + '</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">Ver / Editar</button> '
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-excel="' + s.id + '">Excel</button> '
-    + (isAdmin || !lockedForViewer ? '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>' : '')
+    + '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>'
     + '  </td>'
     + '</tr>';
   }
@@ -5976,7 +6041,7 @@ function renderSemanalListInner(d, scopeAll){
   var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Días</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
 
   var head = scopeAll
-    ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal, incluidos los bloqueados para los docentes.</p>'
+    ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.</p>'
     : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div>';
 
   if(planes.length === 0){
@@ -5999,22 +6064,28 @@ function renderSemanalListInner(d, scopeAll){
     if(!mesKeys.length) return '';
     var mesesHtml = mesKeys.map(function(mk){
       var grupo = meses[mk];
-      // Dentro del mes, agrupa además por semana (mismo rango Fecha Inicio/Fin) para que los
-      // planes de una misma semana (p.ej. varias asignaturas) queden juntos bajo un encabezado.
-      var semanas = {}; var semanaOrder = [];
-      grupo.planes.forEach(function(s){
-        var key = (s.fechaInicio||'') + '|' + (s.fechaFin||'');
-        if(!semanas[key]){ semanas[key] = {fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, planes:[]}; semanaOrder.push(key); }
-        semanas[key].planes.push(s);
-      });
-      semanaOrder.sort();
-      var semanasHtml = semanaOrder.map(function(sk){
-        var g = semanas[sk];
-        var filas = g.planes.slice().sort(function(a,b){ return (a.asignatura||'').localeCompare(b.asignatura||''); }).map(rowHtml).join('');
-        var label = g.fechaInicio ? ('Semana del ' + fmtDate(g.fechaInicio) + ' al ' + fmtDate(g.fechaFin)) : 'Sin fecha de inicio';
-        return '<div style="margin-top:10px;"><h4 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; font-weight:700;">' + escapeHtml(label) + '</h4><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
-      }).join('');
-      return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3>' + semanasHtml + '</div>';
+      var cuerpoMes;
+      if(scopeAll && banda){
+        // Dentro del mes, agrupa por docente (criterio de orden según la banda).
+        cuerpoMes = semanalDocenteGruposHtml(grupo.planes, docentesById, banda, theadHtml, rowHtml);
+      } else {
+        // Comportamiento original: agrupa dentro del mes por semana (mismo rango de fechas), para
+        // que los planes de una misma semana (p.ej. varias asignaturas) queden juntos.
+        var semanas = {}; var semanaOrder = [];
+        grupo.planes.forEach(function(s){
+          var key = (s.fechaInicio||'') + '|' + (s.fechaFin||'');
+          if(!semanas[key]){ semanas[key] = {fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, planes:[]}; semanaOrder.push(key); }
+          semanas[key].planes.push(s);
+        });
+        semanaOrder.sort();
+        cuerpoMes = semanaOrder.map(function(sk){
+          var g = semanas[sk];
+          var filas = g.planes.slice().sort(function(a,b){ return (a.asignatura||'').localeCompare(b.asignatura||''); }).map(rowHtml).join('');
+          var label = g.fechaInicio ? ('Semana del ' + fmtDate(g.fechaInicio) + ' al ' + fmtDate(g.fechaFin)) : 'Sin fecha de inicio';
+          return '<div style="margin-top:10px;"><h4 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; font-weight:700;">' + escapeHtml(label) + '</h4><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
+        }).join('');
+      }
+      return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3>' + cuerpoMes + '</div>';
     }).join('');
     return '<div class="card"><h2>' + TRIMESTRE_LABELS[t] + '</h2>' + mesesHtml + '</div>';
   }).join('');
@@ -6052,6 +6123,21 @@ function bindSemanalListSharedEvents(){
 
 /* ============================= PLAN SEMANAL — FORM ============================= */
 function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', actividades:'', recursos:'', evaluacion:''}; }
+/* Para "Presentación de Planes": un Plan Semanal cuenta como lleno si tiene al menos un día
+   creado y CADA día tiene Contenidos, Actividades y al menos un Nivel de Logro marcado — un plan
+   con días en blanco (creado pero sin llenar) no cuenta como presentado, aunque exista. */
+function semanalEstaCompleto(s){
+  var dias = s.dias||[];
+  if(!dias.length) return false;
+  return dias.every(function(dia){
+    var contenidos = richTextToPlain(dia.contenidos||'').trim();
+    var actividades = richTextToPlain(dia.actividades||'').trim();
+    var nivelLogro = richTextToPlain(dia.nivelLogroBasico||'').trim()
+      || richTextToPlain(dia.nivelLogroIntermedio||'').trim()
+      || richTextToPlain(dia.nivelLogroAvanzado||'').trim();
+    return contenidos && actividades && nivelLogro;
+  });
+}
 /* Texto plano de los 3 niveles de logro seleccionados para un día del Plan Semanal, para usarlo
    en las exportaciones (Word/HTML/Markdown/CSV), que muestran una sola línea/columna por día. */
 function nivelLogroDiaTexto(dia){
@@ -6158,24 +6244,16 @@ function openSemanalForm(semId, returnTo){
 
 function semanalToolbarHtml(s){
   var isIngles = semanalEsIngles(s);
-  var isAdmin = isStaffRole(currentDocente().role);
-  var existsInDb = load(LS.SEMANAL).some(function(x){ return x.id===s.id; });
-  var locked = !!s.locked && !isAdmin;
-  var lockToggle = (isAdmin && existsInDb)
-    ? '<label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); white-space:nowrap;"><input type="checkbox" id="sfLockToggle" ' + (s.locked?'checked':'') + ' /> ' + te('Bloqueado para el docente', isIngles) + '</label>'
-    : '';
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
-    + lockToggle
-    + (locked ? '' : '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>')
+    + '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>'
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
-    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>')
-    + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
+    + '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>'
+    + '</div>';
 }
 
 /* Campo (día) donde se guarda la selección de cada nivel de logro, y etiqueta visible de cada
@@ -6389,8 +6467,6 @@ function renderSemanalForm(d){
 
 function bindSemanalFormEvents(){
   var s = state.editingSemanal;
-  var isAdmin = isStaffRole(currentDocente().role);
-  var locked = !!s.locked && !isAdmin;
 
   document.getElementById('btnBackToSemanalList').onclick = function(){ go(state.semanalReturnTo || 'semanallist'); };
   var saveBtn = document.getElementById('btnSaveSemanal');
@@ -6398,25 +6474,9 @@ function bindSemanalFormEvents(){
     saveSemanal(s);
     go(state.semanalReturnTo || 'semanallist');
   };
-  document.getElementById('btnExportSemanalWordNow').onclick = function(){ if(!locked) saveSemanal(s, true); exportSemanalWord(s.id); };
-  document.getElementById('btnExportSemanalExcelNow').onclick = function(){ if(!locked) saveSemanal(s, true); exportSemanalExcel(s.id); };
+  document.getElementById('btnExportSemanalWordNow').onclick = function(){ saveSemanal(s, true); exportSemanalWord(s.id); };
+  document.getElementById('btnExportSemanalExcelNow').onclick = function(){ saveSemanal(s, true); exportSemanalExcel(s.id); };
   document.getElementById('btnExportSemanalPdfNow').onclick = printAsPdf;
-  var lockToggle = document.getElementById('sfLockToggle');
-  if(lockToggle){
-    lockToggle.addEventListener('change', function(){
-      s.locked = lockToggle.checked;
-      var all = load(LS.SEMANAL);
-      var found = all.find(function(x){ return x.id===s.id; });
-      if(found){ found.locked = s.locked; save(LS.SEMANAL, all); }
-      toast(s.locked ? 'Plan bloqueado para el docente.' : 'Plan desbloqueado: el docente ya puede editarlo de nuevo.', 'success');
-    });
-  }
-
-  if(locked){
-    document.querySelectorAll('#semanalDoc input, #semanalDoc select, #semanalDoc textarea, #semanalDoc button').forEach(function(el){ el.disabled = true; });
-    document.querySelectorAll('#semanalDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
-    return;
-  }
   bindAutoguardadoDelegado('semanalDoc', 'semanal');
 
   document.getElementById('sfNivel').addEventListener('change', function(e){ s.nivel=e.target.value; s.especialidad=''; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
@@ -6518,7 +6578,6 @@ function saveSemanal(s, silent){
       };
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
-    locked: !!s.locked,
     createdAt: s.createdAt, updatedAt: s.updatedAt
   };
   var all = load(LS.SEMANAL).filter(function(x){ return x.id!==s.id; });
@@ -7190,11 +7249,12 @@ var ADMIN_TABS = [
   {key:'docentes', label:'Docentes'},
   {key:'carga', label:'Carga Horaria'},
   {key:'pca', label:'Planes (PCA)'},
-  {key:'contenidos', label:'Contenidos Anuales'},
-  {key:'semanal', label:'Planes Semanales'},
+  {key:'semanal', label:'Planes Semanales (Escuela)'},
+  {key:'semanalcolegio', label:'Planes Semanales (Colegio)'},
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes'},
-  {key:'presentacionpca', label:'Presentación de PCA'},
+  {key:'presentacionpca', label:'Presentación de PCA (Escuela)'},
+  {key:'presentacionpcacolegio', label:'Presentación de PCA (Colegio)'},
   {key:'fechaslimite', label:'Fechas Límite'}
 ];
 
@@ -7207,15 +7267,16 @@ function renderAdmin(d){
   var body;
   if(tab === 'carga') body = renderAdminCarga();
   else if(tab === 'pca') body = renderAdminPca();
-  else if(tab === 'contenidos') body = renderAdminContenidos();
-  else if(tab === 'semanal') body = renderAdminSemanal();
+  else if(tab === 'semanal') body = renderAdminSemanal('escuela');
+  else if(tab === 'semanalcolegio') body = renderAdminSemanal('colegio');
   else if(tab === 'consultas') body = renderAdminConsultas();
   else if(tab === 'presentacion') body = renderAdminPresentacion();
-  else if(tab === 'presentacionpca') body = renderAdminPresentacionPca();
+  else if(tab === 'presentacionpca') body = renderAdminPresentacionPca('escuela');
+  else if(tab === 'presentacionpcacolegio') body = renderAdminPresentacionPca('colegio');
   else if(tab === 'fechaslimite') body = renderAdminFechasLimite();
   else body = renderAdminDocentes();
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Administración</div><h1>Panel de administración</h1><p>Como administrador puedes ver y editar todos los campos de las 5 bases de datos: DOCENTES, CARGA HORARIA, PCA, CONTENIDOS ANUALES y PLAN SEMANAL.</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Administración</div><h1>Panel de administración</h1><p>Como administrador puedes ver y editar todos los campos de las bases de datos: DOCENTES, CARGA HORARIA, PCA y PLAN SEMANAL.</p></div></div>'
   + '<div class="admin-tabs">' + tabsHtml + '</div>'
   + body;
 }
@@ -7227,17 +7288,18 @@ function bindAdminEvents(){
   if(tab === 'docentes') bindAdminDocentesEvents();
   else if(tab === 'carga') bindAdminCargaEvents();
   else if(tab === 'pca') bindPcaListSharedEvents();
-  else if(tab === 'contenidos') bindAdminContenidosEvents();
   else if(tab === 'semanal') bindSemanalListSharedEvents();
+  else if(tab === 'semanalcolegio') bindSemanalListSharedEvents();
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacionpca') bindAdminPresentacionPcaEvents();
+  else if(tab === 'presentacionpcacolegio') bindAdminPresentacionPcaEvents();
   else if(tab === 'fechaslimite') bindAdminFechasLimiteEvents();
 }
 
 /* --- Admin: Docentes --- */
 function renderAdminDocentes(){
-  var docentes = allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docentes = allDocentes().sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
   var rows = docentes.map(function(x){
     return ''
     + '<tr>'
@@ -7271,7 +7333,7 @@ function bindAdminDocentesEvents(){
 }
 
 function ordenDocentesParaNavegar(){
-  return allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  return allDocentes().sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
 }
 function renderAdminEditDocente(){
   var ordenados = ordenDocentesParaNavegar();
@@ -7570,52 +7632,6 @@ function renderAdminCargaBodyOnly(docentesById){
   bindAdminCargaEvents();
 }
 
-/* --- Admin: Contenidos Anuales (todos los docentes) --- */
-function renderAdminContenidos(){
-  var cont = load(LS.CONT).sort(function(a,b){ return (a.unidad||'').localeCompare(b.unidad||''); });
-  var pcasById = {}; load(LS.PCA).forEach(function(p){ pcasById[p.id] = p; });
-  var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
-  var rows = cont.map(function(c){
-    var pca = pcasById[c.pcaId];
-    var owner = docentesById[c.docenteId];
-    var asig = pca ? ((pca.asignatura==='Otra…' ? pca.asignaturaManual : pca.asignatura) || '—') : '—';
-    return ''
-    + '<tr>'
-    + '  <td>' + (owner ? escapeHtml(owner.nombres) + ' ' + escapeHtml(owner.apellidos) : '<span class="hint">(docente eliminado)</span>') + '</td>'
-    + '  <td>' + escapeHtml(asig) + '</td>'
-    + '  <td>' + escapeHtml(c.unidad) + '</td>'
-    + '  <td class="tabular">' + escapeHtml(c.semana) + '</td>'
-    + '  <td>' + fmtDate(c.fechaInicio) + ' al ' + fmtDate(c.fechaFin) + '</td>'
-    + '  <td>' + escapeHtml((c.destreza||'').slice(0,60)) + (c.destreza && c.destreza.length>60 ? '…' : '') + '</td>'
-    + '  <td style="white-space:nowrap;">'
-    + (pca ? '<button class="btn btn-ghost btn-sm" data-open-pca-admin="'+pca.id+'">Abrir PCA</button> ' : '')
-    + '    <button class="btn btn-danger btn-sm" data-admin-delete-cont="' + c.id + '">Eliminar</button>'
-    + '  </td>'
-    + '</tr>';
-  }).join('');
-  return ''
-  + '<div class="card">'
-  + '  <h2>Contenidos anuales registrados</h2>'
-  + '  <div class="card-sub">Vista de todas las filas de la base CONTENIDOS ANUALES. Para editar el detalle completo de una semana, ábrela desde su Plan Curricular.</div>'
-  + (cont.length === 0
-      ? '<div class="empty-state"><div class="ic">📄</div>Todavía no hay contenidos registrados.</div>'
-      : '<div class="table-wrap"><table><thead><tr><th>Docente</th><th>Asignatura</th><th>Unidad</th><th>Semana</th><th>Fecha</th><th>Nivel de Logro</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>')
-  + '</div>';
-}
-function bindAdminContenidosEvents(){
-  document.querySelectorAll('[data-open-pca-admin]').forEach(function(btn){
-    btn.onclick = function(){ openPcaForm(btn.getAttribute('data-open-pca-admin'), 'admin'); };
-  });
-  document.querySelectorAll('[data-admin-delete-cont]').forEach(function(btn){
-    btn.onclick = function(){
-      confirmDialog('¿Eliminar esta fila de contenido?', function(){
-        eliminarConDeshacer(LS.CONT, btn.getAttribute('data-admin-delete-cont'), 'Fila eliminada.', 'Fila restaurada.');
-        render();
-      });
-    };
-  });
-}
-
 /* ============================= ADMIN: CONSULTAS (solo admin) ============================= */
 function estadoBadgeStandalone(estado){
   if(!estado) return '<div class="hint">Sin datos suficientes para esta fecha.</div>';
@@ -7714,11 +7730,22 @@ function bindAdminConsultasEvents(){
 }
 
 /* ============================= ADMIN: PRESENTACIÓN DE PLANES (solo admin) ============================= */
+/* Observación de 3 estados: primero se verifica que el plan esté LLENO (si le faltan campos, es
+   INCOMPLETO sin importar la fecha); si está lleno, se compara la fecha de creación contra la
+   fecha límite (A TIEMPO o ATRASADO). SIN_LIMITE solo aplica cuando el plan está lleno pero no
+   tiene fecha límite guardada, así que no se puede juzgar la puntualidad. */
 var PRESENTACION_STYLE = {
   a_tiempo: {label:'Presentó a tiempo', color:'#0F5132', bg:'#E3F5EC'},
-  con_retraso: {label:'Presentó con retraso', color:'#D69E00', bg:'#FFF6D9'},
+  incompleto: {label:'Incompleto', color:'#D62828', bg:'#FBE4E4'},
+  con_retraso: {label:'Atrasado', color:'#D69E00', bg:'#FFF6D9'},
   sin_limite: {label:'Sin fecha límite definida', color:'#5B6B85', bg:'#EEF1F6'}
 };
+function calcularEstadoPresentacion(completo, createdAt, fechaLimite){
+  if(!completo) return 'incompleto';
+  if(!fechaLimite) return 'sin_limite';
+  var limiteISO = new Date(fechaLimite).toISOString();
+  return (createdAt && createdAt <= limiteISO) ? 'a_tiempo' : 'con_retraso';
+}
 function presentacionBadge(estado){
   var st = PRESENTACION_STYLE[estado];
   return '<span style="font-weight:700; font-size:11px; letter-spacing:.02em; padding:4px 10px; border-radius:99px; color:' + st.color + '; background:' + st.bg + '; white-space:nowrap;">' + st.label + '</span>';
@@ -7738,12 +7765,7 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte){
   return load(LS.SEMANAL).filter(function(s){
     return s.docenteId===docenteId && s.fechaInicio && s.fechaInicio>=fechaInicioParte && s.fechaInicio<=fechaFinParte;
   }).map(function(s){
-    var estado;
-    if(!s.fechaHoraLimite) estado = 'sin_limite';
-    else {
-      var limiteISO = new Date(s.fechaHoraLimite).toISOString();
-      estado = (s.createdAt && s.createdAt <= limiteISO) ? 'a_tiempo' : 'con_retraso';
-    }
+    var estado = calcularEstadoPresentacion(semanalEstaCompleto(s), s.createdAt, s.fechaHoraLimite);
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
     return {
       numero:s.numero, fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, asignatura:s.asignatura, curso:s.curso,
@@ -7773,7 +7795,7 @@ function renderAdminPresentacion(){
     return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
   }
 
-  var docentes = allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docentes = allDocentes().sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
   var bloques = docentes.map(function(doc){
     var filas = filasPresentacionDocente(doc.id, pf.fechaInicio, pf.fechaFin);
     if(!filas.length) return '';
@@ -7818,35 +7840,34 @@ function bindAdminPresentacionEvents(){
 
 /* ============================= ADMIN: PRESENTACIÓN DE PCA (solo admin) ============================= */
 /* Toma los PCA del docente cuya fecha de creación cae dentro del rango de corte elegido por el
-   admin. La puntualidad se calcula comparando la fecha y hora en que se CREÓ cada PCA contra la
-   Fecha Límite que ese MISMO PCA tiene guardada (campo editable solo por el admin, visible arriba
-   del documento). */
-function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte){
+   admin, filtrados por banda (Escuela: Iniciales a 6.º EGB / Colegio: 7.º EGB a 3.º BGU). La
+   Observación combina dos cosas: que el PCA esté lleno hasta la Unidad 3 y que se haya creado
+   antes de la Fecha Límite que ese mismo PCA tiene guardada (editable solo por el admin). */
+function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte, banda){
   return load(LS.PCA).filter(function(p){
     var fecha = (p.createdAt||'').slice(0,10);
-    return p.docenteId===docenteId && fecha && fecha>=fechaInicioParte && fecha<=fechaFinParte;
+    if(p.docenteId!==docenteId || !fecha || fecha<fechaInicioParte || fecha>fechaFinParte) return false;
+    var curso = p.curso==='Otro…' ? p.cursoManual : p.curso;
+    return esEscuelaPorNivelCurso(p.nivel, curso) === (banda==='escuela');
   }).map(function(p){
-    var estado;
-    if(!p.fechaLimite) estado = 'sin_limite';
-    else {
-      var limiteISO = new Date(p.fechaLimite).toISOString();
-      estado = (p.createdAt && p.createdAt <= limiteISO) ? 'a_tiempo' : 'con_retraso';
-    }
+    var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
+    var estado = calcularEstadoPresentacion(pcaCompletoHastaUnidad3(p), p.createdAt, p.fechaLimite);
     return {
       asignatura: (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '—',
-      curso: (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—',
+      curso: curso, cursoRaw: p.curso==='Otro…' ? p.cursoManual : p.curso,
       nivel: p.nivel||'—', especialidad: p.especialidad||'',
       unidades: (p.unidadesNombres||[]).length,
       createdAt:p.createdAt, fechaLimite:p.fechaLimite, estado:estado
     };
   });
 }
-function renderAdminPresentacionPca(){
+function renderAdminPresentacionPca(banda){
   var pf = state.presentacionPcaForm;
+  var tituloBanda = banda==='colegio' ? 'Presentación de PCA (Colegio)' : 'Presentación de PCA (Escuela)';
   var formHtml = ''
     + '<div class="card">'
-    + '  <h2>Presentación de PCA</h2>'
-    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La puntualidad se calcula contra la Fecha Límite que cada PCA tiene guardada.</div>'
+    + '  <h2>' + tituloBanda + '</h2>'
+    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA esté lleno hasta la Unidad 3 y que se haya creado antes de la Fecha Límite que tiene guardada.</div>'
     + '  <div class="grid-2" style="max-width:520px;">'
     + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppPcaFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
     + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppPcaFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
@@ -7860,10 +7881,11 @@ function renderAdminPresentacionPca(){
     return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
   }
 
-  var docentes = allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docentes = allDocentes();
   var bloques = docentes.map(function(doc){
-    var filas = filasPresentacionPcaDocente(doc.id, pf.fechaInicio, pf.fechaFin);
-    if(!filas.length) return '';
+    var filas = filasPresentacionPcaDocente(doc.id, pf.fechaInicio, pf.fechaFin, banda);
+    if(!filas.length) return null;
+    var rankDocente = banda==='colegio' ? 0 : Math.min.apply(null, filas.map(function(f){ return ordenCursoEscuela(f.cursoRaw); }));
     var porMes = {};
     var ordenMeses = [];
     filas.forEach(function(f){
@@ -7888,10 +7910,16 @@ function renderAdminPresentacionPca(){
       }).join('');
       return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
     }).join('');
-    return '<div class="card"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>';
-  }).filter(Boolean).join('');
+    return {doc:doc, rank:rankDocente, html:'<div class="card"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
+  }).filter(Boolean);
 
-  return formHtml + (bloques || '<div class="card"><div class="empty-state"><div class="ic">📘</div>No hay PCA creados en el rango de fechas indicado.</div></div>');
+  bloques.sort(function(a,b){
+    if(banda==='colegio') return ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||''));
+    return a.rank!==b.rank ? a.rank-b.rank : ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||''));
+  });
+
+  var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
+  return formHtml + (bloquesHtml || '<div class="card"><div class="empty-state"><div class="ic">📘</div>No hay PCA creados en el rango de fechas indicado.</div></div>');
 }
 function bindAdminPresentacionPcaEvents(){
   var fi = document.getElementById('ppPcaFechaInicio');
