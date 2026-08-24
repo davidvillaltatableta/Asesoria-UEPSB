@@ -374,6 +374,11 @@
     .sidebar, .mobile-topbar, .pca-toolbar, .lock-banner, .no-print{display:none !important;}
     .only-print{display:block !important;}
     body{background:#fff;}
+    /* .shell reserva una columna de 248px para el menú lateral (grid-template-columns:248px
+       minmax(0,1fr)) — ocultar el <aside> con display:none no cambia esa plantilla, así que sin
+       este reinicio el <main> quedaba encajado en esa franja angosta de 248px y el resto de la
+       hoja se imprimía en blanco (la causa real de las tablas angostas al imprimir). */
+    .shell{display:block;}
     main.content{padding:0; max-width:100%;}
     .pca-doc{box-shadow:none; border:none;}
     .card{box-shadow:none;}
