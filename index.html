@@ -397,12 +397,6 @@
     .pca-doc select.cell-select, .obs-doc select.cell-select, .dece-doc select.cell-select{-webkit-appearance:none; appearance:none;}
     .rte-editable{overflow:visible; min-height:0;}
     .rte-toolbar{display:none !important;}
-    /* Los manuales van en A4 vertical (el resto del sistema imprime en horizontal): esta "página
-       con nombre" es la única forma en CSS de tener una orientación distinta dentro del mismo
-       documento impreso. Si el navegador la ignora, el usuario puede elegir "Vertical" a mano en
-       el cuadro de diálogo de impresión al guardar como PDF. */
-    @page manualpage{ size: A4 portrait; margin: 18mm; }
-    .manual-doc, .insp-report-doc, .obs-doc, .dece-doc{ page: manualpage; }
   }
 
   /* ============================= MANUALES DE USUARIO ============================= */
@@ -1085,7 +1079,25 @@ function promptDialog(message, defaultValue, onSubmit){
   overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
 }
 
+/* Orientación de impresión dinámica: en vez de depender de "páginas con nombre" de CSS (soporte
+   real de Chrome poco fiable para además ajustar el ANCHO del contenido, no solo el tamaño de
+   papel — eso era la causa de las tablas angostas con espacio en blanco a la derecha), se
+   reescribe la única regla @page justo antes de imprimir, según el tipo de documento visible en
+   pantalla: los formularios del DECE, Observación de Clases, reportes y manuales van en A4
+   vertical; PCA y Plan Semanal (documentos anchos de varias columnas) siguen en A4 horizontal. */
+var PRINT_STYLE_EL = null;
+function aplicarOrientacionImpresion(){
+  var esVertical = !!document.querySelector('.dece-doc, .obs-doc, .manual-doc, .insp-report-doc');
+  if(!PRINT_STYLE_EL){
+    PRINT_STYLE_EL = document.createElement('style');
+    document.head.appendChild(PRINT_STYLE_EL);
+  }
+  PRINT_STYLE_EL.textContent = esVertical
+    ? '@media print{ @page{ size: A4 portrait; margin: 18mm; } }'
+    : '@media print{ @page{ size: A4 landscape; margin: 14mm; } }';
+}
 function printAsPdf(){
+  aplicarOrientacionImpresion();
   window.print();
 }
 
@@ -3386,7 +3398,7 @@ var FDI_ANTECEDENTES_PATOLOGICOS = ['Obesidad','Enfermedades cardiacas','Hiperte
 function blankFichaDatos(){
   return {
     id: uid('fdi'), createdAt:'', updatedAt:'',
-    jornada:'', cedulaEstudiante:'',
+    jornada:'', cedulaEstudiante:'', nivelEducativo:'', curso:'',
     estudianteNombre:'', lugarNacimiento:'', fechaNacimiento:'', domicilio:'', sector:'', cambiosDomicilio:'',
     telefonoConvencional:'', celular:'', fotoEstudiante:'',
     madreNombre:'', madreEdad:'', madreEstadoCivil:'', madreInstruccion:'', madreProfesion:'', madreTrabajo:'', madreTelContacto:'', madreTelTrabajo:'',
@@ -3470,11 +3482,17 @@ function fdiHermanosInstitucionHtml(nombres, cursos, paralelos, editable){
   return out + '</tbody></table></div>';
 }
 function fdiCuerpoHtml(e, editable){
+  var cursoOpts = e.nivelEducativo ? cursosFor(e.nivelEducativo) : [];
   return ''
+  + '  <div class="pca-band band-section">DATOS INFORMATIVOS</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-2">'
   + fdiRadios('Jornada', 'jornada', FDI_JORNADA, e.jornada, editable)
-  + fdiCampo('N. Cedula del/a estudiante', 'cedulaEstudiante', e.cedulaEstudiante, editable)
+  + '      <div class="field"><label>Cedula del/a estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdiCedulaBusqueda" data-fdi-field="cedulaEstudiante" value="'+escapeHtml(e.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdiBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (editable ? '<div class="hint" style="margin-top:4px;">Busca en Inspección General y llena Nivel Educativo y Curso automáticamente.</div>' : '') + '</div>'
+  + '    </div>'
+  + '    <div class="grid-2" style="margin-top:14px;">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" data-fdi-field="nivelEducativo" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, e.nivelEducativo, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" data-fdi-field="curso" '+(editable && e.nivelEducativo?'':'disabled')+'>' + optionsHtml(cursoOpts, e.curso, e.nivelEducativo ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
   + '    </div>'
   + '  </div>'
   + '  <div class="pca-band band-section">1. Datos de identificacion/informacion</div>'
@@ -3586,7 +3604,13 @@ function bindFdiCamposGenericos(root, estudiante, editable, onCambioCondicional)
   root.querySelectorAll('[data-fdi-field]').forEach(function(el){
     var key = el.getAttribute('data-fdi-field');
     el.addEventListener('input', function(){ estudiante[key] = el.value; });
-    if(el.tagName==='SELECT') el.addEventListener('change', function(){ estudiante[key] = el.value; });
+    if(el.tagName==='SELECT') el.addEventListener('change', function(){
+      estudiante[key] = el.value;
+      if(key==='nivelEducativo'){
+        estudiante.curso = '';
+        if(onCambioCondicional) onCambioCondicional();
+      }
+    });
   });
   root.querySelectorAll('[data-fdi-arr]').forEach(function(el){
     var key = el.getAttribute('data-fdi-arr');
@@ -3699,6 +3723,17 @@ function bindDeceFormEvents(){
 
   bindFdiCamposGenericos(document.getElementById('dcDoc'), e, true, function(){ state.editingDece = e; render(); });
 
+  var btnBuscarCedulaFdi = document.getElementById('btnFdiBuscarCedula');
+  if(btnBuscarCedulaFdi) btnBuscarCedulaFdi.onclick = function(){
+    var info = buscarInfoPorCedula(e.cedulaEstudiante);
+    if(!info){ toast('No se encontró ningún estudiante con esa cédula en Inspección General.', 'error'); return; }
+    if(info.nivel) e.nivelEducativo = info.nivel;
+    if(info.curso) e.curso = info.curso;
+    if(info.nombre && !(e.estudianteNombre||'').trim()) e.estudianteNombre = info.nombre;
+    render();
+    toast('Datos encontrados y completados desde Inspección General.', 'success');
+  };
+
   var fotoInput = document.getElementById('fdiFotoInput');
   if(fotoInput) fotoInput.onchange = function(ev){
     var file = ev.target.files[0];
@@ -3748,6 +3783,22 @@ function nombresCoinciden(a, b){
   var na = normImportHeader(a), nb = normImportHeader(b);
   if(!na || !nb) return false;
   return na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
+}
+/* Búsqueda compartida por cédula, usada tanto en Ficha de Datos Informativos como en Ficha de
+   Detección: Inspección General (Estudiantes) es la fuente confiable de Nivel/Curso porque ahí
+   se registra en qué curso está matriculado cada estudiante; si no está registrado ahí todavía,
+   se usa el nombre ya guardado en el Registro Acumulativo General como respaldo. */
+function buscarInfoPorCedula(cedula){
+  cedula = (cedula||'').trim();
+  if(!cedula) return null;
+  var est = load(LS.ESTUDIANTES).find(function(x){ return (x.ci||'').trim() === cedula; });
+  var fichaDatos = load(LS.DECE).find(function(x){ return (x.cedulaEstudiante||'').trim() === cedula; });
+  if(!est && !fichaDatos) return null;
+  return {
+    nombre: est ? ((est.apellidos||'') + ' ' + (est.nombres||'')).trim() : (fichaDatos ? fichaDatos.estudianteNombre : ''),
+    nivel: est ? (est.nivel||'') : '',
+    curso: est ? (est.curso==='Otro…' ? (est.cursoManual||'') : (est.curso||'')) : ''
+  };
 }
 function fichasDeteccionAgrupadasHtml(){
   var todas = load(LS.FICHA_DETECCION);
@@ -4067,14 +4118,14 @@ function renderFichaDeteccionForm(d){
   + deceFormLogoHeaderHtml('FICHA DE DETECCIÓN DE DIFICULTADES')
   + '  <div class="pca-band band-section">DATOS INFORMATIVOS</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-2">'
-  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" id="fdNivelBgu" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, f.nivelBgu, 'Elija un elemento…') + '</select></div>'
-  + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" id="fdCurso" '+(editable && f.nivelBgu?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, f.nivelBgu ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
-  + '    </div>'
-  + '    <div class="grid-3" style="margin-top:14px;">'
-  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en el Registro Acumulativo General y llena el nombre del estudiante automáticamente.</div>' : '') + '</div>'
+  + '    <div class="grid-3">'
+  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en Inspección General / Registro Acumulativo General y llena Nombre, Nivel y Curso automáticamente.</div>' : '') + '</div>'
   + '      <div class="field"><label>Nombre del estudiante</label><input class="cell-input" id="fdEstudiante" value="'+escapeHtml(f.estudianteNombre||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="fdFecha" value="'+escapeHtml(f.fecha)+'" '+(editable?'':'disabled')+' /></div>'
+  + '    </div>'
+  + '    <div class="grid-2" style="margin-top:14px;">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" id="fdNivelBgu" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, f.nivelBgu, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" id="fdCurso" '+(editable && f.nivelBgu?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, f.nivelBgu ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
   + '      <div class="field"><label>Remitido por el profesor</label><input class="cell-input" id="fdRemitidoPor" value="'+escapeHtml(f.remitidoPor||'')+'" '+(editable?'':'disabled')+' /></div>'
@@ -4149,13 +4200,13 @@ function bindFichaDeteccionFormEvents(){
   document.getElementById('fdCedula').oninput = function(e){ f.cedulaEstudiante = e.target.value; };
   var btnBuscarCedula = document.getElementById('btnFdBuscarCedula');
   if(btnBuscarCedula) btnBuscarCedula.onclick = function(){
-    var cedula = (f.cedulaEstudiante||'').trim();
-    if(!cedula) return toast('Escribe una cédula para buscar.', 'error');
-    var encontrado = load(LS.DECE).find(function(x){ return (x.cedulaEstudiante||'').trim() === cedula; });
-    if(!encontrado) return toast('No se encontró ningún Registro Acumulativo General con esa cédula.', 'error');
-    f.estudianteNombre = encontrado.estudianteNombre || f.estudianteNombre;
+    var info = buscarInfoPorCedula(f.cedulaEstudiante);
+    if(!info) return toast('No se encontró ningún estudiante con esa cédula.', 'error');
+    if(info.nombre) f.estudianteNombre = info.nombre;
+    if(info.nivel) f.nivelBgu = info.nivel;
+    if(info.curso) f.curso = info.curso;
     renderFichaDeteccionFormAgain();
-    toast('Estudiante encontrado: se completó el nombre desde el Registro Acumulativo General.', 'success');
+    toast('Datos encontrados y completados automáticamente.', 'success');
   };
   document.getElementById('fdRemitidoPor').oninput = function(e){ f.remitidoPor = e.target.value; };
   document.getElementById('fdCualidad').oninput = function(e){ f.cualidadEstudiante = e.target.value; };
