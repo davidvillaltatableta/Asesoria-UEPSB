@@ -3493,7 +3493,7 @@ function fdiCuerpoHtml(e, editable){
   + '  <div class="pca-section">'
   + '    <div class="grid-2">'
   + fdiRadios('Jornada', 'jornada', FDI_JORNADA, e.jornada, editable)
-  + '      <div class="field"><label>Cedula del/a estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdiCedulaBusqueda" data-fdi-field="cedulaEstudiante" value="'+escapeHtml(e.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdiBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (editable ? '<div class="hint" style="margin-top:4px;">Busca en Inspección General y llena Nivel Educativo y Curso automáticamente.</div>' : '') + '</div>'
+  + fdiCampo('Cedula del/a estudiante', 'cedulaEstudiante', e.cedulaEstudiante, editable)
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
   + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" data-fdi-field="nivelEducativo" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, e.nivelEducativo, 'Elija un elemento…') + '</select></div>'
@@ -3728,16 +3728,6 @@ function bindDeceFormEvents(){
 
   bindFdiCamposGenericos(document.getElementById('dcDoc'), e, true, function(){ state.editingDece = e; render(); });
 
-  var btnBuscarCedulaFdi = document.getElementById('btnFdiBuscarCedula');
-  if(btnBuscarCedulaFdi) btnBuscarCedulaFdi.onclick = function(){
-    var info = buscarInfoPorCedula(e.cedulaEstudiante);
-    if(!info){ toast('No se encontró ningún estudiante con esa cédula en Inspección General.', 'error'); return; }
-    if(info.nivel) e.nivelEducativo = info.nivel;
-    if(info.curso) e.curso = info.curso;
-    if(info.nombre && !(e.estudianteNombre||'').trim()) e.estudianteNombre = info.nombre;
-    render();
-    toast('Datos encontrados y completados desde Inspección General.', 'success');
-  };
 
   var fotoInput = document.getElementById('fdiFotoInput');
   if(fotoInput) fotoInput.onchange = function(ev){
