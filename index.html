@@ -7252,17 +7252,23 @@ var ADMIN_TABS = [
   {key:'semanal', label:'Planes Semanales (Escuela)'},
   {key:'semanalcolegio', label:'Planes Semanales (Colegio)'},
   {key:'consultas', label:'Consultas'},
-  {key:'presentacion', label:'Presentación de Planes'},
+  {key:'presentacion', label:'Presentación de Planes (Escuela)'},
+  {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
   {key:'presentacionpca', label:'Presentación de PCA (Escuela)'},
   {key:'presentacionpcacolegio', label:'Presentación de PCA (Colegio)'},
   {key:'fechaslimite', label:'Fechas Límite'}
 ];
+/* Color pastel distinto para cada pestaña de "Presentación de Planes Semanales", para
+   distinguir de un vistazo Escuela de Colegio tanto en la pestaña como en su contenido. */
+var ADMIN_TAB_PASTEL = { presentacion: 'var(--blue-100)', presentacioncolegio: 'var(--gold-100)' };
 
 function renderAdmin(d){
   if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.adminTab || 'docentes';
   var tabsHtml = ADMIN_TABS.map(function(t){
-    return '<button class="'+(tab===t.key?'active':'')+'" data-admintab="'+t.key+'">'+t.label+'</button>';
+    var pastel = ADMIN_TAB_PASTEL[t.key];
+    var estilo = pastel ? ' style="background:'+pastel+'; border-radius:8px 8px 0 0;"' : '';
+    return '<button class="'+(tab===t.key?'active':'')+'"'+estilo+' data-admintab="'+t.key+'">'+t.label+'</button>';
   }).join('');
   var body;
   if(tab === 'carga') body = renderAdminCarga();
@@ -7270,7 +7276,8 @@ function renderAdmin(d){
   else if(tab === 'semanal') body = renderAdminSemanal('escuela');
   else if(tab === 'semanalcolegio') body = renderAdminSemanal('colegio');
   else if(tab === 'consultas') body = renderAdminConsultas();
-  else if(tab === 'presentacion') body = renderAdminPresentacion();
+  else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
+  else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
   else if(tab === 'presentacionpca') body = renderAdminPresentacionPca('escuela');
   else if(tab === 'presentacionpcacolegio') body = renderAdminPresentacionPca('colegio');
   else if(tab === 'fechaslimite') body = renderAdminFechasLimite();
@@ -7292,6 +7299,7 @@ function bindAdminEvents(){
   else if(tab === 'semanalcolegio') bindSemanalListSharedEvents();
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
+  else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
   else if(tab === 'presentacionpca') bindAdminPresentacionPcaEvents();
   else if(tab === 'presentacionpcacolegio') bindAdminPresentacionPcaEvents();
   else if(tab === 'fechaslimite') bindAdminFechasLimiteEvents();
@@ -7761,9 +7769,10 @@ function siNoBadge(valor){
    guardada (campo editable solo por el admin, visible en la parte de arriba del documento) — ya
    no se pide una fecha límite aparte en este formulario. Tareas/Talleres/Lecciones se detectan
    revisando el texto del campo Evaluación de cada día del plan. */
-function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte){
+function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, banda){
   return load(LS.SEMANAL).filter(function(s){
-    return s.docenteId===docenteId && s.fechaInicio && s.fechaInicio>=fechaInicioParte && s.fechaInicio<=fechaFinParte;
+    if(s.docenteId!==docenteId || !s.fechaInicio || s.fechaInicio<fechaInicioParte || s.fechaInicio>fechaFinParte) return false;
+    return esEscuelaPorNivelCurso(s.nivel, s.curso) === (banda==='escuela');
   }).map(function(s){
     var estado = calcularEstadoPresentacion(semanalEstaCompleto(s), s.createdAt, s.fechaHoraLimite);
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
@@ -7776,11 +7785,13 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte){
     };
   });
 }
-function renderAdminPresentacion(){
+function renderAdminPresentacion(banda){
   var pf = state.presentacionForm;
+  var pastel = ADMIN_TAB_PASTEL[banda==='colegio' ? 'presentacioncolegio' : 'presentacion'];
+  var tituloBanda = banda==='colegio' ? 'Presentación de Planes Semanales (Colegio)' : 'Presentación de Planes Semanales (Escuela)';
   var formHtml = ''
-    + '<div class="card">'
-    + '  <h2>Presentación de Planes Semanales</h2>'
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>' + tituloBanda + '</h2>'
     + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La puntualidad se calcula contra la Fecha y hora límite que cada plan tiene guardada.</div>'
     + '  <div class="grid-2" style="max-width:520px;">'
     + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
@@ -7795,10 +7806,11 @@ function renderAdminPresentacion(){
     return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
   }
 
-  var docentes = allDocentes().sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
+  var docentes = allDocentes();
   var bloques = docentes.map(function(doc){
-    var filas = filasPresentacionDocente(doc.id, pf.fechaInicio, pf.fechaFin);
-    if(!filas.length) return '';
+    var filas = filasPresentacionDocente(doc.id, pf.fechaInicio, pf.fechaFin, banda);
+    if(!filas.length) return null;
+    var rankDocente = banda==='colegio' ? 0 : Math.min.apply(null, filas.map(function(f){ return ordenCursoEscuela(f.curso); }));
     var porMes = {};
     var ordenMeses = [];
     filas.forEach(function(f){
@@ -7826,10 +7838,16 @@ function renderAdminPresentacion(){
       }).join('');
       return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan creado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
     }).join('');
-    return '<div class="card"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>';
-  }).filter(Boolean).join('');
+    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
+  }).filter(Boolean);
 
-  return formHtml + (bloques || '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>');
+  bloques.sort(function(a,b){
+    if(banda==='colegio') return ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||''));
+    return a.rank!==b.rank ? a.rank-b.rank : ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||''));
+  });
+
+  var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
+  return formHtml + (bloquesHtml || '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>');
 }
 function bindAdminPresentacionEvents(){
   var fi = document.getElementById('ppFechaInicio');
