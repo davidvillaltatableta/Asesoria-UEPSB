@@ -15,6 +15,13 @@
     --red-100:#FBE4E4;
     --green-600:#1E8E5A;
     --green-100:#E3F5EC;
+    --purple-100:#EDE4FB;
+    --teal-100:#DFF6F4;
+    --pink-100:#FBE3EF;
+    --orange-100:#FDEAD6;
+    --indigo-100:#E3E8FD;
+    --lime-100:#EFF7DA;
+    --brown-100:#F1E7DA;
     --ink:#16233A;
     --paper:#F5F7FB;
     --surface:#FFFFFF;
@@ -50,6 +57,13 @@
       --red-100:#3A1414;
       --green-600:#4FCB92;
       --green-100:#0F2A20;
+      --purple-100:#271A40;
+      --teal-100:#0D2E2C;
+      --pink-100:#391629;
+      --orange-100:#3A2712;
+      --indigo-100:#1B2049;
+      --lime-100:#262E10;
+      --brown-100:#2E2318;
       --ink:#EAF0FB;
       --paper:#0B1220;
       --surface:#111A2E;
@@ -67,6 +81,8 @@
     --blue-100:#16294D; --blue-50:#101B33; --gold-100:#3A2E08; --red-600:#FF6B6B; --red-100:#3A1414;
     --green-600:#4FCB92; --green-100:#0F2A20; --ink:#EAF0FB; --paper:#0B1220; --surface:#111A2E;
     --surface-2:#0E1626; --line:#233150; --line-strong:#31456E; --muted:#93A2C2;
+    --purple-100:#271A40; --teal-100:#0D2E2C; --pink-100:#391629; --orange-100:#3A2712;
+    --indigo-100:#1B2049; --lime-100:#262E10; --brown-100:#2E2318;
     --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
     --shadow-2:0 2px 6px rgba(0,0,0,.4), 0 16px 40px rgba(0,0,0,.5);
   }
@@ -76,6 +92,8 @@
     --blue-100:#E7EEFB; --blue-50:#F2F6FD; --gold-100:#FCF1CC; --red-600:#D62828; --red-100:#FBE4E4;
     --green-600:#1E8E5A; --green-100:#E3F5EC; --ink:#16233A; --paper:#F5F7FB; --surface:#FFFFFF;
     --surface-2:#FAFBFE; --line:#DCE3F0; --line-strong:#C3CEE3; --muted:#5B6B85;
+    --purple-100:#EDE4FB; --teal-100:#DFF6F4; --pink-100:#FBE3EF; --orange-100:#FDEAD6;
+    --indigo-100:#E3E8FD; --lime-100:#EFF7DA; --brown-100:#F1E7DA;
     --shadow-1:0 1px 2px rgba(16,32,64,.06), 0 6px 20px rgba(16,32,64,.06);
     --shadow-2:0 2px 6px rgba(16,32,64,.10), 0 16px 40px rgba(16,32,64,.14);
   }
@@ -4877,10 +4895,11 @@ function renderPcaListInner(d, scopeAll){
     ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan, incluidos los bloqueados para los docentes.</p>'
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div>';
 
+  var cardEstiloAdmin = scopeAll ? pastelBorde('pca') : '';
   return head + filtroHtml
   + (pcas.length === 0
-      ? '<div class="card"><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
-      : '<div class="card"><div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
+      ? '<div class="card"'+cardEstiloAdmin+'><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
+      : '<div class="card"'+cardEstiloAdmin+'><div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
 }
 function bindPcaListEvents(){
   ['btnNewPca','btnNewPca2'].forEach(function(id){
@@ -6044,8 +6063,10 @@ function renderSemanalListInner(d, scopeAll, banda){
     ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.</p>'
     : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div>';
 
+  var cardEstiloAdmin = (scopeAll && banda) ? pastelBorde(banda==='colegio' ? 'semanalcolegio' : 'semanal') : '';
+
   if(planes.length === 0){
-    return head + filtroHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>' + (scopeAll ? 'No hay planes semanales que coincidan con el filtro.' : 'Todavía no has creado ningún plan semanal.<br/><button class="btn btn-primary" id="btnNewSemanal2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
+    return head + filtroHtml + '<div class="card"'+cardEstiloAdmin+'><div class="empty-state"><div class="ic">📅</div>' + (scopeAll ? 'No hay planes semanales que coincidan con el filtro.' : 'Todavía no has creado ningún plan semanal.<br/><button class="btn btn-primary" id="btnNewSemanal2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
   }
 
   // Agrupa por trimestre y, dentro de cada trimestre, por mes (según fecha de inicio del plan).
@@ -6087,11 +6108,11 @@ function renderSemanalListInner(d, scopeAll, banda){
       }
       return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3>' + cuerpoMes + '</div>';
     }).join('');
-    return '<div class="card"><h2>' + TRIMESTRE_LABELS[t] + '</h2>' + mesesHtml + '</div>';
+    return '<div class="card"'+cardEstiloAdmin+'><h2>' + TRIMESTRE_LABELS[t] + '</h2>' + mesesHtml + '</div>';
   }).join('');
 
   var sinFechaHtml = sinFecha.length
-    ? '<div class="card"><h2>Sin fecha asignada</h2><div class="table-wrap"><table>' + theadHtml + '<tbody>' + sinFecha.map(rowHtml).join('') + '</tbody></table></div></div>'
+    ? '<div class="card"'+cardEstiloAdmin+'><h2>Sin fecha asignada</h2><div class="table-wrap"><table>' + theadHtml + '<tbody>' + sinFecha.map(rowHtml).join('') + '</tbody></table></div></div>'
     : '';
 
   return head + filtroHtml + gruposHtml + sinFechaHtml;
@@ -7258,9 +7279,26 @@ var ADMIN_TABS = [
   {key:'presentacionpcacolegio', label:'Presentación de PCA (Colegio)'},
   {key:'fechaslimite', label:'Fechas Límite'}
 ];
-/* Color pastel distinto para cada pestaña de "Presentación de Planes Semanales", para
-   distinguir de un vistazo Escuela de Colegio tanto en la pestaña como en su contenido. */
-var ADMIN_TAB_PASTEL = { presentacion: 'var(--blue-100)', presentacioncolegio: 'var(--gold-100)' };
+/* Color pastel distinto para cada pestaña de Administración, para distinguirlas de un vistazo
+   tanto en la barra de pestañas como en el contenido (borde superior de cada tarjeta). */
+var ADMIN_TAB_PASTEL = {
+  docentes: 'var(--purple-100)',
+  carga: 'var(--teal-100)',
+  pca: 'var(--indigo-100)',
+  semanal: 'var(--green-100)',
+  semanalcolegio: 'var(--orange-100)',
+  consultas: 'var(--lime-100)',
+  presentacion: 'var(--blue-100)',
+  presentacioncolegio: 'var(--gold-100)',
+  presentacionpca: 'var(--pink-100)',
+  presentacionpcacolegio: 'var(--brown-100)',
+  fechaslimite: 'var(--red-100)'
+};
+/* Atributo style="" para pintar el borde superior de una tarjeta con el pastel de su pestaña. */
+function pastelBorde(tabKey){
+  var color = ADMIN_TAB_PASTEL[tabKey];
+  return color ? ' style="border-top:4px solid '+color+';"' : '';
+}
 
 function renderAdmin(d){
   if(!isStaffRole(d.role)) return renderDashboard(d);
@@ -7321,7 +7359,7 @@ function renderAdminDocentes(){
     + '</tr>';
   }).join('');
   return ''
-  + '<div class="card">'
+  + '<div class="card"'+pastelBorde('docentes')+'>'
   + '  <h2>Docentes registrados</h2>'
   + '  <div class="card-sub">Edita cualquier campo, cambia el rol de administrador, elimina una cuenta, o crea un usuario nuevo directamente.</div>'
   + '  <button class="btn btn-primary btn-sm" id="btnAdminNewDocente" style="margin-bottom:14px;">+ Nuevo Usuario</button>'
@@ -7561,7 +7599,7 @@ function renderAdminCarga(){
   var groups = groupCargaByDocente(rows, docentesById);
   var bodyHtml = groups.map(function(g){ return adminCargaGroupHtml(g); }).join('');
   return ''
-  + '<div class="card">'
+  + '<div class="card"'+pastelBorde('carga')+'>'
   + '  <h2>Carga horaria de todos los docentes</h2>'
   + '  <div class="card-sub">Agrupada por docente. Puedes editar o eliminar cualquier fila. Los cambios se guardan al presionar "Guardar cambios".</div>'
   + (rows.length === 0
@@ -7653,7 +7691,7 @@ function estadoBadgeInline(estado){
 }
 function renderAdminConsultas(){
   var cf = state.consultaForm;
-  var docentes = allDocentes().slice().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var docentes = allDocentes().slice().sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
   var docenteOptsHtml = '<option value="">Selecciona…</option>' + docentes.map(function(x){
     return '<option value="' + x.id + '" ' + (x.id===cf.docenteId?'selected':'') + '>' + escapeHtml(nombreFormal(x)) + '</option>';
   }).join('');
@@ -7663,7 +7701,7 @@ function renderAdminConsultas(){
     + pcasDelDocente.map(function(p){ return '<option value="' + p.id + '" ' + (p.id===cf.pcaId?'selected':'') + '>' + escapeHtml(pcaDisplayName(p)) + '</option>'; }).join('');
 
   var formHtml = ''
-    + '<div class="card no-print">'
+    + '<div class="card no-print"'+pastelBorde('consultas')+'>'
     + '  <h2>Generar consulta</h2>'
     + '  <div class="card-sub">Elige un docente, su Plan Curricular Anual y la fecha que quieres consultar.</div>'
     + '  <div class="grid-3">'
@@ -7881,9 +7919,11 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
 }
 function renderAdminPresentacionPca(banda){
   var pf = state.presentacionPcaForm;
+  var tabKey = banda==='colegio' ? 'presentacionpcacolegio' : 'presentacionpca';
+  var pastel = ADMIN_TAB_PASTEL[tabKey];
   var tituloBanda = banda==='colegio' ? 'Presentación de PCA (Colegio)' : 'Presentación de PCA (Escuela)';
   var formHtml = ''
-    + '<div class="card">'
+    + '<div class="card" style="background:'+pastel+';">'
     + '  <h2>' + tituloBanda + '</h2>'
     + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA esté lleno hasta la Unidad 3 y que se haya creado antes de la Fecha Límite que tiene guardada.</div>'
     + '  <div class="grid-2" style="max-width:520px;">'
@@ -7928,7 +7968,7 @@ function renderAdminPresentacionPca(banda){
       }).join('');
       return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
     }).join('');
-    return {doc:doc, rank:rankDocente, html:'<div class="card"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
+    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
   }).filter(Boolean);
 
   bloques.sort(function(a,b){
@@ -8001,7 +8041,7 @@ function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
   }
 
   return ''
-    + '<div class="card">'
+    + '<div class="card"'+pastelBorde('fechaslimite')+'>'
     + '  <h2>' + escapeHtml(titulo) + '</h2>'
     + '  <div class="card-sub">' + (vigente ? 'Fecha vigente actual (se usa para autorellenar los nuevos ' + escapeHtml(titulo) + '): <strong>' + escapeHtml(fmtDateTimeLocal(vigente)) + '</strong>' : 'Todavía no hay ninguna fecha límite registrada para esta categoría.') + '</div>'
     + '  <div class="grid-3" style="align-items:end;">'
