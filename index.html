@@ -281,6 +281,9 @@
   .toast{background:var(--ink); color:var(--paper); padding:12px 16px; border-radius:9px; font-size:13.5px; box-shadow:var(--shadow-2); animation:toast-in .18s ease;}
   .toast.success{background:var(--green-600); color:#06301c;}
   .toast.error{background:var(--red-600); color:#3A0000;}
+  .toast-undo{display:flex; align-items:center; gap:14px;}
+  .toast-undo-btn{background:none; border:1px solid rgba(255,255,255,.4); color:inherit; border-radius:6px; padding:4px 10px; font-weight:700; font-size:12.5px; cursor:pointer; white-space:nowrap;}
+  .toast-undo-btn:hover{background:rgba(255,255,255,.15);}
   @keyframes toast-in{from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);}}
 
   /* ---------- PCA document ---------- */
@@ -914,6 +917,57 @@ function toast(msg, type){
   el.textContent = msg;
   region.appendChild(el);
   setTimeout(function(){ el.remove(); }, 3600);
+}
+/* Toast con botón "Deshacer": igual que toast() pero se queda más tiempo (8s en vez de 3.6s) y
+   ofrece un botón que ejecuta onDeshacer() una sola vez. Usado por eliminarConDeshacer para que
+   cualquier "Eliminar" del sistema pueda revertirse justo después de confirmarse. */
+function toastConDeshacer(msg, onDeshacer){
+  var region = document.getElementById('toastRegion');
+  var el = document.createElement('div');
+  el.className = 'toast toast-undo';
+  el.innerHTML = '<span></span><button type="button" class="toast-undo-btn">Deshacer</button>';
+  el.querySelector('span').textContent = msg;
+  region.appendChild(el);
+  var timer = setTimeout(function(){ el.remove(); }, 8000);
+  el.querySelector('.toast-undo-btn').onclick = function(){
+    clearTimeout(timer);
+    el.remove();
+    onDeshacer();
+  };
+}
+/* ============================= ELIMINAR CON DESHACER =============================
+   Envoltorio genérico para CUALQUIER botón "Eliminar" de una sola colección: guarda el registro
+   completo antes de borrarlo, y ofrece deshacerlo desde el toast (ver toastConDeshacer). Se usa
+   en lugar de escribir save(KEY, load(KEY).filter(...)) directamente en cada sitio, así que
+   cualquier eliminación individual del sistema queda cubierta con el mismo mecanismo. */
+function eliminarConDeshacer(key, id, mensajeEliminado, mensajeDeshecho){
+  var registro = load(key).find(function(x){ return x.id===id; });
+  if(!registro) return;
+  save(key, load(key).filter(function(x){ return x.id!==id; }));
+  toastConDeshacer(mensajeEliminado, function(){
+    var actuales = load(key);
+    if(!actuales.some(function(x){ return x.id===registro.id; })){
+      save(key, actuales.concat([registro]));
+    }
+    toast(mensajeDeshecho || 'Se deshizo la eliminación.', 'success');
+  });
+}
+/* Igual que eliminarConDeshacer, pero para un borrado en cascada que toca VARIAS colecciones a la
+   vez (p.ej. eliminar un docente y todos sus datos). Recibe una lista de {key, registros} ya
+   capturados ANTES de borrar nada. */
+function eliminarVariasConDeshacer(bloques, mensajeEliminado, mensajeDeshecho){
+  bloques.forEach(function(b){
+    save(b.key, load(b.key).filter(function(x){ return b.ids.indexOf(x.id)===-1; }));
+  });
+  toastConDeshacer(mensajeEliminado, function(){
+    bloques.forEach(function(b){
+      var actuales = load(b.key);
+      var actualesIds = {}; actuales.forEach(function(x){ actualesIds[x.id]=1; });
+      var faltantes = b.registros.filter(function(r){ return !actualesIds[r.id]; });
+      if(faltantes.length) save(b.key, actuales.concat(faltantes));
+    });
+    toast(mensajeDeshecho || 'Se deshizo la eliminación.', 'success');
+  });
 }
 
 /* Autoguardado del PCA y el Plan Semanal: 4 segundos después del último cambio (sin necesidad de
@@ -1806,7 +1860,7 @@ function renderManualAdmin(){
     + '<h3>Restablecer la contraseña de un docente</h3>'
     + '<p>El sistema no permite que el administrador escriba una contraseña nueva directamente por seguridad. En su lugar, haz clic en <b>“Enviar correo para restablecer contraseña”</b> — el docente recibirá un correo para crear una nueva él mismo. El correo de acceso tampoco se puede cambiar desde aquí una vez creada la cuenta.</p>'
     + '<h3>Eliminar un docente</h3>'
-    + '<p>Desde su ficha de edición, botón <b>“Eliminar docente”</b>. Esto borra también toda su Carga Horaria, PCA, Contenidos y Planes Semanales. Esta acción no se puede deshacer.</p>'
+    + '<p>Desde su ficha de edición, botón <b>“Eliminar docente”</b>. Esto borra también toda su Carga Horaria, PCA, Contenidos y Planes Semanales. Justo después de eliminar, tienes unos segundos para presionar “Deshacer” en el aviso que aparece; pasado ese tiempo, ya no se puede recuperar.</p>'
   );
 
   var secCarga = manualSection('sec-a4', '4. Carga Horaria de todos los docentes', ''
@@ -2151,10 +2205,9 @@ function doSaveEstudiante(){
 }
 function doDeleteEstudiante(){
   var e = state.editingEstudiante;
-  confirmDialog('¿Eliminar a ' + e.nombres + ' ' + e.apellidos + '? Esta acción no se puede deshacer.', function(){
-    save(LS.ESTUDIANTES, load(LS.ESTUDIANTES).filter(function(x){ return x.id!==e.id; }));
+  confirmDialog('¿Eliminar a ' + e.nombres + ' ' + e.apellidos + '?', function(){
+    eliminarConDeshacer(LS.ESTUDIANTES, e.id, 'Estudiante eliminado.', 'Estudiante restaurado.');
     state.editingEstudiante=null; state.inspEstView='lista'; render();
-    toast('Estudiante eliminado.', 'success');
   });
 }
 
@@ -2715,10 +2768,9 @@ function bindInspIncidenteFormEvents(){
   document.getElementById('btnCancelarIncidente').onclick = function(){ state.editingIncidente=null; state.inspDiscView='lista'; render(); };
   var delBtn = document.getElementById('btnEliminarIncidente');
   if(delBtn) delBtn.onclick = function(){
-    confirmDialog('¿Eliminar este incidente? Esta acción no se puede deshacer.', function(){
-      save(LS.INCIDENTES, load(LS.INCIDENTES).filter(function(x){ return x.id!==i.id; }));
+    confirmDialog('¿Eliminar este incidente?', function(){
+      eliminarConDeshacer(LS.INCIDENTES, i.id, 'Incidente eliminado.', 'Incidente restaurado.');
       state.editingIncidente=null; state.inspDiscView='lista'; render();
-      toast('Incidente eliminado.', 'success');
     });
   };
 }
@@ -3156,9 +3208,8 @@ function bindObsListaEvents(){
   });
   document.querySelectorAll('[data-obs-delete]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar esta observación de clase? Esta acción no se puede deshacer.', function(){
-        save(LS.OBSERVACIONES, load(LS.OBSERVACIONES).filter(function(x){ return x.id!==btn.getAttribute('data-obs-delete'); }));
-        toast('Observación eliminada.', 'success');
+      confirmDialog('¿Eliminar esta observación de clase?', function(){
+        eliminarConDeshacer(LS.OBSERVACIONES, btn.getAttribute('data-obs-delete'), 'Observación eliminada.', 'Observación restaurada.');
         render();
       });
     };
@@ -3596,9 +3647,8 @@ function bindDeceListaEvents(){
   });
   document.querySelectorAll('[data-dece-delete]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar esta ficha? Esta accion no se puede deshacer.', function(){
-        save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==btn.getAttribute('data-dece-delete'); }));
-        toast('Ficha eliminada.', 'success');
+      confirmDialog('¿Eliminar esta ficha?', function(){
+        eliminarConDeshacer(LS.DECE, btn.getAttribute('data-dece-delete'), 'Ficha eliminada.', 'Ficha restaurada.');
         render();
       });
     };
@@ -3644,10 +3694,9 @@ function bindDeceFormEvents(){
 
   var delBtn = document.getElementById('btnDeceEliminar');
   if(delBtn) delBtn.onclick = function(){
-    confirmDialog('&iquest;Eliminar esta ficha? Esta accion no se puede deshacer.', function(){
-      save(LS.DECE, load(LS.DECE).filter(function(x){ return x.id!==e.id; }));
+    confirmDialog('¿Eliminar esta ficha?', function(){
+      eliminarConDeshacer(LS.DECE, e.id, 'Ficha eliminada.', 'Ficha restaurada.');
       state.editingDece=null; state.deceView='lista'; render();
-      toast('Ficha eliminada.', 'success');
     });
   };
 
@@ -3955,9 +4004,8 @@ function bindFichaDeteccionListaEvents(){
   });
   document.querySelectorAll('[data-fd-delete]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar esta ficha de detección? Esta acción no se puede deshacer.', function(){
-        save(LS.FICHA_DETECCION, load(LS.FICHA_DETECCION).filter(function(x){ return x.id!==btn.getAttribute('data-fd-delete'); }));
-        toast('Ficha eliminada.', 'success');
+      confirmDialog('¿Eliminar esta ficha de detección?', function(){
+        eliminarConDeshacer(LS.FICHA_DETECCION, btn.getAttribute('data-fd-delete'), 'Ficha eliminada.', 'Ficha restaurada.');
         render();
       });
     };
@@ -4625,11 +4673,14 @@ function bindPcaListSharedEvents(){
   });
   document.querySelectorAll('[data-delete-pca]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar este plan curricular anual? Esta acción no se puede deshacer.', function(){
+      confirmDialog('¿Eliminar este plan curricular anual?', function(){
         var id = btn.getAttribute('data-delete-pca');
-        save(LS.PCA, load(LS.PCA).filter(function(p){ return p.id!==id; }));
-        save(LS.CONT, load(LS.CONT).filter(function(c){ return c.pcaId!==id; }));
-        toast('Plan eliminado.', 'success');
+        var pcaRegistro = load(LS.PCA).find(function(p){ return p.id===id; });
+        var contRegistros = load(LS.CONT).filter(function(c){ return c.pcaId===id; });
+        eliminarVariasConDeshacer([
+          {key: LS.PCA, ids: [id], registros: pcaRegistro ? [pcaRegistro] : []},
+          {key: LS.CONT, ids: contRegistros.map(function(c){ return c.id; }), registros: contRegistros}
+        ], 'Plan eliminado.', 'Plan restaurado.');
         render();
       });
     };
@@ -5041,8 +5092,18 @@ function bindPcaFormEvents(){
     btn.onclick = function(){
       if(p.unidades.length<=1){ toast('Debe existir al menos una unidad.', 'error'); return; }
       confirmDialog('¿Eliminar esta unidad y todo su contenido?', function(){
-        p.unidades = p.unidades.filter(function(u){ return u.id!==btn.getAttribute('data-removeunit'); });
+        var unitId = btn.getAttribute('data-removeunit');
+        var idx = p.unidades.findIndex(function(u){ return u.id===unitId; });
+        var unidadEliminada = p.unidades[idx];
+        p.unidades = p.unidades.filter(function(u){ return u.id!==unitId; });
         renderPcaFormAgain();
+        toastConDeshacer('Unidad eliminada.', function(){
+          if(!p.unidades.some(function(u){ return u.id===unidadEliminada.id; })){
+            p.unidades.splice(idx, 0, unidadEliminada);
+            renderPcaFormAgain();
+          }
+          toast('Unidad restaurada.', 'success');
+        });
       });
     };
   });
@@ -5725,9 +5786,8 @@ function bindSemanalListSharedEvents(){
   });
   document.querySelectorAll('[data-delete-semanal]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar este plan semanal? Esta acción no se puede deshacer.', function(){
-        save(LS.SEMANAL, load(LS.SEMANAL).filter(function(s){ return s.id!==btn.getAttribute('data-delete-semanal'); }));
-        toast('Plan semanal eliminado.', 'success');
+      confirmDialog('¿Eliminar este plan semanal?', function(){
+        eliminarConDeshacer(LS.SEMANAL, btn.getAttribute('data-delete-semanal'), 'Plan semanal eliminado.', 'Plan semanal restaurado.');
         render();
       });
     };
@@ -5811,6 +5871,7 @@ function applyFechaSelection(s){
   });
   if(match){
     s.semanaRowId = match.id;
+    s.fechaFin = match.fechaFin || s.fechaFin;
     s.unidadDidactica = unidadDidacticaConNombre(s.pcaId, match.unidad);
     return;
   }
@@ -6165,8 +6226,18 @@ function bindSemanalFormEvents(){
     btn.onclick = function(){
       if(s.dias.length<=1){ toast('Debe existir al menos un día de clase.', 'error'); return; }
       confirmDialog('¿Eliminar este día de clase?', function(){
-        s.dias = s.dias.filter(function(x){ return x.id!==btn.getAttribute('data-removeday'); });
+        var diaId = btn.getAttribute('data-removeday');
+        var idx = s.dias.findIndex(function(x){ return x.id===diaId; });
+        var diaEliminado = s.dias[idx];
+        s.dias = s.dias.filter(function(x){ return x.id!==diaId; });
         renderSemanalFormAgain();
+        toastConDeshacer('Día eliminado.', function(){
+          if(!s.dias.some(function(x){ return x.id===diaEliminado.id; })){
+            s.dias.splice(idx, 0, diaEliminado);
+            renderSemanalFormAgain();
+          }
+          toast('Día restaurado.', 'success');
+        });
       });
     };
   });
@@ -7046,15 +7117,21 @@ function bindAdminEditDocenteEvents(){
       var otherStaff = allDocentes().filter(function(x){ return isStaffRole(x.role) && x.id!==target.id; });
       if(otherStaff.length===0){ toast('No puedes eliminar al único usuario con acceso administrativo del sistema.', 'error'); return; }
     }
-    confirmDialog('¿Eliminar a ' + target.nombres + ' ' + target.apellidos + ' y TODOS sus datos (carga horaria, planes curriculares, contenidos y planes semanales)? Su cuenta de acceso quedará sin ningún dato ni permiso. Esta acción no se puede deshacer.', function(){
-      save(LS.DOCENTES, allDocentes().filter(function(x){ return x.id!==target.id; }));
-      save(LS.CARGA, load(LS.CARGA).filter(function(r){ return r.docenteId!==target.id; }));
-      var pcaIds = load(LS.PCA).filter(function(p){ return p.docenteId===target.id; }).map(function(p){ return p.id; });
-      save(LS.PCA, load(LS.PCA).filter(function(p){ return p.docenteId!==target.id; }));
-      save(LS.CONT, load(LS.CONT).filter(function(c){ return pcaIds.indexOf(c.pcaId)===-1; }));
-      save(LS.SEMANAL, load(LS.SEMANAL).filter(function(s){ return s.docenteId!==target.id; }));
+    confirmDialog('¿Eliminar a ' + target.nombres + ' ' + target.apellidos + ' y TODOS sus datos (carga horaria, planes curriculares, contenidos y planes semanales)? Su cuenta de acceso quedará sin ningún dato ni permiso.', function(){
+      var docenteReg = allDocentes().filter(function(x){ return x.id===target.id; });
+      var cargaReg = load(LS.CARGA).filter(function(r){ return r.docenteId===target.id; });
+      var pcaReg = load(LS.PCA).filter(function(p){ return p.docenteId===target.id; });
+      var pcaIds = pcaReg.map(function(p){ return p.id; });
+      var contReg = load(LS.CONT).filter(function(c){ return pcaIds.indexOf(c.pcaId)!==-1; });
+      var semanalReg = load(LS.SEMANAL).filter(function(s){ return s.docenteId===target.id; });
+      eliminarVariasConDeshacer([
+        {key: LS.DOCENTES, ids: docenteReg.map(function(x){return x.id;}), registros: docenteReg},
+        {key: LS.CARGA, ids: cargaReg.map(function(x){return x.id;}), registros: cargaReg},
+        {key: LS.PCA, ids: pcaIds, registros: pcaReg},
+        {key: LS.CONT, ids: contReg.map(function(x){return x.id;}), registros: contReg},
+        {key: LS.SEMANAL, ids: semanalReg.map(function(x){return x.id;}), registros: semanalReg}
+      ], 'Docente eliminado.', 'Docente y sus datos restaurados.');
       state.editingAdminDocente = null;
-      toast('Docente eliminado.', 'success');
       state.subview='admin'; state.adminTab='docentes';
       render();
     });
@@ -7278,9 +7355,8 @@ function bindAdminContenidosEvents(){
   });
   document.querySelectorAll('[data-admin-delete-cont]').forEach(function(btn){
     btn.onclick = function(){
-      confirmDialog('¿Eliminar esta fila de contenido? Esta acción no se puede deshacer.', function(){
-        save(LS.CONT, load(LS.CONT).filter(function(c){ return c.id!==btn.getAttribute('data-admin-delete-cont'); }));
-        toast('Fila eliminada.', 'success');
+      confirmDialog('¿Eliminar esta fila de contenido?', function(){
+        eliminarConDeshacer(LS.CONT, btn.getAttribute('data-admin-delete-cont'), 'Fila eliminada.', 'Fila restaurada.');
         render();
       });
     };
@@ -7695,8 +7771,7 @@ function bindAdminFechasLimiteEvents(){
   document.querySelectorAll('[data-delete-fechalimite]').forEach(function(btn){
     btn.onclick = function(){
       confirmDialog('¿Eliminar esta fecha límite?', function(){
-        save(LS.FECHAS_LIMITE, load(LS.FECHAS_LIMITE).filter(function(x){ return x.id!==btn.getAttribute('data-delete-fechalimite'); }));
-        toast('Fecha límite eliminada.', 'success');
+        eliminarConDeshacer(LS.FECHAS_LIMITE, btn.getAttribute('data-delete-fechalimite'), 'Fecha límite eliminada.', 'Fecha límite restaurada.');
         render();
       });
     };
@@ -7807,6 +7882,17 @@ function detachRealtimeListeners(){
    a esas secciones (no aparecen en su menú), así que no tiene sentido intentar sincronizarlas
    para él: Firestore rechazaría la lectura y solo generaría avisos de error en pantalla. */
 var COLECCIONES_SOLO_STAFF = ['ESTUDIANTES', 'ASISTENCIA', 'INCIDENTES', 'DECE'];
+/* Ver el comentario dentro de attachRealtimeListeners: evita el redibujado completo (y el
+   "congelamiento" que se siente en documentos grandes) cuando el cambio recién llegado es
+   simplemente el eco del autoguardado del formulario que el propio docente tiene abierto en este
+   momento — su copia en memoria (state.editingPca/editingSemanal/etc.) ya refleja ese cambio. */
+function debeOmitirRenderPorEdicionActiva(key){
+  if((key === 'PCA' || key === 'CONT') && state.subview === 'pcaform' && state.editingPca) return true;
+  if(key === 'SEMANAL' && state.subview === 'semanalform' && state.editingSemanal) return true;
+  if(key === 'FICHA_DETECCION' && state.subview === 'fichadeteccion' && state.fichaDeteccionView === 'form' && state.editingFichaDeteccion) return true;
+  if(key === 'DECE' && state.subview === 'dece' && state.deceView === 'form' && state.editingDece) return true;
+  return false;
+}
 async function attachRealtimeListeners(){
   detachRealtimeListeners();
   var soyAdmin = false;
@@ -7825,7 +7911,13 @@ async function attachRealtimeListeners(){
       var arr = [];
       snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
       FS_CACHE[key] = arr;
-      render();
+      // El eco de Firestore por el propio autoguardado del docente llega segundos después de
+      // escribir; si en ese momento sigue con ese mismo formulario abierto, NO hace falta
+      // reconstruir todo el HTML (su copia en memoria ya está al día — es la que se acaba de
+      // guardar) y evita el "congelamiento" visible al redibujar un PCA/Plan Semanal grande con
+      // muchos editores de texto enriquecido. Las listas y otras vistas sí se siguen refrescando
+      // normalmente.
+      if(!debeOmitirRenderPorEdicionActiva(key)) render();
     }, function(err){
       console.error('Error de sincronización en tiempo real (' + key + ')', err);
       toast('Se perdió la sincronización en tiempo real: ' + (err.message||err.code), 'error');
