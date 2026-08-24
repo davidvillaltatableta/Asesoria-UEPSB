@@ -351,6 +351,8 @@
   .rte-paste-menu{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-2); padding:5px; display:flex; flex-direction:column; gap:2px; min-width:180px;}
   .rte-paste-menu button{background:none; border:none; text-align:left; padding:7px 9px; font-size:12.5px; color:var(--ink); border-radius:5px; cursor:pointer;}
   .rte-paste-menu button:hover{background:var(--blue-100);}
+  .rte-paste-options-btn{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:99px; box-shadow:var(--shadow-2); padding:5px 12px; font-size:11.5px; font-weight:600; color:var(--ink); cursor:pointer;}
+  .rte-paste-options-btn:hover{background:var(--blue-100);}
   .rte-color-menu{position:fixed; z-index:80; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius-sm); box-shadow:var(--shadow-2); padding:8px; width:196px;}
   .rte-color-auto{width:100%; display:flex; align-items:center; gap:8px; background:none; border:none; text-align:left; padding:6px 5px; font-size:12.5px; color:var(--ink); border-radius:5px; cursor:pointer; margin-bottom:4px;}
   .rte-color-auto:hover{background:var(--blue-100);}
@@ -970,29 +972,44 @@ function eliminarVariasConDeshacer(bloques, mensajeEliminado, mensajeDeshecho){
   });
 }
 
-/* Autoguardado del PCA y el Plan Semanal: 4 segundos después del último cambio (sin necesidad de
-   presionar "Guardar plan"), guarda en silencio (sin el toast de guardado manual) y muestra un
-   texto discreto junto al botón — así el docente no pierde avances si se distrae, cierra la
-   pestaña sin querer, etc. No usa toast() a propósito: aparecería cada pocos segundos mientras
-   escribe, y sería más ruido que ayuda. */
-var AUTOSAVE_TIMERS = {};
-/* Marca de tiempo del último autoguardado exitoso por tipo ('pca'/'semanal'), usada para decidir
-   si el indicador debe mostrarse (en vez de manipular el DOM directamente): guardar y volver a
-   leer el texto en cada render hace que el indicador sobreviva al re-render que dispara el propio
-   guardado (el listener en tiempo real del PCA/Plan Semanal vuelve a pintar la barra de
-   herramientas apenas Firestore confirma el cambio, y eso borraba el texto si se ponía "a mano"). */
+/* Autoguardado del PCA, Plan Semanal y Ficha de Detección: guarda en silencio (sin el toast de
+   guardado manual) cada 5 minutos EXACTOS mientras haya cambios sin guardar — no antes, aunque
+   el docente siga escribiendo — así el guardado nunca interrumpe mientras redacta. El reloj de
+   5 minutos arranca con el primer cambio y sigue corriendo de fondo aunque agregue más cambios
+   mientras tanto (no se reinicia con cada tecla); se detiene solo al salir del formulario. */
+var AUTOSAVE_INTERVALO_MS = 5 * 60 * 1000;
+var AUTOSAVE_SUCIO = {};
+var AUTOSAVE_INTERVALS = {};
+/* Marca de tiempo del último autoguardado exitoso por tipo ('pca'/'semanal'/'fichadeteccion'),
+   usada para decidir si el indicador debe mostrarse (en vez de manipular el DOM directamente):
+   guardar y volver a leer el texto en cada render hace que el indicador sobreviva al re-render
+   que dispara el propio guardado (el listener en tiempo real del PCA/Plan Semanal vuelve a pintar
+   la barra de herramientas apenas Firestore confirma el cambio, y eso borraba el texto si se
+   ponía "a mano"). */
 var AUTOSAVE_ULTIMO = {};
-function programarAutoguardado(tipo){
-  if(AUTOSAVE_TIMERS[tipo]) clearTimeout(AUTOSAVE_TIMERS[tipo]);
-  AUTOSAVE_TIMERS[tipo] = setTimeout(function(){
-    AUTOSAVE_TIMERS[tipo] = null;
-    if(tipo==='pca' && state.editingPca) savePca(state.editingPca, true);
-    else if(tipo==='semanal' && state.editingSemanal) saveSemanal(state.editingSemanal, true);
-    else if(tipo==='fichadeteccion' && state.editingFichaDeteccion) saveFichaDeteccion(state.editingFichaDeteccion, true);
-    AUTOSAVE_ULTIMO[tipo] = Date.now();
-    actualizarIndicadorAutoguardado(tipo);
-    setTimeout(function(){ actualizarIndicadorAutoguardado(tipo); }, 6200);
-  }, 4000);
+function marcarAutoguardadoPendiente(tipo){
+  AUTOSAVE_SUCIO[tipo] = true;
+  if(AUTOSAVE_INTERVALS[tipo]) return;
+  AUTOSAVE_INTERVALS[tipo] = setInterval(function(){
+    if(!AUTOSAVE_SUCIO[tipo]) return;
+    ejecutarAutoguardado(tipo);
+  }, AUTOSAVE_INTERVALO_MS);
+}
+function detenerAutoguardado(tipo){
+  if(AUTOSAVE_INTERVALS[tipo]){ clearInterval(AUTOSAVE_INTERVALS[tipo]); AUTOSAVE_INTERVALS[tipo] = null; }
+  AUTOSAVE_SUCIO[tipo] = false;
+}
+function detenerTodosLosAutoguardados(){
+  Object.keys(AUTOSAVE_INTERVALS).forEach(detenerAutoguardado);
+}
+function ejecutarAutoguardado(tipo){
+  AUTOSAVE_SUCIO[tipo] = false;
+  if(tipo==='pca' && state.editingPca) savePca(state.editingPca, true);
+  else if(tipo==='semanal' && state.editingSemanal) saveSemanal(state.editingSemanal, true);
+  else if(tipo==='fichadeteccion' && state.editingFichaDeteccion) saveFichaDeteccion(state.editingFichaDeteccion, true);
+  AUTOSAVE_ULTIMO[tipo] = Date.now();
+  actualizarIndicadorAutoguardado(tipo);
+  setTimeout(function(){ actualizarIndicadorAutoguardado(tipo); }, 6200);
 }
 function autoguardadoHintTexto(tipo){
   var ts = AUTOSAVE_ULTIMO[tipo];
@@ -1011,7 +1028,7 @@ function bindAutoguardadoDelegado(contenedorId, tipo){
   var contenedor = document.getElementById(contenedorId);
   if(!contenedor) return;
   ['input','change'].forEach(function(evt){
-    contenedor.addEventListener(evt, function(){ programarAutoguardado(tipo); });
+    contenedor.addEventListener(evt, function(){ marcarAutoguardadoPendiente(tipo); });
   });
 }
 
@@ -1096,7 +1113,7 @@ var state = {
   registerError: ''
 };
 
-function go(subview){ state.subview = subview; state.sidebarOpen = false; guardarUltimaVista(); render(); window.scrollTo(0,0); }
+function go(subview){ detenerTodosLosAutoguardados(); state.subview = subview; state.sidebarOpen = false; guardarUltimaVista(); render(); window.scrollTo(0,0); }
 function goAuth(view){ state.authView = view; state.loginError=''; state.registerError=''; render(); }
 
 /* Recuerda la última página visitada (por usuario) para que, al recargar la página del
@@ -5380,9 +5397,7 @@ function bindRteToolbars(root){
       var textoPlano = cd.getData('text/plain');
       if(!htmlRaw && !textoPlano) return;
       e.preventDefault();
-      var sel = window.getSelection();
-      var savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
-      mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, e.clientX, e.clientY);
+      insertarPegadoInmediato(editable, htmlRaw, textoPlano);
     });
   });
 }
@@ -5460,48 +5475,100 @@ function mostrarMenuColorRte(btn, editable){
    más simple, o solo el texto plano. Si el docente hace clic fuera sin elegir, se pega con el
    formato de origen (la opción menos sorprendente) para que el pegado nunca quede "sin hacer
    nada" por descuido. */
-function mostrarMenuOpcionesPegado(editable, savedRange, htmlRaw, textoPlano, x, y){
-  var previo = document.getElementById('rtePasteMenu');
+/* Pegado al estilo Word: el contenido se inserta DE INMEDIATO (con el formato de origen, la
+   opción menos sorprendente) para que se vea completo apenas se pega — antes, el docente tenía
+   que elegir una opción o hacer clic afuera para que el pegado "terminara" de aparecer, lo cual
+   se sentía como que el pegado se quedaba a medias. Justo después aparece un botoncito flotante
+   "Opciones de pegado" (igual que en Word) que, si se necesita, permite cambiar a "Combinar
+   formato" o "Pegar solo texto" — reemplazando lo ya pegado, sin tener que repetir el pegado. Ese
+   botón desaparece solo si no se usa (al seguir escribiendo, hacer clic en otro lado, o pasados
+   unos segundos). */
+function insertarPegadoInmediato(editable, htmlRaw, textoPlano){
+  var marcaId = 'pm_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  var htmlPorDefecto = htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+  document.execCommand('insertHTML', false, '<span data-paste-marker="' + marcaId + '">' + htmlPorDefecto + '</span>');
+  editable.dispatchEvent(new Event('input', {bubbles:true}));
+  var marcador = editable.querySelector('[data-paste-marker="' + marcaId + '"]');
+  if(marcador) mostrarBotonOpcionesPegado(editable, marcador, htmlRaw, textoPlano);
+}
+function mostrarBotonOpcionesPegado(editable, marcador, htmlRaw, textoPlano){
+  var previo = document.getElementById('rtePasteOptionsBtn');
   if(previo) previo.remove();
+  var previoMenu = document.getElementById('rtePasteSubmenu');
+  if(previoMenu) previoMenu.remove();
+  var rect = marcador.getBoundingClientRect();
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'rtePasteOptionsBtn';
+  btn.className = 'rte-paste-options-btn';
+  btn.textContent = '📋 Opciones de pegado ▾';
+  btn.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 190)) + 'px';
+  btn.style.top = (rect.bottom + 4) + 'px';
+  document.body.appendChild(btn);
+
+  function desenvolverMarcador(){
+    if(marcador && marcador.parentNode){
+      while(marcador.firstChild) marcador.parentNode.insertBefore(marcador.firstChild, marcador);
+      marcador.parentNode.removeChild(marcador);
+    }
+  }
+  var descartarTimer = setTimeout(cerrarTodo, 6000);
+  function cerrarTodo(){
+    clearTimeout(descartarTimer);
+    btn.remove();
+    var submenu = document.getElementById('rtePasteSubmenu');
+    if(submenu) submenu.remove();
+    desenvolverMarcador();
+    document.removeEventListener('mousedown', onFueraDelBoton, true);
+    editable.removeEventListener('keydown', cerrarTodo);
+  }
+  function onFueraDelBoton(ev){
+    if(btn.contains(ev.target) || document.getElementById('rtePasteSubmenu')) return;
+    cerrarTodo();
+  }
+  editable.addEventListener('keydown', cerrarTodo);
+  btn.addEventListener('mousedown', function(e){ e.preventDefault(); });
+  btn.addEventListener('click', function(){
+    clearTimeout(descartarTimer);
+    mostrarSubmenuFormatoPegado(btn, marcador, htmlRaw, textoPlano, cerrarTodo);
+  });
+  setTimeout(function(){ document.addEventListener('mousedown', onFueraDelBoton, true); }, 0);
+}
+function mostrarSubmenuFormatoPegado(btn, marcador, htmlRaw, textoPlano, alTerminar){
+  var previo = document.getElementById('rtePasteSubmenu');
+  if(previo) previo.remove();
+  var rect = btn.getBoundingClientRect();
   var menu = document.createElement('div');
-  menu.id = 'rtePasteMenu';
+  menu.id = 'rtePasteSubmenu';
   menu.className = 'rte-paste-menu';
-  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - 190)) + 'px';
-  menu.style.top = (y + 10) + 'px';
+  menu.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 190)) + 'px';
+  menu.style.top = (rect.bottom + 4) + 'px';
   menu.innerHTML = ''
     + '<button type="button" data-modo="mantener">Mantener formato de origen</button>'
     + '<button type="button" data-modo="combinar">Combinar formato</button>'
     + '<button type="button" data-modo="texto">Pegar solo texto</button>';
   document.body.appendChild(menu);
-
-  function insertar(modo){
-    limpiarSeleccionPersistenteRte();
-    editable.focus();
-    var sel = window.getSelection();
-    sel.removeAllRanges();
-    if(savedRange) sel.addRange(savedRange);
-    if(modo === 'texto'){
-      document.execCommand('insertHTML', false, escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
-    } else if(modo === 'combinar'){
-      document.execCommand('insertHTML', false, htmlRaw ? quitarFuenteHtml(limpiarHtmlPegadoCombinado(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
-    } else {
-      document.execCommand('insertHTML', false, htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>'));
-    }
-    editable.dispatchEvent(new Event('input', {bubbles:true}));
-    cerrar();
-  }
-  function onOutside(ev){
-    if(menu.contains(ev.target)) return;
-    insertar('mantener');
-  }
-  function cerrar(){
-    menu.remove();
-    document.removeEventListener('mousedown', onOutside, true);
-  }
-  menu.querySelectorAll('button').forEach(function(btn){
-    btn.addEventListener('click', function(){ insertar(btn.getAttribute('data-modo')); });
+  menu.querySelectorAll('button').forEach(function(b){
+    b.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    b.addEventListener('click', function(){
+      var modo = b.getAttribute('data-modo');
+      var htmlFinal;
+      if(modo === 'texto') htmlFinal = escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+      else if(modo === 'combinar') htmlFinal = htmlRaw ? quitarFuenteHtml(limpiarHtmlPegadoCombinado(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+      else htmlFinal = htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+      var contenedorEditable = marcador && marcador.closest('.rte-editable');
+      if(marcador) marcador.innerHTML = htmlFinal;
+      menu.remove();
+      if(contenedorEditable) contenedorEditable.dispatchEvent(new Event('input', {bubbles:true}));
+      alTerminar();
+    });
   });
-  setTimeout(function(){ document.addEventListener('mousedown', onOutside, true); }, 0);
+  function onFueraDelMenu(ev){
+    if(menu.contains(ev.target) || ev.target===btn) return;
+    menu.remove();
+    document.removeEventListener('mousedown', onFueraDelMenu, true);
+  }
+  setTimeout(function(){ document.addEventListener('mousedown', onFueraDelMenu, true); }, 0);
 }
 /* Versión más simple que sanitizeRte para "Combinar formato": conserva negrita/subrayado y
    saltos de línea/párrafo, pero descarta listas, enlaces, colores y demás formato del origen
@@ -7956,6 +8023,7 @@ window.addEventListener('firebase-ready', function(){
     } else {
       CURRENT_UID = null;
       detachRealtimeListeners();
+      detenerTodosLosAutoguardados();
       Object.keys(FS_CACHE).forEach(function(k){ FS_CACHE[k] = []; });
       state.subview = 'dashboard';
       RESTORED_LAST_VIEW = false;
