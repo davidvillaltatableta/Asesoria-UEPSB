@@ -404,6 +404,15 @@
     .rte-toolbar{display:none !important;}
   }
 
+  /* ============================= REPORTE FOTOGRÁFICO (Inspección) ============================= */
+  .foto-report-page{ page-break-after:always; }
+  .foto-report-page:last-child{ page-break-after:auto; }
+  .foto-grid{ display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; padding:16px 20px 20px; }
+  .foto-card{ display:flex; flex-direction:column; align-items:center; text-align:center; border:1px solid var(--line); border-radius:8px; padding:6px 4px 8px; background:#fff; }
+  .foto-card img{ width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:4px; display:block; }
+  .foto-card-vacio{ width:100%; aspect-ratio:3/4; border-radius:4px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--muted); }
+  .foto-card-nombre{ margin-top:6px; font-size:10.5px; line-height:1.25; font-weight:600; }
+
   /* ============================= MANUALES DE USUARIO ============================= */
   .manual-doc{ background:#fff; max-width:900px; margin:0 auto; }
   .manual-cover{
@@ -2834,7 +2843,8 @@ var INSP_REPORT_TIPOS = [
   {key:'semanal', label:'Asistencia semanal (por curso)'},
   {key:'individual', label:'Historial de un estudiante'},
   {key:'mensual', label:'Consolidado mensual por curso'},
-  {key:'incidentes', label:'Incidentes de disciplina'}
+  {key:'incidentes', label:'Incidentes de disciplina'},
+  {key:'fotografico', label:'Reporte fotográfico (por curso)'}
 ];
 function repInstitucionalHead(titulo){
   return '<div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
@@ -2857,6 +2867,7 @@ function renderInspReportes(){
   else if(tipo==='individual') body = renderRepIndividual();
   else if(tipo==='mensual') body = renderRepMensual();
   else if(tipo==='incidentes') body = renderRepIncidentes();
+  else if(tipo==='fotografico') body = renderRepFotografico();
   else body = renderRepDiaria();
   return selectorHtml + body;
 }
@@ -2867,7 +2878,59 @@ function bindInspReportesEvents(){
   else if(tipo==='individual') bindRepIndividualEvents();
   else if(tipo==='mensual') bindRepMensualEvents();
   else if(tipo==='incidentes') bindRepIncidentesEvents();
+  else if(tipo==='fotografico') bindRepFotograficoEvents();
   else bindRepDiariaEvents();
+}
+/* Reporte fotográfico: fotos de los estudiantes (campo `foto`, subido desde el formulario de
+   ingreso de Inspección General → Estudiantes), agrupadas por curso en hojas A4 de 5x5 (25 por
+   página); si el curso tiene más de 25 estudiantes se agregan páginas adicionales con la misma
+   distribución. */
+function renderRepFotografico(){
+  var f = state.repFotograficoFiltro || (state.repFotograficoFiltro = {nivel:'', especialidad:'', curso:''});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Nivel</label><select class="cell-select" id="rfNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="rfEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+    + '  </div>'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Curso</label><select class="cell-select" id="rfCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+    + '  </div>'
+    + '</div>';
+  if(!f.nivel || !f.curso) return selHtml;
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  if(!estudiantes.length) return selHtml + '<div class="card"><div class="hint">No hay estudiantes registrados en este curso.</div></div>';
+  var PAGINA = 25;
+  var paginas = [];
+  for(var i=0;i<estudiantes.length;i+=PAGINA) paginas.push(estudiantes.slice(i,i+PAGINA));
+  var cursoTexto = f.nivel + (f.especialidad?' · '+f.especialidad:'') + ' · ' + f.curso;
+  var paginasHtml = paginas.map(function(pagina, idx){
+    var cards = pagina.map(function(e){
+      return '<div class="foto-card">'
+        + (e.foto ? '<img src="'+e.foto+'" alt="" />' : '<div class="foto-card-vacio">👤</div>')
+        + '<div class="foto-card-nombre">' + escapeHtml(e.apellidos) + '<br/>' + escapeHtml(e.nombres) + '</div>'
+        + '</div>';
+    }).join('');
+    return '<div class="foto-report-page">'
+      + repInstitucionalHead('Reporte Fotográfico' + (paginas.length>1 ? ' — página ' + (idx+1) + ' de ' + paginas.length : ''))
+      + '  <div class="pca-section" style="padding-bottom:10px;"><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(cursoTexto)+'" /></div></div>'
+      + '  <div class="foto-grid">' + cards + '</div>'
+      + '</div>';
+  }).join('');
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepFotografico">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repFotograficoDoc">'
+  + paginasHtml
+  + '</div>';
+}
+function bindRepFotograficoEvents(){
+  var f = state.repFotograficoFiltro;
+  var nivelSel = document.getElementById('rfNivel'); if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('rfEspecialidad'); if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('rfCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepFotografico'); if(printBtn) printBtn.onclick = printAsPdf;
 }
 function renderRepDiaria(){
   var f = state.repDiariaFiltro || (state.repDiariaFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
@@ -3700,12 +3763,55 @@ function bindDeceListaEvents(){
     };
   });
 }
+/* Lista de fichas en el mismo orden y filtro que ve el DECE en "Registro Acumulativo General",
+   usada para las flechas de navegación (Primero/Anterior/Siguiente/Último) del formulario. */
+function deceListaOrdenada(){
+  var f = state.deceFiltro || {};
+  return load(LS.DECE).slice()
+    .sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
+    .filter(function(c){ return !f.estado || c.estado === f.estado; });
+}
+function deceNavBarHtml(prefijo){
+  var e = state.editingDece || {};
+  var lista = deceListaOrdenada();
+  var idx = lista.findIndex(function(x){ return x.id===e.id; });
+  var total = lista.length;
+  var posTxt = (idx>=0 && total) ? ('Ficha ' + (idx+1) + ' de ' + total) : (total ? (total + ' ficha' + (total===1?'':'s') + ' registradas') : 'No hay fichas guardadas');
+  var atFirst = idx<=0;
+  var atLast = idx<0 || idx>=total-1;
+  var disabledPrev = (atFirst || !total) ? 'disabled' : '';
+  var disabledNext = (atLast || !total) ? 'disabled' : '';
+  return '<div class="pca-toolbar no-print" style="flex-wrap:wrap; gap:8px;">'
+    + '<button class="btn btn-ghost btn-sm" data-dece-nav="first" data-nav-prefix="'+prefijo+'" '+disabledPrev+'>&laquo; Al principio</button>'
+    + '<button class="btn btn-ghost btn-sm" data-dece-nav="prev" data-nav-prefix="'+prefijo+'" '+disabledPrev+'>&lsaquo; Anterior</button>'
+    + '<div class="hint" style="margin:0 4px; white-space:nowrap;">' + escapeHtml(posTxt) + '</div>'
+    + '<button class="btn btn-ghost btn-sm" data-dece-nav="next" data-nav-prefix="'+prefijo+'" '+disabledNext+'>Siguiente &rsaquo;</button>'
+    + '<button class="btn btn-ghost btn-sm" data-dece-nav="last" data-nav-prefix="'+prefijo+'" '+disabledNext+'>Al final &raquo;</button>'
+    + '</div>';
+}
+/* Navega sin guardar los cambios pendientes de la ficha actual — igual que "Volver a la lista",
+   para no autoguardar por sorpresa datos a medio llenar. Si el DECE quiere conservar cambios
+   antes de pasar a otra ficha, debe presionar "Guardar" primero. */
+function deceNavegar(dir){
+  var e = state.editingDece;
+  var lista = deceListaOrdenada();
+  if(!lista.length) return;
+  var actual = lista.findIndex(function(x){ return x.id===e.id; });
+  var idx;
+  if(dir==='first') idx = 0;
+  else if(dir==='last') idx = lista.length-1;
+  else if(dir==='prev') idx = actual<=0 ? 0 : actual-1;
+  else idx = (actual<0) ? 0 : Math.min(actual+1, lista.length-1);
+  state.editingDece = JSON.parse(JSON.stringify(lista[idx]));
+  render();
+}
 function renderDeceForm(){
   var e = state.editingDece || blankFichaDatos();
   state.editingDece = e;
   var existsInDb = load(LS.DECE).some(function(x){ return x.id===e.id; });
   return ''
   + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnDeceVolver">&larr; Volver a la lista</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnDecePrint" title="Genera un PDF en A4 vertical">PDF &#10003;</button><button class="btn btn-primary btn-sm" id="btnDeceGuardar">Guardar</button></div>'
+  + deceNavBarHtml('top')
   + '<div class="form-error no-print" id="dcError" style="margin-bottom:10px;"></div>'
   + '<div class="pca-doc dece-doc" id="dcDoc">'
   + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
@@ -3717,7 +3823,8 @@ function renderDeceForm(){
   + '  </div>'
   + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null) + '</select></div></div>'
   + (existsInDb ? '  <div class="no-print" style="padding:0 20px 20px;"><button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar ficha</button></div>' : '')
-  + '</div>';
+  + '</div>'
+  + deceNavBarHtml('bottom');
 }
 function bindDeceFormEvents(){
   var e = state.editingDece;
@@ -3725,6 +3832,9 @@ function bindDeceFormEvents(){
   document.getElementById('btnDecePrint').onclick = printAsPdf;
   document.getElementById('btnDeceGuardar').onclick = doSaveFichaDatos;
   document.getElementById('dcEstado').onchange = function(ev){ e.estado = ev.target.value; };
+  document.querySelectorAll('[data-dece-nav]').forEach(function(btn){
+    btn.onclick = function(){ deceNavegar(btn.getAttribute('data-dece-nav')); };
+  });
 
   bindFdiCamposGenericos(document.getElementById('dcDoc'), e, true, function(){ state.editingDece = e; render(); });
 
@@ -3779,20 +3889,19 @@ function nombresCoinciden(a, b){
   if(!na || !nb) return false;
   return na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
 }
-/* Búsqueda compartida por cédula, usada tanto en Ficha de Datos Informativos como en Ficha de
-   Detección: Inspección General (Estudiantes) es la fuente confiable de Nivel/Curso porque ahí
-   se registra en qué curso está matriculado cada estudiante; si no está registrado ahí todavía,
-   se usa el nombre ya guardado en el Registro Acumulativo General como respaldo. */
+/* Búsqueda por cédula usada en Ficha de Detección: busca únicamente en el Registro Acumulativo
+   General (Ficha de Datos Informativos, colección `dece`), NUNCA en Inspección General
+   (Estudiantes) — a propósito, para que Nombre/Nivel/Curso salgan de los datos que llenó el
+   representante, no de la matrícula de Inspección. */
 function buscarInfoPorCedula(cedula){
   cedula = (cedula||'').trim();
   if(!cedula) return null;
-  var est = load(LS.ESTUDIANTES).find(function(x){ return (x.ci||'').trim() === cedula; });
   var fichaDatos = load(LS.DECE).find(function(x){ return (x.cedulaEstudiante||'').trim() === cedula; });
-  if(!est && !fichaDatos) return null;
+  if(!fichaDatos) return null;
   return {
-    nombre: est ? ((est.apellidos||'') + ' ' + (est.nombres||'')).trim() : (fichaDatos ? fichaDatos.estudianteNombre : ''),
-    nivel: est ? (est.nivel||'') : '',
-    curso: est ? (est.curso==='Otro…' ? (est.cursoManual||'') : (est.curso||'')) : ''
+    nombre: fichaDatos.estudianteNombre || '',
+    nivel: fichaDatos.nivelEducativo || '',
+    curso: fichaDatos.curso || ''
   };
 }
 function fichasDeteccionAgrupadasHtml(){
@@ -4114,7 +4223,7 @@ function renderFichaDeteccionForm(d){
   + '  <div class="pca-band band-section">DATOS INFORMATIVOS</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-3">'
-  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en Inspección General / Registro Acumulativo General y llena Nombre, Nivel y Curso automáticamente.</div>' : '') + '</div>'
+  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en el Registro Acumulativo General (Ficha de Datos Informativos) y llena Nombre, Nivel y Curso automáticamente.</div>' : '') + '</div>'
   + '      <div class="field"><label>Nombre del estudiante</label><input class="cell-input" id="fdEstudiante" value="'+escapeHtml(f.estudianteNombre||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="fdFecha" value="'+escapeHtml(f.fecha)+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
