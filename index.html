@@ -1738,6 +1738,9 @@ function renderManualDocente(){
     + '<li>Observación de Clases</li>'
     + '<li>Ficha de Detección (DECE)</li>'
     + '<li>Base de Datos (respaldo)</li>'
+    + '<li>Botones y funciones — guía rápida</li>'
+    + '<li>Instrucciones generales de ingreso de datos</li>'
+    + '<li>Errores detectados y su solución</li>'
     + '<li>Preguntas frecuentes</li>'
     + '</ol></div>';
 
@@ -1858,6 +1861,7 @@ function renderManualDocente(){
     + '<p>Igual que en el PCA, arriba del documento aparece la fecha límite definida por el administrador — de solo lectura para ti.</p>'
     + '<h3>Exportar</h3>'
     + '<p>Los mismos botones <b>PDF ✓ / Word / Excel</b> están disponibles en cada Plan Semanal, con el mismo comportamiento que en el PCA.</p>'
+    + manualTip('A diferencia del PCA, tus Planes Semanales <b>nunca se bloquean</b>: puedes seguir editándolos y completándolos en cualquier momento, incluso después de la fecha límite. Eso sí, el administrador ve en su reporte de "Presentación de Planes" si cada plan quedó <b>completo</b> (con Contenidos, Actividades y Nivel de Logro en todos los días) y si lo terminaste <b>antes</b> de la fecha límite — por eso conviene completar todos los campos de cada día, no solo crearlo.')
   );
 
   var secObservacion = manualSection('sec-8', '8. Observación de Clases', ''
@@ -1884,11 +1888,44 @@ function renderManualDocente(){
     + manualTip('Usa Exportar de vez en cuando (por ejemplo, al final de cada trimestre) para tener siempre una copia de respaldo propia.')
   );
 
-  var secFaq = manualSection('sec-11', '11. Preguntas frecuentes', ''
+  var secBotonesDoc = manualSection('sec-12', '12. Botones y funciones — guía rápida', ''
+    + '<p>Estos botones se repiten en varias pantallas del sistema; en vez de explicarlos cada vez, aquí tienes su función exacta:</p>'
+    + '<table><thead><tr><th>Botón</th><th>Qué hace</th></tr></thead><tbody>'
+    + '<tr><td><b>Guardar plan</b> / <b>Guardar carga horaria</b> / <b>Guardar</b></td><td>Escribe tus cambios a la nube de inmediato — no existe un paso extra de "sincronizar".</td></tr>'
+    + '<tr><td><b>PDF ✓</b></td><td>Abre el diálogo de impresión del navegador con el documento en el formato oficial, listo para “Guardar como PDF”.</td></tr>'
+    + '<tr><td><b>Word</b></td><td>Descarga el documento como .docx editable (o .html/.md si tu navegador no permite el .docx real).</td></tr>'
+    + '<tr><td><b>Excel</b></td><td>Descarga el detalle de contenidos en una hoja .csv.</td></tr>'
+    + '<tr><td><b>+ Nuevo Plan Curricular Anual</b> / <b>+ Nuevo Plan Semanal</b> / <b>+ Agregar fila</b></td><td>Crea un registro nuevo en blanco.</td></tr>'
+    + '<tr><td><b>Editar</b></td><td>Vuelve editable un resumen de solo lectura (por ejemplo, tu Carga Horaria ya guardada).</td></tr>'
+    + '<tr><td><b>Cancelar</b></td><td>Sale del modo de edición sin guardar lo que cambiaste.</td></tr>'
+    + '<tr><td><b>Ver</b></td><td>Abre el detalle completo de solo lectura (por ejemplo, una Observación de Clases que te hicieron).</td></tr>'
+    + '</tbody></table>'
+  );
+
+  var secIngresoDoc = manualSection('sec-13', '13. Instrucciones generales de ingreso de datos', ''
+    + '<p>Reglas que aplican en todos los formularios que llenas como docente:</p>'
+    + manualStep(1, 'Los campos marcados con <span class="required">*</span> son obligatorios.')
+    + manualStep(2, 'Los menús desplegables <b>en cadena</b> (Nivel → Especialidad → Curso → Asignatura) se habilitan en orden — elige primero el de arriba. Si cambias uno, los de abajo se limpian solos; es normal, evita combinaciones que no existen en tu Carga Horaria.')
+    + manualStep(3, 'Registra siempre primero tu <b>Mi Carga Horaria</b>: de ahí salen todas las opciones que ves después en el PCA y el Plan Semanal. Si no ves un curso o asignatura, revisa que esté registrada ahí.')
+    + manualStep(4, 'Todo se guarda apenas presionas “Guardar” — si pierdes la conexión a internet a mitad de un formulario, lo que no alcanzaste a guardar se pierde. Guarda seguido, no solo al final.')
+    + manualStep(5, 'Al pegar texto desde Word u otra fuente en las casillas del PCA o Plan Semanal, el pegado se inserta al instante con el formato de la casilla — si quieres conservar el formato original del texto pegado, usa el botoncito “📋 Opciones de pegado” que aparece justo después de pegar.')
+  );
+
+  var secErroresDoc = manualSection('sec-14', '14. Errores detectados y su solución', ''
+    + '<p>Problemas reales que se detectaron durante el uso del sistema, y cómo quedaron resueltos:</p>'
+    + '<table><thead><tr><th>Problema</th><th>Solución aplicada</th></tr></thead><tbody>'
+    + '<tr><td>Al pegar texto en las casillas del PCA/Plan Semanal, no se veía terminado hasta hacer clic en otro lado.</td><td>Se rediseñó el pegado para que se inserte al instante, con una opción posterior para elegir formato si se desea.</td></tr>'
+    + '<tr><td>El color y la fuente de letra elegidos en el Plan Semanal no se guardaban al recargar la página.</td><td>Se corrigió el "limpiador" interno de formato para que preserve el color y la fuente.</td></tr>'
+    + '<tr><td>La pantalla se congelaba unos segundos durante el autoguardado.</td><td>Se evita un refresco innecesario de toda la pantalla mientras sigues escribiendo en el mismo formulario.</td></tr>'
+    + '<tr><td>Al generar el PDF, las tablas salían angostas, ocupando solo una parte de la hoja.</td><td>Se corrigió el diseño de impresión para que el contenido use toda la hoja A4.</td></tr>'
+    + '</tbody></table>'
+  );
+
+  var secFaq = manualSection('sec-11', '15. Preguntas frecuentes', ''
     + '<h3>No veo el curso o la asignatura que necesito</h3>'
     + '<p>Ve primero a <b>Mi Carga Horaria</b> y regístrala ahí — las opciones del PCA y Plan Semanal salen de tu carga horaria.</p>'
     + '<h3>Mi PCA está bloqueado y necesito corregirlo</h3>'
-    + '<p>Contacta a un administrador: solo él puede desbloquear un plan ya guardado.</p>'
+    + '<p>Contacta a un administrador: solo él puede desbloquear un plan ya guardado. (Tus Planes Semanales nunca se bloquean, así que ese problema solo aplica al PCA.)</p>'
     + '<h3>No me aparecen los Niveles de Logro ni los Contenidos Esenciales en el Plan Semanal</h3>'
     + '<p>Revisa que la Fecha de Inicio del plan coincida con el rango de fechas de alguna semana de tu PCA — si no coincide con ninguna, el sistema te lo indica con un mensaje.</p>'
     + '<h3>¿Qué pasa si pierdo internet mientras trabajo?</h3>'
@@ -1897,12 +1934,14 @@ function renderManualDocente(){
     + '<p>En la pantalla de ingreso, usa el enlace “¿Olvidaste tu contraseña?” con tu correo institucional.</p>'
     + '<h3>Envié una ficha de detección con un error y ya no puedo editarla</h3>'
     + '<p>Es normal — las fichas quedan bloqueadas apenas se envían, para que el DECE trabaje siempre con la versión original. Contacta directamente al DECE para la corrección.</p>'
+    + '<h3>¿Por qué mi Plan Semanal aparece como "Incompleto" para el administrador si ya lo guardé?</h3>'
+    + '<p>Guardar el plan no es lo mismo que llenarlo por completo. Revisa que <b>todos</b> los días que agregaste tengan Contenidos Esenciales, Actividades y al menos un Nivel de Logro marcado — si a un solo día le falta algo, el plan entero cuenta como incompleto.</p>'
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Docente')
     + '<div class="manual-doc" id="manualDocenteDoc">'
     + manualCoverHtml('Guía completa para docentes: carga horaria, Plan Curricular Anual, Planes Semanales, Observación de Clases y Ficha de Detección del DECE.', 'Manual del Docente')
-    + toc + secIntro + secCuenta + secNav + secPerfil + secCarga + secPca + secSemanal + secObservacion + secAlerta + secBd + secFaq
+    + toc + secIntro + secCuenta + secNav + secPerfil + secCarga + secPca + secSemanal + secObservacion + secAlerta + secBd + secBotonesDoc + secIngresoDoc + secErroresDoc + secFaq
     + '</div>';
 }
 
@@ -1912,16 +1951,18 @@ function renderManualAdmin(){
     + '<li>Panel de Administración — visión general</li>'
     + '<li>Gestión de Docentes</li>'
     + '<li>Carga Horaria de todos los docentes</li>'
-    + '<li>Planes Curriculares Anuales de todos los docentes</li>'
-    + '<li>Contenidos Anuales</li>'
-    + '<li>Planes Semanales de todos los docentes</li>'
+    + '<li>Planes Curriculares Anuales (PCA) de todos los docentes</li>'
+    + '<li>Planes Semanales — Escuela y Colegio</li>'
     + '<li>Consultas</li>'
-    + '<li>Presentación de Planes y de PCA</li>'
+    + '<li>Presentación de Planes y de PCA — cómo se calcula la Observación</li>'
     + '<li>Fechas Límite</li>'
     + '<li>Inspección General</li>'
     + '<li>Observación de Clases (gestión)</li>'
     + '<li>Departamento de Consejería Estudiantil (DECE)</li>'
     + '<li>Base de Datos y seguridad de roles</li>'
+    + '<li>Botones y funciones — guía rápida</li>'
+    + '<li>Instrucciones generales de ingreso de datos</li>'
+    + '<li>Errores detectados y su solución</li>'
     + '<li>Preguntas frecuentes de administración</li>'
     + '</ol></div>';
 
@@ -1932,17 +1973,19 @@ function renderManualAdmin(){
   );
 
   var secPanel = manualSection('sec-a2', '2. Panel de Administración — visión general', ''
-    + '<p>Entra desde el menú lateral, opción <b>“🛡️ Administración”</b> (solo visible para administradores). Arriba encontrarás pestañas para moverte entre las distintas tablas y reportes del sistema.</p>'
+    + '<p>Entra desde el menú lateral, opción <b>“🛡️ Administración”</b> (solo visible para administradores). Arriba encontrarás 11 pestañas para moverte entre las distintas tablas y reportes del sistema — cada una con <b>su propio color pastel</b>, para reconocerlas de un vistazo.</p>'
     + manualShot('Pestañas del Panel de Administración', ''
         + '<div style="display:flex; flex-wrap:wrap; gap:6px;">'
-        + ['Docentes','Carga Horaria','Planes (PCA)','Contenidos Anuales','Planes Semanales','Consultas','Presentación de Planes','Presentación de PCA','Fechas Límite'].map(function(t){
+        + ['Docentes','Carga Horaria','Planes (PCA)','Planes Semanales (Escuela)','Planes Semanales (Colegio)','Consultas','Presentación de Planes (Escuela)','Presentación de Planes (Colegio)','Presentación de PCA (Escuela)','Presentación de PCA (Colegio)','Fechas Límite'].map(function(t){
             return '<span class="mbtn ' + (t==='Docentes'?'primary':'ghost') + '">' + t + '</span>';
           }).join('')
         + '</div>')
+    + '<p>Cuatro pestañas vienen en pareja <b>Escuela / Colegio</b>: <b>Escuela</b> agrupa a los docentes de <b>Inicial a 6.º EGB</b> (cada uno suele tener un solo curso a cargo, así que se ordenan por el <b>curso</b> que dictan, de Inicial 1 hasta 6.º EGB); <b>Colegio</b> agrupa a los de <b>7.º EGB a 3.º de Bachillerato</b> (un mismo docente suele dictar varios cursos, así que se ordenan <b>alfabéticamente por nombre</b>).</p>'
+    + manualTip('“Contenidos Anuales” ya no tiene una pestaña propia: esa información se sigue generando automáticamente a partir de cada PCA (y es la que usa el Plan Semanal para mostrar los “Contenidos Esenciales” de cada semana) — para revisarla o corregirla, abre el PCA correspondiente desde la pestaña “Planes (PCA)”.')
   );
 
   var secDocentes = manualSection('sec-a3', '3. Gestión de Docentes', ''
-    + '<p>Aquí ves la lista completa de docentes registrados, con su Título, Nombre, CI, Email, ID, Rol y acciones.</p>'
+    + '<p>Aquí ves la lista completa de docentes registrados, con su Título, Nombre, CI, Email, ID, Rol y acciones — ordenada siempre en forma <b>ascendente por Apellidos y Nombres</b> (A→Z), para ubicar a cualquiera rápido.</p>'
     + manualShot('Docentes registrados', ''
         + '<table><thead><tr><th>Título</th><th>Nombre</th><th>Rol</th><th></th></tr></thead><tbody>'
         + '<tr><td>Lic.</td><td>María Fernanda Torres</td><td>Docente</td><td><span class="mbtn ghost">Editar</span></td></tr>'
@@ -1983,31 +2026,45 @@ function renderManualAdmin(){
     + manualTip('El filtro de Curso solo afecta a los PCA de <b>7.º EGB a 3.º de Bachillerato</b>. Para niveles de <b>Iniciales a 6.º EGB</b>, el sistema solo filtra por Asignatura — en esos niveles el curso no es un dato tan relevante para la búsqueda.')
   );
 
-  var secCont = manualSection('sec-a6', '6. Contenidos Anuales', ''
-    + '<p>Vista de todas las filas de contenidos (una por semana de cada unidad de cada PCA) de todos los docentes. Útil para revisar o eliminar una fila puntual sin abrir el PCA completo — para editar el detalle completo de una semana, ábrela desde “Abrir PCA”.</p>'
+  var secSemanal = manualSection('sec-a6', '6. Planes Semanales — Escuela y Colegio', ''
+    + '<p>Igual que en PCA: puedes ver, editar, exportar y eliminar cualquier Plan Semanal, y filtrar por <b>Docente</b>, <b>Fecha de corte</b>, <b>Asignatura</b> y <b>Curso</b> (el filtro de Curso solo aplica de 7.º EGB a 3.º BGU). La lista está dividida en dos pestañas:</p>'
+    + '<h3>Planes Semanales (Escuela)</h3>'
+    + '<p>Docentes de <b>Inicial a 6.º EGB</b>. Dentro de cada mes, los planes se agrupan por docente y los grupos se ordenan por el <b>curso</b> que dictan, en progresión pedagógica: Inicial 1 → Inicial 2 → Preparatoria → 2.º → 3.º → 4.º → 5.º → 6.º EGB.</p>'
+    + '<h3>Planes Semanales (Colegio)</h3>'
+    + '<p>Docentes de <b>7.º EGB a 3.º de Bachillerato</b>. Dentro de cada mes, los grupos de docente se ordenan <b>alfabéticamente por nombre</b>, porque en este tramo un mismo docente suele dictar varios cursos a la vez.</p>'
+    + manualWarn('Los Planes Semanales <b>ya no se bloquean</b> — antes existía una opción para que el administrador los "candara" y el docente no pudiera seguir editando; esa opción se quitó a propósito, para que el docente siempre pueda corregir o completar su plan. En su lugar, la puntualidad y lo completo del plan se juzgan automáticamente en la pestaña <b>Presentación de Planes</b> (ver la sección 8).')
   );
 
-  var secSemanal = manualSection('sec-a7', '7. Planes Semanales de todos los docentes', ''
-    + '<p>Igual que en PCA: puedes ver, editar, exportar y eliminar cualquier Plan Semanal, y filtrar por <b>Docente</b>, <b>Fecha de corte</b>, <b>Asignatura</b> y <b>Curso</b>, con la misma regla — el filtro de Curso solo aplica de 7.º EGB a 3.º BGU.</p>'
-  );
-
-  var secConsultas = manualSection('sec-a8', '8. Consultas', ''
+  var secConsultas = manualSection('sec-a8', '7. Consultas', ''
     + '<p>Formulario para revisar, de un docente y un PCA específico, todos los temas cubiertos desde la Semana 1 hasta una fecha elegida, con la observación de si cada semana está Completada, En Proceso, Por Completar o Con Retraso. El resultado es imprimible en A4, con el membrete institucional y el pie “Elaborado por: Lic. David Villalta — Asesor Pedagógico”.</p>'
     + manualExample('Uso típico', 'Antes de una reunión de área, el administrador elige al docente y su PCA de Matemática, pone la fecha de hoy, y obtiene un reporte de todo lo avanzado en el año hasta ese momento, listo para imprimir.')
   );
 
-  var secPresentacion = manualSection('sec-a9', '9. Presentación de Planes y de PCA', ''
-    + '<h3>Presentación de Planes Semanales</h3>'
-    + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su fecha límite, y si lo presentó <b>a tiempo</b> o <b>con retraso</b> — además de si en esa semana envió Tareas en casa, hizo Talleres en clase, o evaluó con Lecciones (detectado automáticamente del campo Evaluación de cada día).</p>'
-    + '<h3>Presentación de PCA</h3>'
-    + '<p>El mismo concepto, pero para los PCA: compara la fecha en que cada docente creó su PCA contra la Fecha Límite que tú definiste, y te dice si lo presentó a tiempo, con retraso, o si esa categoría no tiene fecha límite definida todavía.</p>'
+  var secPresentacion = manualSection('sec-a9', '8. Presentación de Planes y de PCA — cómo se calcula la Observación', ''
+    + '<p>Estas 4 pestañas (2 para Planes Semanales, 2 para PCA, cada una dividida en Escuela/Colegio como en la sección 6) le dicen al administrador, de un vistazo, quién entregó su planificación <b>a tiempo</b>, quién la entregó <b>incompleta</b> y quién la entregó <b>atrasada</b> — sin que nadie tenga que revisar plan por plan manualmente.</p>'
+    + '<h3>La Observación tiene 3 posibles resultados</h3>'
+    + '<table><thead><tr><th>Observación</th><th>¿Cuándo aparece?</th></tr></thead><tbody>'
+    + '<tr><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Presentó a tiempo</span></td><td>El plan está <b>completo</b> Y se creó <b>antes o el mismo día</b> de la Fecha Límite.</td></tr>'
+    + '<tr><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Incompleto</span></td><td>Al plan <b>le faltan campos por llenar</b> — esto se revisa primero, sin importar la fecha: aunque se haya creado a tiempo, si está incompleto nunca se marca “a tiempo”.</td></tr>'
+    + '<tr><td><span style="color:#D69E00; background:#FFF6D9; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Atrasado</span></td><td>El plan está <b>completo</b>, pero se creó <b>después</b> de la Fecha Límite.</td></tr>'
+    + '<tr><td><span style="color:#5B6B85; background:#EEF1F6; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Sin fecha límite definida</span></td><td>El plan está completo, pero esa categoría todavía no tiene ninguna Fecha Límite registrada (ve a la sección 9, Fechas Límite).</td></tr>'
+    + '</tbody></table>'
+    + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha de creación contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”.')
+    + '<h3>Presentación de Planes Semanales — ¿qué significa "completo"?</h3>'
+    + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen, cada uno: al menos un <b>Contenido Esencial</b> marcado, algo escrito en <b>Actividades</b>, y al menos un <b>Nivel de Logro</b> (Básico, Intermedio o Avanzado) marcado. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>.</p>'
+    + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
+    + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
+    + '<p>Un PCA se considera completo cuando tiene <b>al menos 3 unidades creadas</b> y, en <b>cada una de esas 3 primeras unidades</b> (no hace falta revisar más allá de la Unidad 3), al menos una semana con contenido real: una Destreza, unos Temas, o algún Nivel de Logro escrito — una unidad vacía (creada pero sin ninguna semana llena) no cuenta como completa. Si el PCA tiene menos de 3 unidades, o alguna de las 3 primeras está vacía, queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto.</p>'
+    + '<p>El mismo concepto que en Planes Semanales: compara la fecha en que el docente creó su PCA contra la Fecha Límite que tú definiste, y te dice si lo presentó a tiempo, incompleto, o atrasado.</p>'
     + manualShot('Observación de presentación', ''
         + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
         + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
+        + '<tr><td>Jorge Añazco</td><td>19/09/2026</td><td>15/09/2026</td><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Incompleto</span></td></tr>'
         + '</tbody></table>')
+    + manualExample('Por qué un plan creado a tiempo puede salir "Incompleto"', 'El Prof. Añazco creó su PCA el 10 de septiembre, tres días antes de la Fecha Límite (13 de septiembre). Pero solo llenó la Unidad 1 — la Unidad 2 y la Unidad 3 las creó vacías, sin ninguna semana con destreza ni temas. Aunque la fecha de creación fue puntual, la Observación muestra "Incompleto", porque no llegó a tener contenido real hasta la Unidad 3.')
   );
 
-  var secFechas = manualSection('sec-a10', '10. Fechas Límite', ''
+  var secFechas = manualSection('sec-a10', '9. Fechas Límite', ''
     + '<p>Aquí defines las fechas y horas tope de entrega, separadas en dos categorías: <b>PCA</b> y <b>Planes Semanales</b>. La fecha más reciente que registres en cada categoría se usa para autorellenar el campo "Fecha Límite" de los PCA/Planes nuevos que se creen de ahí en adelante — el docente solo la ve, no la puede cambiar.</p>'
     + manualStep(1, 'Elige la categoría (PCA o Planes Semanales).')
     + manualStep(2, 'Ingresa la fecha y hora tope, y una nota opcional (por ejemplo, "Trimestre 1").')
@@ -2015,8 +2072,8 @@ function renderManualAdmin(){
     + '<p>Las fechas de Planes Semanales quedan agrupadas por mes (siguiendo el año lectivo, de septiembre a agosto) para que sea fácil ubicar cualquier corte. Puedes <b>Editar</b> o <b>Eliminar</b> cualquier fecha ya registrada.</p>'
   );
 
-  var secInspeccion = manualSection('sec-a11', '11. Inspección General', ''
-    + '<p>Sección exclusiva de Administradores, Directivos y DECE, para organizar y supervisar la disciplina, la asistencia y la convivencia de los estudiantes. Tiene cuatro pestañas: <b>Estudiantes</b>, <b>Asistencia</b>, <b>Disciplina</b> y <b>Reportes</b>.</p>'
+  var secInspeccion = manualSection('sec-a11', '10. Inspección General', ''
+    + '<p>Sección exclusiva de Administradores, Directivos y DECE, para organizar y supervisar la disciplina, la asistencia y la convivencia de los estudiantes. Tiene cuatro pestañas, también con su propio color pastel cada una: <b>Estudiantes</b>, <b>Asistencia</b>, <b>Disciplina</b> y <b>Reportes</b>.</p>'
     + '<h3>Estudiantes</h3>'
     + '<p>Registra la ficha de cada estudiante: nombres, apellidos, cédula, nivel, curso, datos del representante y estado (Activo/Inactivo). Cada estudiante puede tener una <b>foto tipo carnet</b>: acepta cualquier formato de imagen (JPG, PNG, HEIC, etc.) — el sistema la redimensiona y comprime automáticamente antes de guardarla, así que no necesitas preocuparte por el tamaño del archivo original.</p>'
     + manualStep(1, 'Haz clic en <b>“+ Nuevo estudiante”</b> (o “+ Carga masiva” para registrar varios a la vez desde una tabla).')
@@ -2028,10 +2085,10 @@ function renderManualAdmin(){
     + '<h3>Disciplina</h3>'
     + '<p>Registro de incidentes disciplinarios, separados en dos pestañas: Estudiantes y Personal (docentes, administrativos). Cada incidente lleva fecha, hora, descripción y las personas involucradas.</p>'
     + '<h3>Reportes</h3>'
-    + '<p>Reportes imprimibles en A4 vertical, con el membrete institucional, listos para archivar o entregar en papel.</p>'
+    + '<p>Reportes imprimibles en A4, con el membrete institucional, listos para archivar o entregar en papel: Asistencia diaria, Asistencia semanal, Historial de un estudiante, Consolidado mensual, Incidentes de disciplina, y <b>Reporte fotográfico</b> (elige Nivel y Curso y obtienes una hoja con las fotos tipo carnet de todo el curso, en cuadrícula de 5×5 — si el curso tiene más de 25 estudiantes, se agregan páginas adicionales con la misma distribución).</p>'
   );
 
-  var secObservacionAdmin = manualSection('sec-a12', '12. Observación de Clases (gestión)', ''
+  var secObservacionAdmin = manualSection('sec-a12', '11. Observación de Clases (gestión)', ''
     + '<p>Aquí registras las observaciones de clase que hagas como Asesor Pedagógico, siguiendo el formato institucional “Clase con Enfoque DUA”. Solo el personal con acceso administrativo puede crear, editar y eliminar observaciones — cada docente solo puede leer las suyas propias.</p>'
     + manualStep(1, 'Ve a <b>Observación de Clases</b> y haz clic en <b>“+ Nueva observación”</b>.')
     + manualStep(2, 'Elige el <b>Nivel Educativo</b> — recién ahí se activan las listas de <b>Docente</b> (solo los que dictan en ese nivel) y luego <b>Asignatura</b> (solo las que ese docente dicta en ese nivel).')
@@ -2041,45 +2098,89 @@ function renderManualAdmin(){
     + manualTip('Usa el botón “Imprimir / PDF (A4)” para entregar una copia física firmada, si tu institución lo requiere.')
   );
 
-  var secDeceAdmin = manualSection('sec-a13', '13. Departamento de Consejería Estudiantil (DECE)', ''
-    + '<p>Módulo exclusivo de Administradores, Directivos y DECE, para dar seguimiento confidencial a situaciones de estudiantes. Tiene dos partes: la <b>Ficha de Datos Informativos</b> (el registro acumulativo general de cada estudiante) y las <b>Fichas de Detección</b> que te envían los docentes.</p>'
-    + '<h3>Ficha de Datos Informativos</h3>'
+  var secDeceAdmin = manualSection('sec-a13', '12. Departamento de Consejería Estudiantil (DECE)', ''
+    + '<p>Módulo exclusivo de Administradores, Directivos y DECE, para dar seguimiento confidencial a situaciones de estudiantes. Tiene dos partes: la <b>Ficha de Datos Informativos</b> (el registro acumulativo general de cada estudiante, agrupado por curso en la lista) y las <b>Fichas de Detección</b> que te envían los docentes.</p>'
+    + '<h3>Ficha de Datos Informativos (Registro Acumulativo General)</h3>'
     + '<p>Es el registro acumulativo general del estudiante (datos de identificación, familia, referencias socioeconómicas, salud, rendimiento académico e historia vital), mapeado tal cual de la ficha institucional en papel. Puede llegar de dos maneras:</p>'
-    + manualStep(1, 'La llena el <b>representante legal</b> directamente, sin necesidad de registrarse, desde el enlace público que le compartes (por ejemplo por WhatsApp o correo): agrega <code>?formulario=fichadatos</code> al final de la dirección del sistema. Cuando la envía, aparece aquí automáticamente marcada como “Representante legal”.')
-    + manualStep(2, 'O la registras tú mismo desde <b>“+ Nueva ficha”</b>, llenando el mismo formulario completo.')
-    + manualStep(3, 'Abre cualquier ficha para revisarla o completarla, y usa el campo <b>Estado</b> (Nueva, En revisión, Completa) para llevar seguimiento.')
+    + manualStep(1, 'La llena el <b>representante legal</b> directamente, sin necesidad de registrarse, desde el enlace público que le compartes (por ejemplo por WhatsApp o correo): agrega <code>?formulario=fichadatos</code> al final de la dirección del sistema. Cuando la envía, aparece aquí automáticamente marcada como “Representante legal”, y ve una pantalla de agradecimiento animada al terminar.')
+    + manualStep(2, 'O la registras tú mismo desde <b>“+ Nueva ficha”</b>, llenando el mismo formulario completo. Los campos Cédula, Nivel Educativo y Curso son de <b>ingreso manual</b> aquí (no se autocompletan buscando en otra base), porque este mismo formulario también lo llena el representante desde el enlace público.')
+    + manualStep(3, 'Abre cualquier ficha para revisarla o completarla, usa las flechas <b>« Al principio / ‹ Anterior / Siguiente › / Al final »</b> (arriba y abajo del formulario) para pasar de una ficha a otra sin volver a la lista, y el campo <b>Estado</b> (Nueva, En revisión, Completa) para llevar seguimiento.')
     + manualWarn('La información de la Ficha de Datos Informativos es confidencial: ningún docente puede verla, ni siquiera el docente del estudiante involucrado. El representante legal que la envía tampoco puede verla ni editarla después de enviada — solo Administración, Directivos y DECE.')
+    + manualTip('Las flechas de navegación no guardan cambios automáticamente — si estás editando una ficha, presiona “Guardar” antes de pasar a la siguiente (igual que con “Volver a la lista”).')
     + '<h3>Consultas</h3>'
-    + '<p>Busca a un estudiante por su <b>número de cédula</b> para encontrar su Registro Acumulativo General y, a partir de su nombre, su historial de Fichas de Detección. También muestra todas las Fichas de Detección recibidas, agrupadas por curso y ordenadas alfabéticamente por estudiante.</p>'
+    + '<p>Busca a un estudiante por su <b>número de cédula</b> o por su <b>nombre</b> — el nombre se compara tal como lo escribió el representante legal (o tú) en el Registro Acumulativo General, así que no hace falta que coincida con la matrícula de Inspección General. Encuentra el Registro Acumulativo General y, a partir del nombre, su historial de Fichas de Detección. También muestra todas las Fichas de Detección recibidas, agrupadas por curso y ordenadas alfabéticamente por estudiante.</p>'
     + manualTip('Si al buscar una cédula aparece más de un Registro Acumulativo General, es un duplicado — ábrelos y elimina el que sobre.')
     + '<h3>Fichas de Detección</h3>'
     + '<p>Cuando un docente detecta una dificultad y envía una Ficha de Detección desde su propio menú, la verás aquí junto con las tuyas propias — es la ficha institucional en papel (dificultades académicas, aspectos a considerarse, padres de familia, acciones y logros) mapeada tal cual al sistema. A diferencia de la Ficha de Datos, esta la <b>crea el docente</b>, no tú — tu trabajo es revisarla, completar <b>“Recibido por”</b> y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida) conforme le das seguimiento.</p>'
+    + '<p>El campo <b>Cédula</b> va primero en el formulario, junto a un botón <b>“Buscar”</b> (visible solo para ti, no para el docente): al escribir la cédula del estudiante y presionar Buscar, el sistema completa automáticamente Nombre, Nivel Educativo y Curso — tomando esos datos <b>del Registro Acumulativo General</b> (nunca de Inspección General), porque es la fuente que llenó el representante.</p>'
     + manualTip('Si una ficha de detección amerita abrir el registro completo del estudiante, puedes crear una Ficha de Datos Informativos nueva con su información.')
   );
 
-  var secBd = manualSection('sec-a14', '14. Base de Datos y seguridad de roles', ''
+  var secBd = manualSection('sec-a14', '13. Base de Datos y seguridad de roles', ''
     + '<p>Toda la información del sistema (Docentes, Carga Horaria, PCA, Contenidos, Planes Semanales, Inspección General, Observaciones, DECE) vive en la nube y se sincroniza en tiempo real entre todos — no necesitas consolidar nada manualmente. Usa Exportar solo como respaldo de seguridad periódico.</p>'
     + '<h3>Sobre los roles</h3>'
     + '<p>Solo alguien con acceso administrativo (Administrador, Directivo o DECE) puede otorgar o quitar cualquiera de esos tres roles a otra persona — nadie puede auto-otorgarse ese acceso, ni siquiera técnicamente. El primer usuario que se registra en un sistema recién instalado queda como Docente por defecto; el primer rol administrativo se define una única vez desde la configuración del proyecto.</p>'
   );
 
-  var secFaq = manualSection('sec-a15', '15. Preguntas frecuentes de administración', ''
+  var secBotonesAdmin = manualSection('sec-a16', '14. Botones y funciones — guía rápida', ''
+    + '<p>Estos botones se repiten en casi todas las tablas del Panel de Administración; en vez de explicarlos en cada sección, aquí tienes su función exacta:</p>'
+    + '<table><thead><tr><th>Botón</th><th>Qué hace</th></tr></thead><tbody>'
+    + '<tr><td><b>Guardar</b> / <b>Guardar cambios</b></td><td>Escribe los cambios del formulario o de la fila a la base de datos en la nube, de inmediato.</td></tr>'
+    + '<tr><td><b>Ver / Editar</b></td><td>Abre el registro completo (PCA, Plan Semanal, ficha, incidente, etc.) para revisarlo o modificarlo.</td></tr>'
+    + '<tr><td><b>PDF ✓</b></td><td>Abre el diálogo de impresión del navegador con el formato oficial completo, listo para “Guardar como PDF”.</td></tr>'
+    + '<tr><td><b>Word</b></td><td>Descarga el documento en formato .docx editable (o .html/.md si tu navegador no permite el .docx real).</td></tr>'
+    + '<tr><td><b>Excel</b></td><td>Descarga el detalle en una hoja .csv que abres con Excel o Google Sheets.</td></tr>'
+    + '<tr><td><b>Duplicar</b></td><td>Crea una copia editable y desbloqueada de un PCA — útil para reutilizar la planificación de un año a otro.</td></tr>'
+    + '<tr><td><b>Eliminar</b></td><td>Borra el registro después de pedir confirmación. Siempre aparece un aviso con botón <b>“Deshacer”</b> por unos segundos — pasado ese tiempo, ya no se puede recuperar.</td></tr>'
+    + '<tr><td><b>+ Nuevo…</b></td><td>Crea un registro nuevo en blanco (docente, PCA, Plan Semanal, estudiante, incidente, fecha límite, etc.).</td></tr>'
+    + '<tr><td><b>« Anterior</b> / <b>Siguiente »</b></td><td>Recorre la lista completa (de docentes, o de fichas del DECE) sin volver a la tabla cada vez. En el DECE también existen <b>« Al principio</b> y <b>Al final »</b>.</td></tr>'
+    + '<tr><td><b>Buscar</b></td><td>Ejecuta la búsqueda con el texto escrito en el campo de al lado (por cédula, por nombre, o por docente/PCA en Consultas).</td></tr>'
+    + '<tr><td><b>Cancelar</b></td><td>Cierra un formulario o una fila en edición sin guardar los cambios hechos.</td></tr>'
+    + '<tr><td><b>Enviar correo para restablecer contraseña</b></td><td>Le envía al docente un correo para que él mismo cree una contraseña nueva — el administrador nunca puede escribirla directamente.</td></tr>'
+    + '</tbody></table>'
+  );
+
+  var secIngresoAdmin = manualSection('sec-a17', '15. Instrucciones generales de ingreso de datos', ''
+    + '<p>Reglas que aplican en todo el Panel de Administración, para evitar errores comunes al escribir información:</p>'
+    + manualStep(1, 'Los campos marcados con <span class="required">*</span> son obligatorios — el sistema no deja guardar si falta alguno.')
+    + manualStep(2, 'La <b>Cédula</b> siempre debe tener exactamente <b>10 dígitos numéricos</b>, sin espacios ni guiones.')
+    + manualStep(3, 'Los menús desplegables <b>en cadena</b> (Nivel → Especialidad → Curso → Asignatura) se van habilitando en orden: elige primero el Nivel, y recién ahí aparecen las opciones correctas del siguiente campo. Si cambias un campo de más arriba en la cadena, los de abajo se limpian — es normal, evita mezclar combinaciones que no existen.')
+    + manualStep(4, 'Las fotos (de estudiantes o del Registro Acumulativo General) aceptan cualquier formato de imagen común (JPG, PNG, HEIC, etc.): el sistema las redimensiona y comprime solo, así que no necesitas editarlas antes de subirlas.')
+    + manualStep(5, 'Todo se guarda en la nube apenas presionas “Guardar” — no existe un botón separado de “sincronizar”. Si pierdes la conexión a internet a mitad de un formulario, los cambios que no alcanzaste a guardar se pierden.')
+    + manualWarn('Antes de eliminar cualquier registro, el sistema siempre pide confirmación y ofrece "Deshacer" por unos segundos — pero pasado ese tiempo, la eliminación es definitiva.')
+  );
+
+  var secErroresAdmin = manualSection('sec-a18', '16. Errores detectados y su solución', ''
+    + '<p>Historial de problemas reales que se detectaron durante el uso del sistema, y cómo quedaron resueltos — si algo de esto te vuelve a pasar después de estas fechas, avisa para revisarlo de nuevo.</p>'
+    + '<table><thead><tr><th>Problema</th><th>Solución aplicada</th></tr></thead><tbody>'
+    + '<tr><td>Al pegar texto en las casillas del PCA/Plan Semanal, el pegado no se veía terminado hasta hacer clic en otro lado.</td><td>Se rediseñó el pegado para que se inserte al instante (como en Word), con una opción posterior para elegir formato si se desea.</td></tr>'
+    + '<tr><td>El color y la fuente de letra elegidos en el Plan Semanal no se guardaban al recargar la página.</td><td>El “limpiador” de formato interno no reconocía la etiqueta que usa el navegador para el color/fuente; se corrigió para que la preserve.</td></tr>'
+    + '<tr><td>La pantalla se congelaba unos segundos durante el autoguardado.</td><td>El autoguardado provocaba sin necesidad un refresco completo de toda la pantalla; ahora se evita ese refresco mientras se está editando activamente el mismo formulario.</td></tr>'
+    + '<tr><td>Al generar el PDF de una ficha del DECE o de un reporte de Inspección, las tablas salían angostas, ocupando solo una parte de la hoja.</td><td>El menú lateral reservaba su espacio incluso estando oculto para impresión; se corrigió el diseño para que el contenido use toda la hoja A4.</td></tr>'
+    + '<tr><td>En Consultas del DECE, buscar por el <b>nombre</b> del estudiante no encontraba el Registro Acumulativo General (solo funcionaba la cédula).</td><td>La búsqueda solo comparaba contra la cédula; ahora también compara contra el nombre que escribió el representante legal en el formulario.</td></tr>'
+    + '<tr><td>Los Planes Semanales podían quedar bloqueados por un administrador y el docente ya no podía corregirlos.</td><td>Se quitó la opción de bloqueo: los Planes Semanales quedan siempre abiertos, y la puntualidad se evalúa automáticamente en “Presentación de Planes” (ver sección 8).</td></tr>'
+    + '</tbody></table>'
+  );
+
+  var secFaq = manualSection('sec-a15', '17. Preguntas frecuentes de administración', ''
     + '<h3>Un docente dice que no puede editar su PCA</h3>'
-    + '<p>Es normal: los PCA quedan bloqueados para el docente después de guardarse la primera vez. Entra con tu acceso administrativo, ábrelo y edítalo por él, o guíalo para que te pida el cambio.</p>'
-    + '<h3>¿Cómo sé si alguien entregó tarde su PCA o Plan Semanal?</h3>'
-    + '<p>Usa <b>Presentación de PCA</b> o <b>Presentación de Planes</b> — ahí ves la observación "a tiempo" o "con retraso" comparando la fecha de creación contra la Fecha Límite que definiste.</p>'
+    + '<p>Es normal: los PCA quedan bloqueados para el docente después de guardarse la primera vez (los Planes Semanales ya NO se bloquean). Entra con tu acceso administrativo, ábrelo y edítalo por él, o guíalo para que te pida el cambio.</p>'
+    + '<h3>¿Cómo sé si alguien entregó tarde o incompleto su PCA o Plan Semanal?</h3>'
+    + '<p>Usa las pestañas <b>Presentación de PCA</b> o <b>Presentación de Planes</b> (Escuela/Colegio) — ahí ves la Observación: <b>Presentó a tiempo</b>, <b>Incompleto</b> o <b>Atrasado</b>. La sección 8 de este manual explica exactamente cómo se calcula cada una.</p>'
     + '<h3>Necesito buscar solo los PCA de un docente en un curso específico</h3>'
     + '<p>Usa la barra de filtros arriba de la lista de PCA: elige el Docente, luego el Curso.</p>'
     + '<h3>¿Cuál es la diferencia entre Administrador, Directivo y DECE?</h3>'
     + '<p>Ninguna en cuanto a permisos — los tres ven y editan exactamente lo mismo. Son roles separados solo para identificar correctamente quién hizo cada acción (por ejemplo, quién recibió una ficha de detección).</p>'
     + '<h3>Un docente envió una ficha de detección con un dato incorrecto</h3>'
     + '<p>Las fichas quedan bloqueadas para el docente apenas se envían, así que él no puede corregirla. Tú sí puedes abrirla y editarla desde el módulo DECE.</p>'
+    + '<h3>¿Por qué un Plan Semanal ya no tiene candado 🔒?</h3>'
+    + '<p>Es intencional: se quitó esa opción para que el docente siempre pueda seguir completando o corrigiendo su plan. El control de puntualidad ahora es automático, vía la Observación en Presentación de Planes.</p>'
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Administrador')
     + '<div class="manual-doc" id="manualAdminDoc">'
     + manualCoverHtml('Guía completa de administración: docentes, tablas maestras, filtros, consultas, presentación de planes, fechas límite, Inspección General y DECE.', 'Manual del Administrador')
-    + toc + secIntro + secPanel + secDocentes + secCarga + secPca + secCont + secSemanal + secConsultas + secPresentacion + secFechas + secInspeccion + secObservacionAdmin + secDeceAdmin + secBd + secFaq
+    + toc + secIntro + secPanel + secDocentes + secCarga + secPca + secSemanal + secConsultas + secPresentacion + secFechas + secInspeccion + secObservacionAdmin + secDeceAdmin + secBd + secBotonesAdmin + secIngresoAdmin + secErroresAdmin + secFaq
     + '</div>';
 }
 
@@ -2097,11 +2198,21 @@ var INSPECCION_TABS = [
   {key:'disciplina', label:'Disciplina'},
   {key:'reportes', label:'Reportes'}
 ];
+/* Color pastel distinto para cada pestaña de Inspección General (igual criterio que en
+   Administración): distingue de un vistazo la pestaña activa y su contenido. */
+var INSP_TAB_PASTEL = {
+  estudiantes: 'var(--indigo-100)',
+  asistencia: 'var(--green-100)',
+  disciplina: 'var(--red-100)',
+  reportes: 'var(--gold-100)'
+};
 function renderInspeccion(d){
   if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.inspeccionTab || 'estudiantes';
   var tabsHtml = INSPECCION_TABS.map(function(t){
-    return '<button class="'+(tab===t.key?'active':'')+'" data-insptab="'+t.key+'">'+t.label+'</button>';
+    var pastel = INSP_TAB_PASTEL[t.key];
+    var estilo = pastel ? ' style="background:'+pastel+'; border-radius:8px 8px 0 0;"' : '';
+    return '<button class="'+(tab===t.key?'active':'')+'"'+estilo+' data-insptab="'+t.key+'">'+t.label+'</button>';
   }).join('');
   var body;
   if(tab === 'asistencia') body = renderInspAsistencia();
@@ -2184,7 +2295,7 @@ function renderInspEstudiantesLista(){
     + '</tr>';
   }).join('') || '<tr><td colspan="6" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
   return ''
-  + '<div class="card">'
+  + '<div class="card"'+pastelBorde('estudiantes', INSP_TAB_PASTEL)+'>'
   + '  <h2>Estudiantes registrados <span class="hint">(' + filtrados.length + ' de ' + todos.length + ')</span></h2>'
   + '  <div class="field-row" style="margin:10px 0;">'
   + '    <div class="field"><label>Nivel</label><select class="cell-select" id="ieFNivel">' + optionsHtml(NIVELES, f.nivel, 'Todos') + '</select></div>'
@@ -2624,7 +2735,7 @@ function renderInspAsistencia(){
   var espOpts = especialidadesFor(f.nivel);
   var cursoOpts = cursosFor(f.nivel, f.especialidad);
   return ''
-  + '<div class="card">'
+  + '<div class="card"'+pastelBorde('asistencia', INSP_TAB_PASTEL)+'>'
   + '  <h2>Tomar / revisar asistencia</h2>'
   + '  <div class="field-row">'
   + '    <div class="field"><label>Nivel</label><select class="cell-select" id="iaNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
@@ -2769,7 +2880,7 @@ function renderInspIncidentesLista(sub){
       + '</tr>';
   }).join('') || '<tr><td colspan="6" class="hint">No hay incidentes registrados.</td></tr>';
   return ''
-  + '<div class="card">'
+  + '<div class="card"'+pastelBorde('disciplina', INSP_TAB_PASTEL)+'>'
   + '  <h2>Incidentes de ' + (sub==='personal'?'personal':'estudiantes') + '</h2>'
   + '  <button class="btn btn-primary btn-sm" id="btnNuevoIncidente" style="margin-bottom:14px;">+ Registrar incidente</button>'
   + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>' + (sub==='personal'?'Persona':'Estudiante') + '</th><th>Gravedad</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
@@ -2915,7 +3026,7 @@ function repFirmaInspeccion(){
 function renderInspReportes(){
   var tipo = state.inspReportTipo || 'diaria';
   var selectorHtml = ''
-    + '<div class="card no-print">'
+    + '<div class="card no-print"'+pastelBorde('reportes', INSP_TAB_PASTEL)+'>'
     + '  <h2>Reportes</h2>'
     + '  <div class="field"><label>Tipo de reporte</label><select class="cell-select" id="repTipo" style="max-width:380px;">' + INSP_REPORT_TIPOS.map(function(t){ return '<option value="'+t.key+'" '+(t.key===tipo?'selected':'')+'>'+escapeHtml(t.label)+'</option>'; }).join('') + '</select></div>'
     + '</div>';
@@ -3996,7 +4107,12 @@ function fichasDeteccionAgrupadasHtml(){
 }
 function renderDeceConsultas(d){
   var q = (state.deceConsultaQuery || '').trim();
-  var fichaDatos = q ? load(LS.DECE).filter(function(x){ return (x.cedulaEstudiante||'').trim() === q; }) : [];
+  /* Busca por cédula O por nombre — el nombre debe compararse contra `estudianteNombre`, el
+     campo que llena el representante legal en el Registro Acumulativo General (antes solo se
+     comparaba la cédula aquí, así que buscar por nombre nunca encontraba nada en esta lista). */
+  var fichaDatos = q ? load(LS.DECE).filter(function(x){
+    return (x.cedulaEstudiante||'').trim() === q || (q.length >= 3 && nombresCoinciden(x.estudianteNombre, q));
+  }) : [];
   var nombreRef = fichaDatos.length ? fichaDatos[0].estudianteNombre : (q.length >= 3 ? q : '');
   var fichasDeteccion = q ? load(LS.FICHA_DETECCION).filter(function(f){
     return (f.cedulaEstudiante||'').trim() === q || (nombreRef && nombresCoinciden(f.estudianteNombre, nombreRef));
@@ -4006,7 +4122,7 @@ function renderDeceConsultas(d){
   var resultadoHtml = '';
   if(q){
     if(!fichaDatos.length && !fichasDeteccion.length){
-      resultadoHtml = '<div class="hint">No se encontraron registros con "' + escapeHtml(q) + '". Busca por número de cédula (Registro Acumulativo General) o por nombre del estudiante (Fichas de Detección).</div>';
+      resultadoHtml = '<div class="hint">No se encontraron registros con "' + escapeHtml(q) + '". Puedes buscar por número de cédula o por el nombre del estudiante tal como lo escribió el representante en el Registro Acumulativo General.</div>';
     } else {
       if(fichaDatos.length > 1){
         resultadoHtml += '<div class="lock-banner" style="background:var(--red-100); color:var(--red-600); border:none;">Se encontraron ' + fichaDatos.length + ' Registros Acumulativos con la misma cédula - revisa si hay un duplicado para eliminar.</div>';
@@ -7294,9 +7410,10 @@ var ADMIN_TAB_PASTEL = {
   presentacionpcacolegio: 'var(--brown-100)',
   fechaslimite: 'var(--red-100)'
 };
-/* Atributo style="" para pintar el borde superior de una tarjeta con el pastel de su pestaña. */
-function pastelBorde(tabKey){
-  var color = ADMIN_TAB_PASTEL[tabKey];
+/* Atributo style="" para pintar el borde superior de una tarjeta con el pastel de su pestaña.
+   Por defecto usa el mapa de Administración; para Inspección General se le pasa INSP_TAB_PASTEL. */
+function pastelBorde(tabKey, mapa){
+  var color = (mapa || ADMIN_TAB_PASTEL)[tabKey];
   return color ? ' style="border-top:4px solid '+color+';"' : '';
 }
 
