@@ -5243,6 +5243,7 @@ function pcasAdminFiltrados(){
   });
 }
 function renderPcaListInner(d, scopeAll){
+  if(!scopeAll && state.pcaImportando) return renderPcaImportarPicker(d);
   var pcas = scopeAll ? pcasAdminFiltrados() : load(LS.PCA).filter(function(p){ return p.docenteId === d.id; });
   pcas.sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
   var docentesById = {};
@@ -5299,7 +5300,7 @@ function renderPcaListInner(d, scopeAll){
   }
   var head = scopeAll
     ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan.</p>'
-    : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div>';
+    : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarPca">Importar de otro docente</button><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div></div>';
 
   var cardEstiloAdmin = scopeAll ? pastelBorde('pca') : '';
   return head + filtroHtml + bulkLockHtml
@@ -5308,11 +5309,103 @@ function renderPcaListInner(d, scopeAll){
       : '<div class="card"'+cardEstiloAdmin+'><div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
 }
 function bindPcaListEvents(){
+  if(state.pcaImportando){ bindPcaImportarPickerEvents(currentDocente()); return; }
   ['btnNewPca','btnNewPca2'].forEach(function(id){
     var b = document.getElementById(id);
     if(b) b.onclick = function(){ openPcaForm(null, 'pcalist'); };
   });
+  var btnImportar = document.getElementById('btnImportarPca');
+  if(btnImportar) btnImportar.onclick = function(){ state.pcaImportando = true; render(); };
   bindPcaListSharedEvents();
+}
+/* ============================= PCA · IMPORTAR DE OTRO DOCENTE =============================
+   Autoservicio controlado: el docente elige Nivel + Especialidad + Asignatura (lo mismo que
+   necesitaría para crear su propio PCA) y de ahí solo puede elegir entre los PCA de OTROS
+   docentes que coincidan exactamente en esas 3 columnas — nunca ve la lista completa del
+   sistema. Al importar, el contenido se copia a un PCA nuevo (con su propio id, sin bloqueo,
+   fecha límite vigente) que se abre en el formulario para que lo revise, ajuste el curso y lo
+   guarde él mismo — no reemplaza ni guarda nada automáticamente. */
+function renderPcaImportarPicker(d){
+  var f = state.pcaImportFiltro || (state.pcaImportFiltro = {nivel:'', especialidad:'', asignatura:'', sourceId:''});
+  var especialidades = especialidadesFor(f.nivel);
+  var asignaturas = asignaturasFor(f.nivel, f.especialidad);
+  var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+  var candidatos = (f.nivel && f.asignatura)
+    ? load(LS.PCA).filter(function(p){
+        return p.docenteId !== d.id && p.nivel===f.nivel && (p.especialidad||'')===(f.especialidad||'') && p.asignatura===f.asignatura;
+      }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
+    : [];
+  var candidatosHtml;
+  if(!f.nivel || !f.asignatura){
+    candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los PCA de otros docentes disponibles para importar.</div>';
+  } else if(!candidatos.length){
+    candidatosHtml = '<div class="hint">Ningún otro docente tiene un PCA con ese nivel y asignatura todavía.</div>';
+  } else {
+    candidatosHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + candidatos.map(function(p){
+      var owner = docentesById[p.docenteId];
+      var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '(sin curso)';
+      var etiqueta = (owner ? nombreFormal(owner) : '(docente eliminado)') + ' — ' + curso + ' — ' + (p.unidadesNombres||[]).length + ' unidades — actualizado ' + fmtDateTime(p.updatedAt);
+      return '<label class="checkbox-pill"><input type="radio" name="pcaImportSel" value="' + p.id + '" ' + (f.sourceId===p.id?'checked':'') + ' />' + escapeHtml(etiqueta) + '</label>';
+    }).join('') + '</div>';
+  }
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Importar Plan Curricular de otro docente</h1><p>El contenido se carga en un PCA nuevo para que lo revises y ajustes (por ejemplo, el curso) antes de guardarlo — no reemplaza nada automáticamente.</p></div></div>'
+  + '<div class="card">'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="piNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="piEspecialidad" '+(especialidades.length?'':'disabled')+'>' + optionsHtml(especialidades, f.especialidad, especialidades.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '  </div>'
+  + '  <div class="field" style="margin-top:10px;"><label>Asignatura</label><select class="cell-select" id="piAsignatura" '+(f.nivel?'':'disabled')+'>' + optionsHtml(asignaturas, f.asignatura, 'Elija un elemento…') + '</select></div>'
+  + '  <div class="field" style="margin-top:14px;"><label>PCA de otro docente para importar</label>' + candidatosHtml + '</div>'
+  + '  <div style="display:flex; gap:10px; margin-top:18px;">'
+  + '    <button class="btn btn-ghost btn-sm" id="btnCancelarImportarPca">Cancelar</button>'
+  + '    <button class="btn btn-primary btn-sm" id="btnConfirmarImportarPca" ' + (f.sourceId?'':'disabled') + '>Importar</button>'
+  + '  </div>'
+  + '</div>';
+}
+function bindPcaImportarPickerEvents(d){
+  var f = state.pcaImportFiltro;
+  var nivelSel = document.getElementById('piNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.asignatura=''; f.sourceId=''; render(); };
+  var espSel = document.getElementById('piEspecialidad');
+  if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.asignatura=''; f.sourceId=''; render(); };
+  var asigSel = document.getElementById('piAsignatura');
+  if(asigSel) asigSel.onchange = function(e){ f.asignatura=e.target.value; f.sourceId=''; render(); };
+  document.querySelectorAll('input[name="pcaImportSel"]').forEach(function(radio){
+    radio.onchange = function(){ f.sourceId = radio.value; render(); };
+  });
+  var cancelBtn = document.getElementById('btnCancelarImportarPca');
+  if(cancelBtn) cancelBtn.onclick = function(){ state.pcaImportando = false; state.pcaImportFiltro = null; render(); };
+  var confirmBtn = document.getElementById('btnConfirmarImportarPca');
+  if(confirmBtn) confirmBtn.onclick = function(){ if(f.sourceId) importarPca(f.sourceId); };
+}
+/* Reutiliza la misma mecánica de copia que duplicatePca (nuevos IDs, sin bloqueo, fecha límite
+   vigente, se abre en el formulario sin guardar nada todavía) y además dejar la marca de origen
+   (importadoDeDocente/importadoFecha) para que quede trazable de quién se copió el contenido —
+   ver el aviso en pcaToolbarHtml. */
+function importarPca(pcaId){
+  var d = currentDocente();
+  var header = load(LS.PCA).find(function(p){ return p.id===pcaId; });
+  if(!header) return;
+  var docenteFuente = allDocentes().find(function(x){ return x.id===header.docenteId; });
+  var cont = load(LS.CONT).filter(function(c){ return c.pcaId===pcaId; });
+  var unidades = (header.unidadesNombres || []).map(function(nombre){
+    var filas = cont.filter(function(c){ return c.unidad===nombre; }).sort(function(a,b){ return (a.semana||0)-(b.semana||0); });
+    if(filas.length===0) filas = [weekRow(1)];
+    return { id: uid('un'), nombre: nombre, filas: filas.map(function(f){ return Object.assign({}, f, {id: uid('wk')}); }) };
+  });
+  if(unidades.length===0) unidades = [{id:uid('un'), nombre:'Unidad 1', filas:[weekRow(1)]}];
+  state.editingPca = Object.assign({}, header, {
+    id: uid('pca'), docenteId: d.id, locked: false, fechaLimite: fechaLimiteVigente('pca'),
+    temporalizacion: (header.temporalizacion||[]).map(function(t){ return Object.assign({}, t, {id: uid('tm')}); }),
+    unidades: unidades, elaboradoPor: nombreFormal(d),
+    importadoDeDocente: docenteFuente ? nombreFormal(docenteFuente) : '(docente eliminado)', importadoFecha: nowISO(),
+    createdAt: nowISO(), updatedAt: nowISO()
+  });
+  state.pcaImportando = false; state.pcaImportFiltro = null;
+  state.pcaReturnTo = 'pcalist';
+  toast('Se importó el PCA de ' + (docenteFuente?nombreFormal(docenteFuente):'otro docente') + '. Ajusta lo que necesites (p.ej. el curso) y presiona "Guardar plan" para crearlo.', 'success');
+  go('pcaform');
 }
 function bindPcaListSharedEvents(){
   if(document.getElementById('apfDocente')) bindAdminFiltroBarraEvents(state.adminPcaFilter, 'apf');
@@ -5581,7 +5674,8 @@ function pcaToolbarHtml(p){
     + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
     + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
+    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '')
+    + (p.importadoDeDocente ? '<div class="lock-banner no-print">📥 Importado del plan de <strong>' + escapeHtml(p.importadoDeDocente) + '</strong> el ' + escapeHtml(fmtDateTime(p.importadoFecha)) + '. Revisa y ajusta el contenido antes de guardar.</div>' : '');
 }
 
 function renderPcaForm(d){
@@ -5856,6 +5950,7 @@ function savePca(p, silent){
     temporalizacion:p.temporalizacion, unidadesNombres:p.unidadesNombres,
     elaboradoPor:p.elaboradoPor, revisadoPor:p.revisadoPor, aprobadoPor:p.aprobadoPor,
     locked: !!p.locked,
+    importadoDeDocente: p.importadoDeDocente||'', importadoFecha: p.importadoFecha||'',
     createdAt:p.createdAt, updatedAt:p.updatedAt
   };
   var pcas = load(LS.PCA).filter(function(x){ return x.id!==p.id; });
@@ -6434,6 +6529,7 @@ function semanalDocenteGruposHtml(planesDelMes, docentesById, banda, theadHtml, 
   }).join('');
 }
 function renderSemanalListInner(d, scopeAll, banda){
+  if(!scopeAll && state.semanalImportando) return renderSemanalImportarPicker(d);
   var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.SEMANAL);
   var planes = scopeAll ? all : all.filter(function(s){ return s.docenteId===d.id; });
@@ -6485,7 +6581,7 @@ function renderSemanalListInner(d, scopeAll, banda){
 
   var head = scopeAll
     ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.</p>'
-    : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div>';
+    : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarSemanal">Importar de otro docente</button><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div></div>';
 
   var cardEstiloAdmin = (scopeAll && banda) ? pastelBorde(banda==='colegio' ? 'semanalcolegio' : 'semanal') : '';
 
@@ -6542,11 +6638,99 @@ function renderSemanalListInner(d, scopeAll, banda){
   return head + filtroHtml + gruposHtml + sinFechaHtml;
 }
 function bindSemanalListEvents(){
+  if(state.semanalImportando){ bindSemanalImportarPickerEvents(currentDocente()); return; }
   ['btnNewSemanal','btnNewSemanal2'].forEach(function(id){
     var b = document.getElementById(id);
     if(b) b.onclick = function(){ openSemanalForm(null, 'semanallist'); };
   });
+  var btnImportar = document.getElementById('btnImportarSemanal');
+  if(btnImportar) btnImportar.onclick = function(){ state.semanalImportando = true; render(); };
   bindSemanalListSharedEvents();
+}
+/* ============================= SEMANAL · IMPORTAR DE OTRO DOCENTE =============================
+   Mismo criterio controlado que en el PCA (ver renderPcaImportarPicker): el docente solo puede
+   elegir entre los planes semanales de OTROS docentes que coincidan exactamente en Nivel +
+   Especialidad + Asignatura. El contenido (temas, niveles de logro, actividades, recursos,
+   evaluación) se copia a un plan nuevo con fechas en blanco — el docente decide a qué semana
+   corresponde — que se abre en el formulario para revisar y guardar, sin guardar nada solo. */
+function renderSemanalImportarPicker(d){
+  var f = state.semanalImportFiltro || (state.semanalImportFiltro = {nivel:'', especialidad:'', asignatura:'', sourceId:''});
+  var especialidades = especialidadesFor(f.nivel);
+  var asignaturas = asignaturasFor(f.nivel, f.especialidad);
+  var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+  var candidatos = (f.nivel && f.asignatura)
+    ? load(LS.SEMANAL).filter(function(s){
+        return s.docenteId !== d.id && s.nivel===f.nivel && (s.especialidad||'')===(f.especialidad||'') && s.asignatura===f.asignatura;
+      }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
+    : [];
+  var candidatosHtml;
+  if(!f.nivel || !f.asignatura){
+    candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los planes semanales de otros docentes disponibles para importar.</div>';
+  } else if(!candidatos.length){
+    candidatosHtml = '<div class="hint">Ningún otro docente tiene un plan semanal con ese nivel y asignatura todavía.</div>';
+  } else {
+    candidatosHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + candidatos.map(function(s){
+      var owner = docentesById[s.docenteId];
+      var etiqueta = (owner ? nombreFormal(owner) : '(docente eliminado)') + ' — N.º ' + (s.numero||'—') + ' — ' + (s.curso||'(sin curso)') + ' — actualizado ' + fmtDateTime(s.updatedAt);
+      return '<label class="checkbox-pill"><input type="radio" name="semanalImportSel" value="' + s.id + '" ' + (f.sourceId===s.id?'checked':'') + ' />' + escapeHtml(etiqueta) + '</label>';
+    }).join('') + '</div>';
+  }
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Importar Plan Semanal de otro docente</h1><p>El contenido se carga en un plan nuevo (con la fecha en blanco, para que elijas a qué semana corresponde) — no reemplaza nada automáticamente.</p></div></div>'
+  + '<div class="card">'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="siNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="siEspecialidad" '+(especialidades.length?'':'disabled')+'>' + optionsHtml(especialidades, f.especialidad, especialidades.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '  </div>'
+  + '  <div class="field" style="margin-top:10px;"><label>Asignatura</label><select class="cell-select" id="siAsignatura" '+(f.nivel?'':'disabled')+'>' + optionsHtml(asignaturas, f.asignatura, 'Elija un elemento…') + '</select></div>'
+  + '  <div class="field" style="margin-top:14px;"><label>Plan semanal de otro docente para importar</label>' + candidatosHtml + '</div>'
+  + '  <div style="display:flex; gap:10px; margin-top:18px;">'
+  + '    <button class="btn btn-ghost btn-sm" id="btnCancelarImportarSemanal">Cancelar</button>'
+  + '    <button class="btn btn-primary btn-sm" id="btnConfirmarImportarSemanal" ' + (f.sourceId?'':'disabled') + '>Importar</button>'
+  + '  </div>'
+  + '</div>';
+}
+function bindSemanalImportarPickerEvents(d){
+  var f = state.semanalImportFiltro;
+  var nivelSel = document.getElementById('siNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.asignatura=''; f.sourceId=''; render(); };
+  var espSel = document.getElementById('siEspecialidad');
+  if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.asignatura=''; f.sourceId=''; render(); };
+  var asigSel = document.getElementById('siAsignatura');
+  if(asigSel) asigSel.onchange = function(e){ f.asignatura=e.target.value; f.sourceId=''; render(); };
+  document.querySelectorAll('input[name="semanalImportSel"]').forEach(function(radio){
+    radio.onchange = function(){ f.sourceId = radio.value; render(); };
+  });
+  var cancelBtn = document.getElementById('btnCancelarImportarSemanal');
+  if(cancelBtn) cancelBtn.onclick = function(){ state.semanalImportando = false; state.semanalImportFiltro = null; render(); };
+  var confirmBtn = document.getElementById('btnConfirmarImportarSemanal');
+  if(confirmBtn) confirmBtn.onclick = function(){ if(f.sourceId) importarSemanal(f.sourceId); };
+}
+function importarSemanal(semId){
+  var d = currentDocente();
+  var s = load(LS.SEMANAL).find(function(x){ return x.id===semId; });
+  if(!s) return;
+  var docenteFuente = allDocentes().find(function(x){ return x.id===s.docenteId; });
+  state.editingSemanal = {
+    id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id),
+    nivel: s.nivel, especialidad: s.especialidad||'', curso:'', asignatura: s.asignatura,
+    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    unidadDidactica:'', bloqueCurricular: s.bloqueCurricular||'',
+    dias: (s.dias||[]).map(function(dia){
+      return {
+        id: uid('dia'), fecha:'', contenidos: dia.contenidos||'', nivelLogroBasico: dia.nivelLogroBasico||'',
+        nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
+        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+      };
+    }),
+    revisadoPor:'Lic. David Villalta', aprobadoPor:'Lcdo. José Gómez',
+    importadoDeDocente: docenteFuente ? nombreFormal(docenteFuente) : '(docente eliminado)', importadoFecha: nowISO(),
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  state.semanalImportando = false; state.semanalImportFiltro = null;
+  state.semanalReturnTo = 'semanallist';
+  toast('Se importó el plan semanal de ' + (docenteFuente?nombreFormal(docenteFuente):'otro docente') + '. Elige la fecha y el curso, y presiona "Guardar plan" para crearlo.', 'success');
+  go('semanalform');
 }
 function bindSemanalListSharedEvents(){
   if(document.getElementById('asfDocente')) bindAdminFiltroBarraEvents(state.adminSemanalFilter, 'asf');
@@ -6706,7 +6890,8 @@ function semanalToolbarHtml(s){
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
     + '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>'
-    + '</div>';
+    + '</div>'
+    + (s.importadoDeDocente ? '<div class="lock-banner no-print">📥 Importado del plan de <strong>' + escapeHtml(s.importadoDeDocente) + '</strong> el ' + escapeHtml(fmtDateTime(s.importadoFecha)) + '. Revisa y ajusta el contenido antes de guardar.</div>' : '');
 }
 
 /* Campo (día) donde se guarda la selección de cada nivel de logro, y etiqueta visible de cada
@@ -7111,6 +7296,7 @@ function saveSemanal(s, silent){
       };
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
+    importadoDeDocente: s.importadoDeDocente||'', importadoFecha: s.importadoFecha||'',
     createdAt: s.createdAt, updatedAt: s.updatedAt
   };
   var all = load(LS.SEMANAL).filter(function(x){ return x.id!==s.id; });
