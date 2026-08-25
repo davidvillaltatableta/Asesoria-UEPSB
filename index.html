@@ -6414,29 +6414,36 @@ function sanitizeRte(html){
 function richTextToPlain(html){
   if(!html) return '';
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  var BLOQUE = {P:1, DIV:1, LI:1};
   var lines = [];
   var current = '';
   function flush(){ var t = current.trim(); if(t) lines.push(t); current = ''; }
-  function inlineText(node){
-    var out = '';
-    Array.from(node.childNodes).forEach(function(ch){
-      if(ch.nodeType === 3){ out += ch.textContent; return; }
-      if(ch.nodeType !== 1) return;
-      if(ch.tagName === 'BR'){ out += '\n'; return; }
-      out += inlineText(ch);
-    });
-    return out;
-  }
+  /* Texto pegado desde Word/Google Docs a veces trae saltos de línea "\n" sueltos DENTRO de un
+     mismo nodo de texto (el ajuste de línea original del documento de origen, no una viñeta ni un
+     párrafo nuevo). Como esta función separa los ítems de Nivel de Logro/Contenidos con "\n"
+     (ver parseLinesList), esos saltos sueltos partían una sola destreza en 4 o 5 casillas — se
+     normalizan a espacio para que solo un <br>, <li>, <div> o <p> real cuente como ítem aparte. */
+  function textoNodo(ch){ return ch.textContent.replace(/[\r\n]+/g, ' '); }
+  /* Recorre en un solo paso recursivo, tratando P/DIV/LI como saltos de párrafo SIN IMPORTAR a
+     qué profundidad estén anidados (antes solo contaban si eran hijos directos del nodo raíz —
+     un <p> metido dentro de un <div>, como pega Word al copiar dos párrafos juntos, se aplanaba
+     con el de al lado en una sola línea gigante). Las etiquetas de formato en línea (b, span,
+     etc.) simplemente dejan pasar su texto sin cortar la línea. */
   function walk(node){
     Array.from(node.childNodes).forEach(function(ch){
-      if(ch.nodeType === 3){ current += ch.textContent; return; }
+      if(ch.nodeType === 3){ current += textoNodo(ch); return; }
       if(ch.nodeType !== 1) return;
       var tag = ch.tagName;
-      if(tag === 'LI'){ flush(); lines.push('• ' + inlineText(ch).trim()); }
-      else if(tag === 'UL' || tag === 'OL'){ flush(); walk(ch); }
-      else if(tag === 'BR'){ current += '\n'; }
-      else if(tag === 'DIV' || tag === 'P'){ flush(); var t = inlineText(ch).trim(); if(t) lines.push(t); }
-      else { current += inlineText(ch); }
+      if(tag === 'BR'){ current += '\n'; return; }
+      if(tag === 'UL' || tag === 'OL'){ flush(); walk(ch); return; }
+      if(BLOQUE[tag]){
+        flush();
+        if(tag === 'LI') current = '• ';
+        walk(ch);
+        flush();
+        return;
+      }
+      walk(ch);
     });
   }
   walk(doc.body.firstChild);
