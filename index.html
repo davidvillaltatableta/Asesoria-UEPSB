@@ -8608,8 +8608,20 @@ function bindAdminPresentacionEvents(){
 /* ============================= ADMIN: PRESENTACIÓN DE PCA (solo admin) ============================= */
 /* Toma los PCA del docente cuya fecha de creación cae dentro del rango de corte elegido por el
    admin, filtrados por banda (Escuela: Iniciales a 6.º EGB / Colegio: 7.º EGB a 3.º BGU). La
-   Observación combina dos cosas: que el PCA esté lleno hasta la Unidad 3 y que se haya creado
-   antes de la Fecha Límite que ese mismo PCA tiene guardada (editable solo por el admin). */
+   Observación combina dos cosas: que el PCA esté lleno hasta la unidad de corte configurada y que
+   se haya creado antes de la Fecha Límite que ese mismo PCA tiene guardada (editable solo por el
+   admin). */
+/* El registro de LS.PCA es solo el encabezado — sus semanas viven aparte en LS.CONT (ver
+   savePca) — así que para poder evaluar pcaEstaCompleto() aquí hay que reconstruir esa lista de
+   unidades con sus filas, igual que hacen openPcaForm/duplicatePca/importarPca al abrir el
+   formulario. Sin esto, pcaEstaCompleto() siempre recibía un PCA sin ninguna unidad y marcaba
+   "Incompleto" sin importar cuánto contenido real tuviera. */
+function unidadesParaCompletitud(pcaId, unidadesNombres){
+  var cont = load(LS.CONT).filter(function(c){ return c.pcaId===pcaId; });
+  return (unidadesNombres||[]).map(function(nombre){
+    return { filas: cont.filter(function(c){ return c.unidad===nombre; }) };
+  });
+}
 function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte, banda){
   return load(LS.PCA).filter(function(p){
     var fecha = (p.createdAt||'').slice(0,10);
@@ -8618,7 +8630,8 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
     return esEscuelaPorNivelCurso(p.nivel, curso) === (banda==='escuela');
   }).map(function(p){
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
-    var estado = calcularEstadoPresentacion(pcaEstaCompleto(p, unidadCortePca(banda)), p.createdAt, p.fechaLimite);
+    var pcaConUnidades = { unidades: unidadesParaCompletitud(p.id, p.unidadesNombres) };
+    var estado = calcularEstadoPresentacion(pcaEstaCompleto(pcaConUnidades, unidadCortePca(banda)), p.createdAt, p.fechaLimite);
     return {
       asignatura: (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '—',
       curso: curso, cursoRaw: p.curso==='Otro…' ? p.cursoManual : p.curso,
