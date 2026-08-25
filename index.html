@@ -830,10 +830,30 @@ var ESTADOS_INCIDENTE = ['Abierto','En seguimiento','Cerrado'];
 function asistenciaDocId(nivel, especialidad, curso, fecha){
   return ['asis', nivel, especialidad||'x', curso, fecha].join('|').replace(/[^\w|.-]/g, '_');
 }
+/* El curso real de un estudiante: si se registró eligiendo "Otro…", el valor que cuenta es el que
+   escribió a mano (cursoManual), no el literal "Otro…" que quedó guardado en el campo curso. */
+function cursoRealDe(e){ return e.curso==='Otro…' ? (e.cursoManual||'') : (e.curso||''); }
 function estudiantesDe(nivel, especialidad, curso){
   return load(LS.ESTUDIANTES).filter(function(e){
-    return e.nivel===nivel && (e.especialidad||'')===(especialidad||'') && e.curso===curso && e.estado!=='Inactivo';
+    return e.nivel===nivel && (e.especialidad||'')===(especialidad||'') && cursoRealDe(e)===curso && e.estado!=='Inactivo';
   }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
+}
+/* Cursos que REALMENTE existen porque hay al menos un estudiante registrado en ellos (pestaña
+   Inspección → Estudiantes) — a diferencia de cursosFor(), que es la lista genérica de currículo y
+   no incluye los cursos escritos a mano ("Otro…") ni excluye los que el colegio no usa. Se usa en
+   los cuadros de Curso que sirven para ENCONTRAR estudiantes ya registrados (Asistencia,
+   Disciplina, Reportes, Mi Asistencia del docente) — no en los formularios donde se registra un
+   estudiante por primera vez, que siguen necesitando la lista completa + "Otro…" para poder crear
+   un curso nuevo. */
+function cursosDeEstudiantesRegistrados(nivel, especialidad){
+  var set = {};
+  load(LS.ESTUDIANTES).forEach(function(e){
+    if(nivel && e.nivel!==nivel) return;
+    if(especialidad && (e.especialidad||'')!==especialidad) return;
+    var c = cursoRealDe(e);
+    if(c) set[c]=1;
+  });
+  return Object.keys(set).sort();
 }
 var TITULO_SIGLAS = {
   'licenciado':'Lic.', 'licenciada':'Lic.', 'ingeniero':'Ing.', 'ingeniera':'Ing.',
@@ -2322,7 +2342,7 @@ function bindInspEstudiantesEvents(){
 function renderInspEstudiantesLista(){
   var f = state.inspEstFiltro || (state.inspEstFiltro = {nivel:'', especialidad:'', curso:''});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var todos = load(LS.ESTUDIANTES).slice().sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
   var filtrados = todos.filter(function(e){
     if(f.nivel && e.nivel !== f.nivel) return false;
@@ -2779,7 +2799,7 @@ function blankAsistenciaDoc(nivel, especialidad, curso, fecha){
 function renderInspAsistencia(){
   var f = state.inspAsisFiltro || (state.inspAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   return ''
   + '<div class="card"'+pastelBorde('asistencia', INSP_TAB_PASTEL)+'>'
   + '  <h2>Tomar / revisar asistencia</h2>'
@@ -2899,7 +2919,7 @@ function renderMiAsistencia(d){
   var f = state.misAsisFiltro || (state.misAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO(), horas:[]});
   var niveles = NIVELES;
   var especialidades = especialidadesFor(f.nivel);
-  var cursos = cursosFor(f.nivel, f.especialidad);
+  var cursos = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var horasSeleccionadas = f.horas || (f.horas = []);
   var horasHtml = '<div class="checkbox-grid">' + PERIODOS.map(function(p){
     var checked = horasSeleccionadas.indexOf(p.n)!==-1;
@@ -3084,7 +3104,7 @@ function renderInspIncidenteForm(){
   if(isPersonal){
     estudianteCampoHtml = '';
   } else {
-    var cursoOptsFiltro = filtro.nivel ? cursosFor(filtro.nivel) : [];
+    var cursoOptsFiltro = filtro.nivel ? cursosDeEstudiantesRegistrados(filtro.nivel) : [];
     var estudiantesOpts = load(LS.ESTUDIANTES).filter(function(e){
       if(e.estado==='Inactivo') return false;
       if(filtro.nivel && e.nivel!==filtro.nivel) return false;
@@ -3295,7 +3315,7 @@ function bindInspReportesEvents(){
 function renderRepFotografico(){
   var f = state.repFotograficoFiltro || (state.repFotograficoFiltro = {nivel:'', especialidad:'', curso:''});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var selHtml = ''
     + '<div class="card no-print">'
     + '  <div class="field-row">'
@@ -3342,7 +3362,7 @@ function bindRepFotograficoEvents(){
 function renderRepDiaria(){
   var f = state.repDiariaFiltro || (state.repDiariaFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var selHtml = ''
     + '<div class="card no-print">'
     + '  <div class="field-row">'
@@ -3391,7 +3411,7 @@ var DIAS_SEMANA_CORTOS = ['Lunes','Martes','Miércoles','Jueves','Viernes'];
 function renderRepSemanal(){
   var f = state.repSemanalFiltro || (state.repSemanalFiltro = {nivel:'', especialidad:'', curso:'', fechaInicio:''});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var selHtml = ''
     + '<div class="card no-print">'
     + '  <div class="field-row">'
@@ -3459,7 +3479,7 @@ function renderRepIndividual(){
   var e = estudiantes.find(function(x){ return x.id===f.estudianteId; });
   if(!e) return selHtml;
   var docs = load(LS.ASISTENCIA).filter(function(a){
-    return a.nivel===e.nivel && (a.especialidad||'')===(e.especialidad||'') && a.curso===e.curso
+    return a.nivel===e.nivel && (a.especialidad||'')===(e.especialidad||'') && a.curso===cursoRealDe(e)
       && (!f.fechaInicio || a.fecha >= f.fechaInicio) && (!f.fechaFin || a.fecha <= f.fechaFin);
   }).sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
   var totales = {P:0,A:0,F:0};
@@ -3495,7 +3515,7 @@ function bindRepIndividualEvents(){
 function renderRepMensual(){
   var f = state.repMensualFiltro || (state.repMensualFiltro = {nivel:'', especialidad:'', curso:'', mes: todayISO().slice(0,7)});
   var espOpts = especialidadesFor(f.nivel);
-  var cursoOpts = cursosFor(f.nivel, f.especialidad);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
   var selHtml = ''
     + '<div class="card no-print">'
     + '  <div class="field-row">'
