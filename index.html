@@ -534,14 +534,15 @@ var LS = {
   INCIDENTES: 'INCIDENTES',
   OBSERVACIONES: 'OBSERVACIONES',
   DECE: 'DECE',
-  FICHA_DETECCION: 'FICHA_DETECCION'
+  FICHA_DETECCION: 'FICHA_DETECCION',
+  CONFIG: 'CONFIG'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
   ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece',
-  FICHA_DETECCION: 'fichadeteccion'
+  FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -1118,10 +1119,10 @@ function bindAutoguardadoDelegado(contenedorId, tipo){
    Artifact's sandboxed iframe — the same category of restriction that already required
    special handling for downloads and window.print(). This custom modal replaces every
    confirm() call in the app so delete actions actually work in that environment. */
-function confirmDialog(message, onConfirm){
+function confirmDialog(message, onConfirm, okLabel){
   var overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-box"><p>' + escapeHtml(message) + '</p><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="confirmCancelBtn">Cancelar</button><button class="btn btn-sm" id="confirmOkBtn" style="background:var(--red-600); color:#fff;">Eliminar</button></div></div>';
+  overlay.innerHTML = '<div class="confirm-box"><p>' + escapeHtml(message) + '</p><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="confirmCancelBtn">Cancelar</button><button class="btn btn-sm" id="confirmOkBtn" style="background:var(--red-600); color:#fff;">' + escapeHtml(okLabel || 'Eliminar') + '</button></div></div>';
   document.body.appendChild(overlay);
   function close(){ overlay.remove(); }
   overlay.querySelector('#confirmCancelBtn').onclick = close;
@@ -1475,11 +1476,17 @@ async function doRegister(){
    sean idénticos. */
 var STAFF_ROLES = ['admin','directivo','dece'];
 function isStaffRole(role){ return STAFF_ROLES.indexOf(role) !== -1; }
-var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', docente:'Docente' };
+/* Inspector General: rol acotado — ve y administra solo Inspección General (Estudiantes,
+   Asistencia, Disciplina, Reportes) y su propio Perfil/Carga Horaria, nada más. No es "staff"
+   (isStaffRole sigue sin incluirlo) porque no debe tener acceso a Administración, DECE ni Base
+   de Datos — ver renderShell (filtro del menú) y attachRealtimeListeners (sincronización). */
+function puedeVerInspeccion(role){ return isStaffRole(role) || role==='inspector'; }
+var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', inspector:'Inspector General', docente:'Docente' };
 function rolePillHtml(role){
   if(role==='admin') return '<span class="pill pill-gold">Administrador</span>';
   if(role==='directivo') return '<span class="pill pill-blue">Directivo</span>';
   if(role==='dece') return '<span class="pill pill-green">DECE</span>';
+  if(role==='inspector') return '<span class="pill pill-muted" style="background:var(--gold-100); color:#8A6400;">Inspector General</span>';
   return '<span class="pill pill-muted">Docente</span>';
 }
 
@@ -1497,7 +1504,7 @@ var NAV_GROUPS = [
     {key:'misasistencia', label:'Asistencia', ic:'✅'}
   ]},
   {label:'Inspección', hue:'peach', items:[
-    {key:'inspeccion', label:'Inspección General', ic:'🧭', adminOnly:true}
+    {key:'inspeccion', label:'Inspección General', ic:'🧭', staffOrInspector:true}
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
     {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true},
@@ -1513,7 +1520,13 @@ var NAV_GROUPS = [
 function renderShell(){
   var d = currentDocente();
   var isAdmin = isStaffRole(d.role);
-  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'inspeccion' || state.subview === 'dece' || state.subview === 'dececonsultas')) state.subview = 'dashboard';
+  var esInspector = d.role === 'inspector';
+  if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'dece' || state.subview === 'dececonsultas')) state.subview = 'dashboard';
+  if(!puedeVerInspeccion(d.role) && state.subview === 'inspeccion') state.subview = 'dashboard';
+  /* El Inspector General solo puede ver "Perfil y Datos del Docente" e "Inspección General" —
+     si por cualquier vía (estado viejo, enlace directo) queda apuntando a otra sección, lo manda
+     de vuelta a Inicio. */
+  if(esInspector && ['pcalist','pcaform','semanallist','semanalform','observacion','misasistencia','fichadeteccion','database','manualdocente','manualadmin'].indexOf(state.subview)!==-1){ state.subview = 'dashboard'; }
   function navItemActive(item){
     return (state.subview === item.key
       || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
@@ -1521,8 +1534,14 @@ function renderShell(){
       || ((state.subview==='pcaform'||state.subview==='semanalform') && item.key==='admin' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'))
       || ((state.subview==='adminEditDocente'||state.subview==='adminNewDocente') && item.key==='admin'));
   }
-  var navHtml = NAV_GROUPS.map(function(group){
-    var visibleItems = group.items.filter(function(item){ return !item.adminOnly || isAdmin; });
+  var navHtml = NAV_GROUPS.filter(function(group){
+    if(esInspector) return group.label==='Perfil y Datos del Docente' || group.label==='Inspección';
+    return true;
+  }).map(function(group){
+    var visibleItems = group.items.filter(function(item){
+      if(item.staffOrInspector) return isAdmin || esInspector;
+      return !item.adminOnly || isAdmin;
+    });
     if(!visibleItems.length) return '';
     var hasActive = visibleItems.some(navItemActive);
     /* Por defecto la categoría se abre sola si contiene la página activa; si el usuario la
@@ -1682,6 +1701,15 @@ function bindPerfilEvents(){
 /* ============================= DASHBOARD ============================= */
 function renderDashboard(d){
   var isAdmin = isStaffRole(d.role);
+  var esInspector = d.role === 'inspector';
+  if(esInspector){
+    return ''
+    + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.usuarioId || d.nombres) + '!</h1><p>Tu acceso está acotado a tu Perfil y a Inspección General.</p></div></div>'
+    + '<div class="grid-4">'
+    + '  <button class="action-card" data-go="inspeccion"><div class="ic">🧭</div><h3>Inspección General</h3><p>Estudiantes, asistencia, disciplina y reportes.</p></button>'
+    + '  <button class="action-card" data-go="cargahoraria"><div class="ic">🗂️</div><h3>Mi Carga Horaria</h3><p>Indica qué asignaturas dictas y en qué cursos o grados.</p></button>'
+    + '</div>';
+  }
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.usuarioId || d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
   + '<div class="grid-4">'
@@ -2224,7 +2252,7 @@ var INSP_TAB_PASTEL = {
   reportes: 'var(--gold-100)'
 };
 function renderInspeccion(d){
-  if(!isStaffRole(d.role)) return renderDashboard(d);
+  if(!puedeVerInspeccion(d.role)) return renderDashboard(d);
   var tab = state.inspeccionTab || 'estudiantes';
   var tabsHtml = INSPECCION_TABS.map(function(t){
     var pastel = INSP_TAB_PASTEL[t.key];
@@ -5185,33 +5213,39 @@ function groupByDocente(records, docentesById){
   return list;
 }
 
+/* Filtro admin de PCA, factorizado para reusarlo tanto al pintar la lista como en los botones de
+   bloqueo masivo (que necesitan el mismo conjunto "filtrado ahora mismo" sin repetir la lógica). */
+function pcasAdminFiltrados(){
+  var filtro = state.adminPcaFilter;
+  var pcas = load(LS.PCA).slice();
+  if(filtro.docenteId) pcas = pcas.filter(function(p){ return p.docenteId===filtro.docenteId; });
+  if(filtro.fechaInicio) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) >= filtro.fechaInicio; });
+  if(filtro.fechaFin) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) <= filtro.fechaFin; });
+  return pcas.filter(function(p){
+    var asigOk = !filtro.asignatura || p.asignatura===filtro.asignatura || p.asignaturaManual===filtro.asignatura;
+    if(nivelEsBandaA(p.nivel)) return asigOk;
+    var cursoOk = !filtro.curso || p.curso===filtro.curso || p.cursoManual===filtro.curso;
+    return asigOk && cursoOk;
+  });
+}
 function renderPcaListInner(d, scopeAll){
-  var all = load(LS.PCA);
-  var pcas = (scopeAll ? all : all.filter(function(p){ return p.docenteId === d.id; })).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
+  var pcas = scopeAll ? pcasAdminFiltrados() : load(LS.PCA).filter(function(p){ return p.docenteId === d.id; });
+  pcas.sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
 
   var filtroHtml = '';
   if(scopeAll){
-    var filtro = state.adminPcaFilter;
-    if(filtro.docenteId) pcas = pcas.filter(function(p){ return p.docenteId===filtro.docenteId; });
-    if(filtro.fechaInicio) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) >= filtro.fechaInicio; });
-    if(filtro.fechaFin) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) <= filtro.fechaFin; });
-    pcas = pcas.filter(function(p){
-      var asigOk = !filtro.asignatura || p.asignatura===filtro.asignatura || p.asignaturaManual===filtro.asignatura;
-      if(nivelEsBandaA(p.nivel)) return asigOk;
-      var cursoOk = !filtro.curso || p.curso===filtro.curso || p.cursoManual===filtro.curso;
-      return asigOk && cursoOk;
-    });
-    filtroHtml = adminFiltroBarraHtml(filtro, 'apf', 'Curso (7.º EGB a 3.º BGU)');
+    filtroHtml = adminFiltroBarraHtml(state.adminPcaFilter, 'apf', 'Curso (7.º EGB a 3.º BGU)');
   }
 
   function pcaRowHtml(p){
     var nombre = (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '(sin asignatura)';
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
+    var bloqueado = !!p.locked;
     return ''
     + '<tr>'
-    + '  <td><strong>' + escapeHtml(nombre) + '</strong></td>'
+    + '  <td><strong>' + escapeHtml(nombre) + '</strong>' + (bloqueado ? ' <span class="pill pill-muted" title="Bloqueado para el docente">🔒</span>' : '') + '</td>'
     + '  <td>' + escapeHtml(p.nivel||'—') + (p.especialidad? '<br/><span class="pill pill-blue">'+escapeHtml(p.especialidad)+'</span>':'') + '</td>'
     + '  <td>' + escapeHtml(curso) + '</td>'
     + '  <td class="tabular">' + (p.unidadesNombres||[]).length + '</td>'
@@ -5238,12 +5272,23 @@ function renderPcaListInner(d, scopeAll){
     rows = pcas.map(pcaRowHtml).join('');
   }
 
+  var bulkLockHtml = '';
+  if(scopeAll && pcas.length){
+    var filtroActivo = state.adminPcaFilter.docenteId;
+    var alcance = filtroActivo ? 'del docente filtrado' : 'de TODOS los docentes';
+    bulkLockHtml = '<div class="pca-toolbar no-print" style="margin-bottom:10px;">'
+      + '<span class="hint">Bloquear/Desbloquear ' + pcas.length + ' plan(es) ' + alcance + (filtroActivo ? ' — cambia el filtro "Docente" arriba para elegir a quién.' : '') + ':</span>'
+      + '<div class="spacer"></div>'
+      + '<button class="btn btn-ghost btn-sm" id="btnBloquearTodosPca">🔒 Bloquear ' + (filtroActivo?'de este docente':'todos')+'</button>'
+      + '<button class="btn btn-ghost btn-sm" id="btnDesbloquearTodosPca">🔓 Desbloquear ' + (filtroActivo?'de este docente':'todos')+'</button>'
+      + '</div>';
+  }
   var head = scopeAll
-    ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan. Los PCA ya no se bloquean: siempre quedan abiertos para el docente.</p>'
+    ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan.</p>'
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div>';
 
   var cardEstiloAdmin = scopeAll ? pastelBorde('pca') : '';
-  return head + filtroHtml
+  return head + filtroHtml + bulkLockHtml
   + (pcas.length === 0
       ? '<div class="card"'+cardEstiloAdmin+'><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
       : '<div class="card"'+cardEstiloAdmin+'><div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Nivel</th><th>Curso</th><th>Unidades</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
@@ -5257,6 +5302,23 @@ function bindPcaListEvents(){
 }
 function bindPcaListSharedEvents(){
   if(document.getElementById('apfDocente')) bindAdminFiltroBarraEvents(state.adminPcaFilter, 'apf');
+  function bloquearMasivoPca(nuevoValor){
+    var afectados = pcasAdminFiltrados();
+    if(!afectados.length) return;
+    var quien = state.adminPcaFilter.docenteId ? 'del docente filtrado' : 'de TODOS los docentes';
+    confirmDialog('¿' + (nuevoValor?'Bloquear':'Desbloquear') + ' ' + afectados.length + ' plan(es) curricular(es) ' + quien + '?', function(){
+      var all = load(LS.PCA);
+      var idsAfectados = {}; afectados.forEach(function(p){ idsAfectados[p.id]=1; });
+      var actualizado = all.map(function(p){ return idsAfectados[p.id] ? Object.assign({}, p, {locked: nuevoValor}) : p; });
+      save(LS.PCA, actualizado);
+      toast(afectados.length + ' plan(es) ' + (nuevoValor?'bloqueado(s)':'desbloqueado(s)') + '.', 'success');
+      render();
+    }, nuevoValor ? 'Bloquear' : 'Desbloquear');
+  }
+  var btnBloq = document.getElementById('btnBloquearTodosPca');
+  if(btnBloq) btnBloq.onclick = function(){ bloquearMasivoPca(true); };
+  var btnDesbloq = document.getElementById('btnDesbloquearTodosPca');
+  if(btnDesbloq) btnDesbloq.onclick = function(){ bloquearMasivoPca(false); };
   document.querySelectorAll('[data-edit-pca]').forEach(function(btn){
     btn.onclick = function(){ openPcaForm(btn.getAttribute('data-edit-pca'), state.subview==='admin' ? 'admin' : 'pcalist'); };
   });
@@ -5302,9 +5364,24 @@ function weekRow(n){ return {id:uid('wk'), semana:n, fechaInicio:'', fechaFin:''
 /* Para "Presentación de PCA": un PCA cuenta como lleno "hasta la Unidad 3" si tiene al menos 3
    unidades creadas y, en cada una de las 3 primeras, al menos una fila de semana con contenido
    real (destreza, temas o algún nivel de logro) — no basta con que la unidad exista vacía. */
-function pcaCompletoHastaUnidad3(p){
-  var unidades = (p.unidades||[]).slice(0,3);
-  if(unidades.length < 3) return false;
+/* El número de unidades exigido ("hasta la Unidad N") es configurable por el administrador,
+   por separado para Escuela y Colegio — ver configPca() / renderAdminPresentacionPca(). */
+function configPca(){
+  return load(LS.CONFIG).find(function(c){ return c.id==='pca'; }) || {id:'pca', unidadCorteEscuela:3, unidadCorteColegio:3};
+}
+function unidadCortePca(banda){
+  var cfg = configPca();
+  var n = banda==='colegio' ? cfg.unidadCorteColegio : cfg.unidadCorteEscuela;
+  return (typeof n === 'number' && n>0) ? n : 3;
+}
+function guardarConfigPca(cambios){
+  var cfg = Object.assign({}, configPca(), cambios, {id:'pca', updatedAt: nowISO()});
+  var otros = load(LS.CONFIG).filter(function(c){ return c.id!=='pca'; });
+  save(LS.CONFIG, otros.concat([cfg]));
+}
+function pcaEstaCompleto(p, unidadCorte){
+  var unidades = (p.unidades||[]).slice(0, unidadCorte);
+  if(unidades.length < unidadCorte) return false;
   return unidades.every(function(u){
     return (u.filas||[]).some(function(f){
       return richTextToPlain(f.destreza||'').trim()
@@ -5479,16 +5556,18 @@ var PCA_EN = {
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
   var isIngles = pcaEsIngles(p);
+  var locked = !!p.locked && !isStaffRole(currentDocente().role);
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">' + te('← Volver a la lista', isIngles) + '</button>'
-    + '  <span class="hint" id="pcaAutosaveHint">' + escapeHtml(autoguardadoHintTexto('pca')) + '</span>'
+    + (locked ? '' : '  <span class="hint" id="pcaAutosaveHint">' + escapeHtml(autoguardadoHintTexto('pca')) + '</span>')
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
-    + '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>'
-    + '</div>';
+    + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>')
+    + '</div>'
+    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '');
 }
 
 function renderPcaForm(d){
@@ -5594,6 +5673,7 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
 
 function bindPcaFormEvents(){
   var p = state.editingPca;
+  var locked = !!p.locked && !isStaffRole(currentDocente().role);
 
   document.getElementById('btnBackToList').onclick = function(){ go(state.pcaReturnTo || 'pcalist'); };
   var saveBtn = document.getElementById('btnSavePca');
@@ -5601,9 +5681,15 @@ function bindPcaFormEvents(){
     savePca(p);
     go(state.pcaReturnTo || 'pcalist');
   };
-  document.getElementById('btnExportWordNow').onclick = function(){ savePca(p, true); exportPcaWord(p.id); };
-  document.getElementById('btnExportExcelNow').onclick = function(){ savePca(p, true); exportPcaExcel(p.id); };
+  document.getElementById('btnExportWordNow').onclick = function(){ if(!locked) savePca(p, true); exportPcaWord(p.id); };
+  document.getElementById('btnExportExcelNow').onclick = function(){ if(!locked) savePca(p, true); exportPcaExcel(p.id); };
   document.getElementById('btnExportPdfNow').onclick = printAsPdf;
+
+  if(locked){
+    document.querySelectorAll('#pcaDoc input, #pcaDoc select, #pcaDoc textarea, #pcaDoc button').forEach(function(el){ el.disabled = true; });
+    document.querySelectorAll('#pcaDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
+    return;
+  }
   bindAutoguardadoDelegado('pcaDoc', 'pca');
 
   document.getElementById('pfNivel').addEventListener('change', function(e){ p.nivel=e.target.value; p.especialidad=''; p.curso=''; p.asignatura=''; renderPcaFormAgain(); });
@@ -5736,6 +5822,7 @@ function savePca(p, silent){
     cargaSemanal:p.cargaSemanal, semanasT1:p.semanasT1, semanasT2:p.semanasT2, semanasT3:p.semanasT3, fechaLimite:p.fechaLimite||'',
     temporalizacion:p.temporalizacion, unidadesNombres:p.unidadesNombres,
     elaboradoPor:p.elaboradoPor, revisadoPor:p.revisadoPor, aprobadoPor:p.aprobadoPor,
+    locked: !!p.locked,
     createdAt:p.createdAt, updatedAt:p.updatedAt
   };
   var pcas = load(LS.PCA).filter(function(x){ return x.id!==p.id; });
@@ -7738,7 +7825,7 @@ function renderAdminEditDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="adTCI" maxlength="10" value="' + escapeHtml(target.ci) + '" /></div><div class="field"><label>Teléfono</label><input type="text" id="adTTelefono" value="' + escapeHtml(target.telefono||'') + '" /></div></div>'
   + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" disabled /><div class="hint">El correo de acceso no se puede cambiar desde aquí una vez creada la cuenta.</div></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="adTUserId" value="' + escapeHtml(target.usuarioId) + '" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','admin','directivo','dece'], target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','admin','directivo','dece','inspector'], target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña</label><button type="button" class="btn btn-ghost btn-sm" id="btnResetPwAdminDocente">Enviar correo para restablecer contraseña</button></div>'
   + '  <div style="display:flex; gap:10px; margin-top:10px;">'
   + '    <button class="btn btn-primary" id="btnSaveAdminDocente">Guardar cambios</button>'
@@ -7839,7 +7926,7 @@ function renderAdminNewDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="anCI" maxlength="10" placeholder="10 dígitos" /></div><div class="field"><label>Teléfono</label><input type="text" id="anTelefono" placeholder="09xxxxxxxx" /></div></div>'
   + '  <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="anEmail" placeholder="nombre.apellido@simonbolivar-ec.com" /></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="anUserId" placeholder="ID de acceso" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol">' + optionsHtml(['docente','admin','directivo','dece'], 'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol">' + optionsHtml(['docente','admin','directivo','dece','inspector'], 'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña <span class="required">*</span></label><input type="password" id="anPw" /></div>'
   + '  <button class="btn btn-primary" id="btnCreateAdminDocente">Crear usuario</button>'
   + '</div>';
@@ -8233,7 +8320,7 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
     return esEscuelaPorNivelCurso(p.nivel, curso) === (banda==='escuela');
   }).map(function(p){
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
-    var estado = calcularEstadoPresentacion(pcaCompletoHastaUnidad3(p), p.createdAt, p.fechaLimite);
+    var estado = calcularEstadoPresentacion(pcaEstaCompleto(p, unidadCortePca(banda)), p.createdAt, p.fechaLimite);
     return {
       asignatura: (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '—',
       curso: curso, cursoRaw: p.curso==='Otro…' ? p.cursoManual : p.curso,
@@ -8248,13 +8335,18 @@ function renderAdminPresentacionPca(banda){
   var tabKey = banda==='colegio' ? 'presentacionpcacolegio' : 'presentacionpca';
   var pastel = ADMIN_TAB_PASTEL[tabKey];
   var tituloBanda = banda==='colegio' ? 'Presentación de PCA (Colegio)' : 'Presentación de PCA (Escuela)';
+  var unidadActual = unidadCortePca(banda);
   var formHtml = ''
     + '<div class="card" style="background:'+pastel+';">'
     + '  <h2>' + tituloBanda + '</h2>'
-    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA esté lleno hasta la Unidad 3 y que se haya creado antes de la Fecha Límite que tiene guardada.</div>'
+    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA esté lleno hasta la Unidad <b>' + unidadActual + '</b> y que se haya creado antes de la Fecha Límite que tiene guardada.</div>'
     + '  <div class="grid-2" style="max-width:520px;">'
     + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppPcaFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
     + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppPcaFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
+    + '  </div>'
+    + '  <div class="field-row" style="margin-top:10px; align-items:end;">'
+    + '    <div class="field" style="max-width:260px;"><label>¿A partir de cuántas unidades llenas se considera "a tiempo"?</label><input class="cell-input" type="number" min="1" max="20" id="ppPcaUnidadCorte" value="' + unidadActual + '" /></div>'
+    + '    <button class="btn btn-ghost btn-sm" id="btnGuardarUnidadCorte">Guardar</button>'
     + '  </div>'
     + '</div>';
 
@@ -8310,6 +8402,17 @@ function bindAdminPresentacionPcaEvents(){
   if(fi) fi.addEventListener('change', function(e){ state.presentacionPcaForm.fechaInicio = e.target.value; render(); });
   var ff = document.getElementById('ppPcaFechaFin');
   if(ff) ff.addEventListener('change', function(e){ state.presentacionPcaForm.fechaFin = e.target.value; render(); });
+  var btnUnidad = document.getElementById('btnGuardarUnidadCorte');
+  if(btnUnidad) btnUnidad.onclick = function(){
+    var banda = state.adminTab === 'presentacionpcacolegio' ? 'colegio' : 'escuela';
+    var n = parseInt(document.getElementById('ppPcaUnidadCorte').value, 10);
+    if(!n || n<1){ toast('Ingresa un número de unidades válido (1 o más).', 'error'); return; }
+    var cambios = {};
+    cambios[banda==='colegio' ? 'unidadCorteColegio' : 'unidadCorteEscuela'] = n;
+    guardarConfigPca(cambios);
+    toast('Actualizado: ahora se exige hasta la Unidad ' + n + ' para "' + (banda==='colegio'?'Colegio':'Escuela') + '".', 'success');
+    render();
+  };
 }
 
 /* ============================= ADMIN: FECHAS LÍMITE (PCA / Planes Semanales) (solo admin) ============================= */
@@ -8375,6 +8478,9 @@ function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
     + '    <div class="field"><label>Nota (opcional)</label><input class="cell-input" id="fl-nota-' + categoria + '" placeholder="p.ej. Trimestre 1" /></div>'
     + '    <button class="btn btn-primary" data-add-fechalimite="' + categoria + '" style="height:41px;">+ Agregar</button>'
     + '  </div>'
+    + '  <div style="margin-top:10px;">'
+    + '    <button class="btn btn-danger btn-sm" data-apply-fechalimite="' + categoria + '" title="Usa la fecha escrita arriba y la escribe en TODOS los ' + (categoria==='pca'?'PCA':'Planes Semanales') + ' que ya existen, reemplazando la que cada uno tenía">⚠️ Aplicar esa fecha a TODOS los ' + (categoria==='pca'?'PCA':'Planes Semanales') + ' ya existentes</button>'
+    + '  </div>'
     + tableHtml
     + '</div>';
 }
@@ -8400,6 +8506,30 @@ function bindAdminFechasLimiteEvents(){
       save(LS.FECHAS_LIMITE, entradas);
       toast('Fecha límite agregada.', 'success');
       render();
+    };
+  });
+  document.querySelectorAll('[data-apply-fechalimite]').forEach(function(btn){
+    btn.onclick = function(){
+      var categoria = btn.getAttribute('data-apply-fechalimite');
+      var fecha = document.getElementById('fl-fecha-' + categoria).value;
+      if(!fecha){ toast('Escribe primero la fecha y hora límite que quieres aplicar.', 'error'); return; }
+      if(categoria === 'pca'){
+        var todosPca = load(LS.PCA);
+        if(!todosPca.length){ toast('Todavía no hay ningún PCA registrado.', 'error'); return; }
+        confirmDialog('¿Aplicar la fecha límite ' + fmtDateTimeLocal(fecha) + ' a los ' + todosPca.length + ' PCA que ya existen? Se reemplaza la fecha límite individual que cada uno tenía guardada.', function(){
+          save(LS.PCA, todosPca.map(function(p){ return Object.assign({}, p, {fechaLimite: fecha}); }));
+          toast('Fecha límite aplicada a ' + todosPca.length + ' PCA existentes.', 'success');
+          render();
+        }, 'Aplicar a todos');
+      } else {
+        var todosSem = load(LS.SEMANAL);
+        if(!todosSem.length){ toast('Todavía no hay ningún Plan Semanal registrado.', 'error'); return; }
+        confirmDialog('¿Aplicar la fecha límite ' + fmtDateTimeLocal(fecha) + ' a los ' + todosSem.length + ' Planes Semanales que ya existen? Se reemplaza la fecha límite individual que cada uno tenía guardada.', function(){
+          save(LS.SEMANAL, todosSem.map(function(s){ return Object.assign({}, s, {fechaHoraLimite: fecha}); }));
+          toast('Fecha límite aplicada a ' + todosSem.length + ' Planes Semanales existentes.', 'success');
+          render();
+        }, 'Aplicar a todos');
+      }
     };
   });
   document.querySelectorAll('[data-edit-fechalimite]').forEach(function(btn){
@@ -8566,13 +8696,21 @@ function debeOmitirRenderPorEdicionActiva(key){
 async function attachRealtimeListeners(){
   detachRealtimeListeners();
   var soyAdmin = false;
+  var soyInspector = false;
   try{
     var docentesSnap = await window.FB.getDocs(window.FB.collection(window.FB.db, FS_COLLECTION.DOCENTES));
-    docentesSnap.forEach(function(d){ if(d.id === CURRENT_UID && isStaffRole(d.data().role)) soyAdmin = true; });
+    docentesSnap.forEach(function(d){
+      if(d.id !== CURRENT_UID) return;
+      if(isStaffRole(d.data().role)) soyAdmin = true;
+      else if(d.data().role === 'inspector') soyInspector = true;
+    });
   }catch(e){ console.error('No se pudo determinar el rol antes de sincronizar', e); }
 
   Object.keys(FS_COLLECTION).forEach(function(key){
-    if(!soyAdmin && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; return; }
+    /* El Inspector General sí necesita INCIDENTES (pestaña Disciplina) aunque no sea "staff" —
+       pero NUNCA debe sincronizar DECE (confidencial), la otra colección de esta lista. */
+    var permitidoParaInspector = soyInspector && key === 'INCIDENTES';
+    if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; return; }
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
     var queryRef = ((key === 'OBSERVACIONES' || key === 'FICHA_DETECCION') && !soyAdmin)
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
