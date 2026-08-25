@@ -5569,10 +5569,15 @@ function renderPcaForm(d){
   state.editingPca = p;
   var isIngles = pcaEsIngles(p);
   var isAdminViewer = isStaffRole(d.role);
+  /* Las opciones de Curso/Asignatura se sacan de la Carga Horaria del DUEÑO del PCA (p.docenteId),
+     no de quien lo está viendo — si no, cuando un administrador abre el PCA de otro docente, estas
+     listas salen vacías (la Carga Horaria del admin) y solo se ve el respaldo genérico (p.ej. sólo
+     "Inglés"), ocultando las asignaturas reales que el docente sí tiene registradas. */
+  var ownerId = p.docenteId || d.id;
   var espOpts = especialidadesFor(p.nivel);
-  var misCursos = misCursosPara(d.id, p.nivel, p.especialidad);
+  var misCursos = misCursosPara(ownerId, p.nivel, p.especialidad);
   var cursoOpts = misCursos.length ? misCursos : cursosFor(p.nivel, p.especialidad);
-  var misAsig = misAsignaturasPara(d.id, p.nivel, p.especialidad, p.curso);
+  var misAsig = misAsignaturasPara(ownerId, p.nivel, p.especialidad, p.curso);
   var asigOpts = misAsig.length ? misAsig : asignaturasFor(p.nivel, p.especialidad);
   var totalSemanas = (p.temporalizacion||[]).reduce(function(s,t){ return s + (parseFloat(t.semanas)||0); }, 0);
 
@@ -5803,6 +5808,20 @@ function renderPcaDocOnly(){
   return marker + full.split(marker)[1];
 }
 
+/* Red de seguridad además del fix en cerrarTodo() (ver insertarPegadoInmediato/
+   mostrarBotonOpcionesPegado): si por cualquier motivo un <span data-paste-marker> sobrevive hasta
+   el momento de guardar (p.ej. el docente cambió de Nivel/Curso — lo que fuerza un re-render del
+   formulario — antes de que se limpiara), se quita aquí para que nunca llegue a Firestore. */
+function quitarMarcasPegado(html){
+  if(!html || html.indexOf('data-paste-marker')===-1) return html;
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('[data-paste-marker]').forEach(function(marcador){
+    while(marcador.firstChild) marcador.parentNode.insertBefore(marcador.firstChild, marcador);
+    marcador.parentNode.removeChild(marcador);
+  });
+  return div.innerHTML;
+}
 function savePca(p, silent){
   var d = currentDocente();
   var existingHeader = load(LS.PCA).find(function(x){ return x.id===p.id; });
@@ -5828,9 +5847,9 @@ function savePca(p, silent){
     u.filas.forEach(function(f){
       cont.push({
         id: f.id, pcaId:p.id, docenteId:ownerId, unidad:u.nombre, semana:f.semana,
-        fechaInicio:f.fechaInicio, fechaFin:f.fechaFin, destreza:f.destreza,
-        nivelLogroIntermedio:f.nivelLogroIntermedio||'', nivelLogroAvanzado:f.nivelLogroAvanzado||'',
-        temas:f.temas, pagina:f.pagina, observacion:f.observacion
+        fechaInicio:f.fechaInicio, fechaFin:f.fechaFin, destreza:quitarMarcasPegado(f.destreza),
+        nivelLogroIntermedio:quitarMarcasPegado(f.nivelLogroIntermedio||''), nivelLogroAvanzado:quitarMarcasPegado(f.nivelLogroAvanzado||''),
+        temas:quitarMarcasPegado(f.temas), pagina:f.pagina, observacion:f.observacion
       });
     });
   });
@@ -6139,6 +6158,11 @@ function mostrarBotonOpcionesPegado(editable, marcador, htmlRaw, textoPlano){
     var submenu = document.getElementById('rtePasteSubmenu');
     if(submenu) submenu.remove();
     desenvolverMarcador();
+    /* Quitar el marcador del DOM no alcanza: el guardado lee el valor que quedó capturado en
+       memoria la última vez que se disparó "input" (justo al pegar, CON el marcador todavía
+       puesto) — sin este segundo "input", ese <span data-paste-marker> quedaba guardado para
+       siempre en Firestore salvo que el docente volviera a escribir algo más en ese mismo campo. */
+    editable.dispatchEvent(new Event('input', {bubbles:true}));
     document.removeEventListener('mousedown', onFueraDelBoton, true);
     editable.removeEventListener('keydown', cerrarTodo);
   }
@@ -6751,10 +6775,14 @@ function renderSemanalForm(d){
   var isAdminViewer = isStaffRole(d.role);
   var isIngles = semanalEsIngles(s);
 
-  var niveles = misNiveles(d.id); if(!niveles.length) niveles = NIVELES;
-  var especialidades = misEspecialidadesPara(d.id, s.nivel); if(!especialidades.length) especialidades = especialidadesFor(s.nivel);
-  var cursos = misCursosPara(d.id, s.nivel, s.especialidad); if(!cursos.length) cursos = cursosFor(s.nivel, s.especialidad);
-  var asignaturas = misAsignaturasPara(d.id, s.nivel, s.especialidad, s.curso); if(!asignaturas.length) asignaturas = asignaturasFor(s.nivel, s.especialidad);
+  /* Igual que en renderPcaForm: las opciones de Nivel/Curso/Asignatura deben salir de la Carga
+     Horaria del DUEÑO del plan (s.docenteId), no de quien lo está viendo, o un administrador que
+     abre el plan de otro docente ve las listas vacías (su propia Carga, sin registros). */
+  var ownerId = s.docenteId || d.id;
+  var niveles = misNiveles(ownerId); if(!niveles.length) niveles = NIVELES;
+  var especialidades = misEspecialidadesPara(ownerId, s.nivel); if(!especialidades.length) especialidades = especialidadesFor(s.nivel);
+  var cursos = misCursosPara(ownerId, s.nivel, s.especialidad); if(!cursos.length) cursos = cursosFor(s.nivel, s.especialidad);
+  var asignaturas = misAsignaturasPara(ownerId, s.nivel, s.especialidad, s.curso); if(!asignaturas.length) asignaturas = asignaturasFor(s.nivel, s.especialidad);
 
   var semanasDelPca = s.pcaId ? semanasDePca(s.pcaId) : [];
   var semanaActual = s.semanaRowId ? semanasDelPca.find(function(r){ return r.id===s.semanaRowId; }) : null;
