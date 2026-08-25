@@ -2116,24 +2116,24 @@ function renderManualAdmin(){
     + '<p>Estas 4 pestañas (2 para Planes Semanales, 2 para PCA, cada una dividida en Escuela/Colegio como en la sección 6) le dicen al administrador, de un vistazo, quién entregó su planificación <b>a tiempo</b>, quién la entregó <b>incompleta</b> y quién la entregó <b>atrasada</b> — sin que nadie tenga que revisar plan por plan manualmente.</p>'
     + '<h3>La Observación tiene 3 posibles resultados</h3>'
     + '<table><thead><tr><th>Observación</th><th>¿Cuándo aparece?</th></tr></thead><tbody>'
-    + '<tr><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Presentó a tiempo</span></td><td>El plan está <b>completo</b> Y se creó <b>antes o el mismo día</b> de la Fecha Límite.</td></tr>'
+    + '<tr><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Presentó a tiempo</span></td><td>El plan está <b>completo</b> Y esa fecha (de <b>creación</b> en Planes Semanales, o de <b>finalización</b> en PCA — ver más abajo) es <b>antes o el mismo día</b> de la Fecha Límite.</td></tr>'
     + '<tr><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Incompleto</span></td><td>Al plan <b>le faltan campos por llenar</b> — esto se revisa primero, sin importar la fecha: aunque se haya creado a tiempo, si está incompleto nunca se marca “a tiempo”.</td></tr>'
-    + '<tr><td><span style="color:#D69E00; background:#FFF6D9; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Atrasado</span></td><td>El plan está <b>completo</b>, pero se creó <b>después</b> de la Fecha Límite.</td></tr>'
+    + '<tr><td><span style="color:#D69E00; background:#FFF6D9; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Atrasado</span></td><td>El plan está <b>completo</b>, pero esa fecha es <b>después</b> de la Fecha Límite.</td></tr>'
     + '<tr><td><span style="color:#5B6B85; background:#EEF1F6; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Sin fecha límite definida</span></td><td>El plan está completo, pero esa categoría todavía no tiene ninguna Fecha Límite registrada (ve a la sección 9, Fechas Límite).</td></tr>'
     + '</tbody></table>'
-    + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha de creación contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”.')
+    + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha correspondiente contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”. En Planes Semanales esa fecha es la de creación; en PCA es la fecha en que quedó completo (que puede ser bastante después de creado, si el docente lo fue llenando de a poco).')
     + '<h3>Presentación de Planes Semanales — ¿qué significa "completo"?</h3>'
     + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen, cada uno: al menos un <b>Contenido Esencial</b> marcado, algo escrito en <b>Actividades</b>, y al menos un <b>Nivel de Logro</b> (Básico, Intermedio o Avanzado) marcado. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>.</p>'
     + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
     + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
-    + '<p>Un PCA se considera completo cuando tiene <b>unidades creadas hasta ' + corteTextoManual + '</b> y, en cada una de esas primeras unidades (no hace falta revisar más allá), al menos una semana con contenido real: una Destreza, unos Temas, o algún Nivel de Logro escrito — una unidad vacía (creada pero sin ninguna semana llena) no cuenta como completa. Si al PCA le faltan unidades hasta ese punto, o alguna de las primeras está vacía, queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
-    + '<p>El mismo concepto que en Planes Semanales: compara la fecha en que el docente creó su PCA contra la Fecha Límite que tú definiste, y te dice si lo presentó a tiempo, incompleto, o atrasado.</p>'
+    + '<p>Un PCA se considera completo cuando, en cada una de las primeras unidades hasta ' + corteTextoManual + ', <b>todas las semanas que el docente creó</b> tienen sus 4 casilleros llenos: <b>Destreza</b>, <b>Temas y Subtemas</b>, <b>Nivel de Logro Intermedio</b> y <b>Nivel de Logro Avanzado</b>. No basta con que una sola semana tenga algo escrito — si cualquier semana de esas primeras unidades le falta aunque sea uno de esos 4 campos, o si alguna de esas unidades no tiene ninguna semana creada, el PCA entero queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte de unidades lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
+    + '<p>A diferencia de Planes Semanales, aquí la fecha que se compara contra la Fecha Límite <b>no es la de creación</b> del PCA, sino la fecha en la que <b>quedó completo por última vez</b> (columna "Completado el") — un PCA se puede crear a tiempo pero seguir llenándose semana a semana durante varios días, y lo que importa para la Observación es cuándo de verdad terminó de cumplir el criterio de arriba.</p>'
     + manualShot('Observación de presentación', ''
-        + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
-        + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
-        + '<tr><td>Jorge Añazco</td><td>19/09/2026</td><td>15/09/2026</td><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Incompleto</span></td></tr>'
+        + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
+        + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>12/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
+        + '<tr><td>Jorge Añazco</td><td>19/09/2026</td><td>—</td><td>15/09/2026</td><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Incompleto</span></td></tr>'
         + '</tbody></table>')
-    + manualExample('Por qué un plan creado a tiempo puede salir "Incompleto"', 'El Prof. Añazco creó su PCA el 10 de septiembre, tres días antes de la Fecha Límite (13 de septiembre). Pero solo llenó la Unidad 1 — dejó vacías las unidades siguientes hasta la Unidad <b>' + corteEscuelaManual + '</b> (el corte configurado actualmente para Escuela), sin ninguna semana con destreza ni temas. Aunque la fecha de creación fue puntual, la Observación muestra "Incompleto", porque no llegó a tener contenido real hasta ese punto.')
+    + manualExample('Por qué un plan creado a tiempo puede salir "Incompleto"', 'El Prof. Añazco creó su PCA el 10 de septiembre, tres días antes de la Fecha Límite (13 de septiembre). Llenó por completo la Unidad 1, pero en la Unidad 2 creó dos semanas y dejó una de ellas sin Nivel de Logro Avanzado. Como el corte configurado actualmente para Escuela es la Unidad <b>' + corteEscuelaManual + '</b>, esa sola semana incompleta hace que todo el PCA quede como "Incompleto" — no alcanza con que la mayoría de las semanas estén bien.')
   );
 
   var secFechas = manualSection('sec-a10', '9. Fechas Límite', ''
@@ -5491,15 +5491,21 @@ function guardarConfigPca(cambios){
   var otros = load(LS.CONFIG).filter(function(c){ return c.id!=='pca'; });
   save(LS.CONFIG, otros.concat([cfg]));
 }
+/* Criterio estricto: en cada una de las primeras "unidadCorte" unidades, TODAS las semanas que el
+   docente creó deben tener sus 4 casilleros de contenido llenos (Destreza, Temas, Nivel de Logro
+   Intermedio y Nivel de Logro Avanzado) — no basta con que UNA semana tenga algo escrito en
+   cualquiera de esos campos. Una unidad sin ninguna semana creada tampoco cuenta como completa. */
 function pcaEstaCompleto(p, unidadCorte){
   var unidades = (p.unidades||[]).slice(0, unidadCorte);
   if(unidades.length < unidadCorte) return false;
   return unidades.every(function(u){
-    return (u.filas||[]).some(function(f){
+    var filas = u.filas||[];
+    if(!filas.length) return false;
+    return filas.every(function(f){
       return richTextToPlain(f.destreza||'').trim()
-        || richTextToPlain(f.temas||'').trim()
-        || richTextToPlain(f.nivelLogroIntermedio||'').trim()
-        || richTextToPlain(f.nivelLogroAvanzado||'').trim();
+        && richTextToPlain(f.temas||'').trim()
+        && richTextToPlain(f.nivelLogroIntermedio||'').trim()
+        && richTextToPlain(f.nivelLogroAvanzado||'').trim();
     });
   });
 }
@@ -5948,6 +5954,17 @@ function savePca(p, silent){
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
   p.updatedAt = nowISO();
   p.unidadesNombres = p.unidades.map(function(u){ return u.nombre; });
+  /* completadoEn: la fecha en que el PCA quedó completo por ÚLTIMA VEZ (para "Presentación de
+     PCA", que compara ESTO contra la Fecha Límite en vez de la fecha de creación). Se calcula en
+     cada guardado con el corte de unidades vigente en este momento: si ya estaba completo antes,
+     se conserva la fecha original (no se corre solo por seguir editando); si no estaba completo y
+     ahora sí, se marca "ahora"; si deja de estarlo (p.ej. el admin subió el corte, o se agregó una
+     semana vacía), se borra para que la próxima vez que vuelva a completarse cuente como un nuevo
+     momento de finalización. */
+  var bandaPca = esEscuelaPorNivelCurso(p.nivel, p.curso==='Otro…' ? p.cursoManual : p.curso) ? 'escuela' : 'colegio';
+  var completoAhora = pcaEstaCompleto({unidades: p.unidades}, unidadCortePca(bandaPca));
+  var completadoEnPrevio = existingHeader ? (existingHeader.completadoEn||'') : '';
+  var completadoEn = completoAhora ? (completadoEnPrevio || p.updatedAt) : '';
   var header = {
     id:p.id, docenteId:ownerId, nivel:p.nivel, especialidad:p.especialidad,
     curso:p.curso, cursoManual:p.cursoManual||'', asignatura:p.asignatura, asignaturaManual:p.asignaturaManual||'',
@@ -5956,6 +5973,7 @@ function savePca(p, silent){
     elaboradoPor:p.elaboradoPor, revisadoPor:p.revisadoPor, aprobadoPor:p.aprobadoPor,
     locked: !!p.locked,
     importadoDeDocente: p.importadoDeDocente||'', importadoFecha: p.importadoFecha||'',
+    completadoEn: completadoEn,
     createdAt:p.createdAt, updatedAt:p.updatedAt
   };
   var pcas = load(LS.PCA).filter(function(x){ return x.id!==p.id; });
@@ -8631,13 +8649,19 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
   }).map(function(p){
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
     var pcaConUnidades = { unidades: unidadesParaCompletitud(p.id, p.unidadesNombres) };
-    var estado = calcularEstadoPresentacion(pcaEstaCompleto(pcaConUnidades, unidadCortePca(banda)), p.createdAt, p.fechaLimite);
+    var completo = pcaEstaCompleto(pcaConUnidades, unidadCortePca(banda));
+    /* Compara contra CUÁNDO QUEDÓ COMPLETO (completadoEn), no contra cuándo se creó — ver la nota
+       en savePca. Los PCA guardados antes de que existiera este campo no lo tienen: para esos,
+       usa updatedAt (la última edición) como el mejor dato disponible, aunque no sea exacto si
+       el docente siguió editando otras cosas después de completarlo. */
+    var fechaParaObservacion = p.completadoEn || p.updatedAt;
+    var estado = calcularEstadoPresentacion(completo, fechaParaObservacion, p.fechaLimite);
     return {
       asignatura: (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || '—',
       curso: curso, cursoRaw: p.curso==='Otro…' ? p.cursoManual : p.curso,
       nivel: p.nivel||'—', especialidad: p.especialidad||'',
       unidades: (p.unidadesNombres||[]).length,
-      createdAt:p.createdAt, fechaLimite:p.fechaLimite, estado:estado
+      createdAt:p.createdAt, completadoEn: completo ? fechaParaObservacion : '', fechaLimite:p.fechaLimite, estado:estado
     };
   });
 }
@@ -8650,7 +8674,7 @@ function renderAdminPresentacionPca(banda){
   var formHtml = ''
     + '<div class="card" style="background:'+pastel+';">'
     + '  <h2>' + tituloBanda + '</h2>'
-    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA esté lleno hasta la Unidad <b>' + unidadActual + '</b> y que se haya creado antes de la Fecha Límite que tiene guardada.</div>'
+    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La Observación exige dos cosas: que el PCA tenga TODAS las semanas creadas, con sus 4 casilleros llenos (Destreza, Temas, Nivel de Logro Intermedio y Avanzado), en cada una de las primeras Unidad <b>' + unidadActual + '</b>; y que haya quedado completo antes de la Fecha Límite que tiene guardada (no la fecha en que se creó, sino la fecha en que terminó de llenar esas unidades).</div>'
     + '  <div class="grid-2" style="max-width:520px;">'
     + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppPcaFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
     + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppPcaFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
@@ -8691,11 +8715,12 @@ function renderAdminPresentacionPca(banda){
           + '<td>' + escapeHtml(f.nivel) + (f.especialidad ? '<br/><span class="pill pill-blue">'+escapeHtml(f.especialidad)+'</span>' : '') + '</td>'
           + '<td class="tabular">' + f.unidades + '</td>'
           + '<td>' + (f.createdAt ? fmtDateTime(f.createdAt) : '—') + '</td>'
+          + '<td>' + (f.completadoEn ? fmtDateTime(f.completadoEn) : '—') + '</td>'
           + '<td>' + (f.fechaLimite ? fmtDateTimeLocal(f.fechaLimite) : '—') + '</td>'
           + '<td>' + presentacionBadge(f.estado) + '</td>'
           + '</tr>';
       }).join('');
-      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
+      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
     }).join('');
     return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
   }).filter(Boolean);
