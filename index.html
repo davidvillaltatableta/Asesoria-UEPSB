@@ -805,18 +805,19 @@ function ordenCursoEscuela(curso){
 /* ============================= INSPECCIÓN GENERAL ============================= */
 /* Jornada fija: 11 horas curriculares de 45 min desde las 07:15, con receso de 45 min
    (10:15-11:00) entre la 4.ª y la 5.ª hora. */
+/* Desde las 11:00 (después del receso) las horas pasan de 45 a 40 minutos cada una. */
 var PERIODOS = [
   {n:1, inicio:'07:15', fin:'08:00'},
   {n:2, inicio:'08:00', fin:'08:45'},
   {n:3, inicio:'08:45', fin:'09:30'},
   {n:4, inicio:'09:30', fin:'10:15'},
-  {n:5, inicio:'11:00', fin:'11:45'},
-  {n:6, inicio:'11:45', fin:'12:30'},
-  {n:7, inicio:'12:30', fin:'13:15'},
-  {n:8, inicio:'13:15', fin:'14:00'},
-  {n:9, inicio:'14:00', fin:'14:45'},
-  {n:10, inicio:'14:45', fin:'15:30'},
-  {n:11, inicio:'15:30', fin:'16:15'}
+  {n:5, inicio:'11:00', fin:'11:40'},
+  {n:6, inicio:'11:40', fin:'12:20'},
+  {n:7, inicio:'12:20', fin:'13:00'},
+  {n:8, inicio:'13:00', fin:'13:40'},
+  {n:9, inicio:'13:40', fin:'14:20'},
+  {n:10, inicio:'14:20', fin:'15:00'},
+  {n:11, inicio:'15:00', fin:'15:40'}
 ];
 var RECESO = {inicio:'10:15', fin:'11:00'};
 var ESTADOS_ASISTENCIA = ['P','A','F']; // Presente, Atraso, Falta
@@ -2895,16 +2896,15 @@ function bindAsistenciaResultEvents(){
    guardar): usa setDoc con merge:true, enviando solo los períodos que este docente tocó, para que
    Firestore fusione los cambios de todos sin que se pisen entre sí. */
 function renderMiAsistencia(d){
-  var f = state.misAsisFiltro || (state.misAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO(), horaInicio:'1', horas:1});
-  var niveles = misNiveles(d.id);
-  var especialidades = misEspecialidadesPara(d.id, f.nivel);
-  var cursos = misCursosPara(d.id, f.nivel, f.especialidad);
-  if(!niveles.length){
-    return ''
-    + '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Asistencia</h1><p>Toma la asistencia de tus estudiantes, curso por curso, cada día de clase.</p></div></div>'
-    + '<div class="card"><div class="empty-state"><div class="ic">✅</div>Todavía no has registrado tu Carga Horaria — ve primero a "Mi Carga Horaria" para poder elegir tus cursos aquí.</div></div>';
-  }
-  var maxHoras = PERIODOS.length - (parseInt(f.horaInicio,10)||1) + 1;
+  var f = state.misAsisFiltro || (state.misAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO(), horas:[]});
+  var niveles = NIVELES;
+  var especialidades = especialidadesFor(f.nivel);
+  var cursos = cursosFor(f.nivel, f.especialidad);
+  var horasSeleccionadas = f.horas || (f.horas = []);
+  var horasHtml = '<div class="checkbox-grid">' + PERIODOS.map(function(p){
+    var checked = horasSeleccionadas.indexOf(p.n)!==-1;
+    return '<label class="checkbox-pill"><input type="checkbox" class="maasis-hora-cb" value="'+p.n+'" '+(checked?'checked':'')+' /> H'+p.n+' ('+p.inicio+'–'+p.fin+')</label>';
+  }).join('') + '</div>';
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Asistencia</h1><p>Toma la asistencia de tus estudiantes, curso por curso, cada día de clase. Se comparte en tiempo real con Inspección General.</p></div></div>'
   + '<div class="card">'
@@ -2916,27 +2916,17 @@ function renderMiAsistencia(d){
   + '    <div class="field"><label>Curso</label><select class="cell-select" id="maCurso" '+(cursos.length?'':'disabled')+'>' + optionsHtml(cursos, f.curso, cursos.length?'Elija un elemento…':'Elija primero el nivel') + '</select></div>'
   + '    <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="maFecha" value="'+escapeHtml(f.fecha)+'" /></div>'
   + '  </div>'
-  + '  <div class="field-row">'
-  + '    <div class="field"><label>¿A partir de qué hora dictas?</label><select class="cell-select" id="maHoraInicio">' + PERIODOS.map(function(p){ return '<option value="'+p.n+'" '+(String(f.horaInicio)===String(p.n)?'selected':'')+'>H'+p.n+' ('+p.inicio+'–'+p.fin+')</option>'; }).join('') + '</select></div>'
-  + '    <div class="field"><label>¿Cuántas horas de clase dictas?</label><input class="cell-input" type="number" id="maHoras" min="1" max="'+maxHoras+'" value="'+escapeHtml(f.horas)+'" /></div>'
-  + '  </div>'
+  + '  <div class="field"><label>¿En qué horas de clase dictas? (elige todas las que apliquen)</label>' + horasHtml + '</div>'
   + '</div>'
   + '<div id="miAsistenciaResultWrap">' + miAsistenciaResultHtml() + '</div>';
 }
 function periodosElegidosMiAsistencia(f){
-  var horaInicio = parseInt(f.horaInicio,10) || 1;
-  var horas = Math.max(1, parseInt(f.horas,10) || 1);
-  var out = [];
-  for(var k=0; k<horas; k++){
-    var n = horaInicio + k;
-    if(n > PERIODOS.length) break;
-    out.push(n);
-  }
-  return out;
+  return (f.horas||[]).slice().sort(function(a,b){ return a-b; });
 }
 function miAsistenciaResultHtml(){
   var f = state.misAsisFiltro;
-  if(!f.nivel || !f.curso || !f.fecha) return '<div class="hint" style="margin-top:14px;">Elige nivel, curso, fecha y la hora de inicio para tomar asistencia.</div>';
+  if(!f.nivel || !f.curso || !f.fecha) return '<div class="hint" style="margin-top:14px;">Elige nivel, curso y fecha para tomar asistencia.</div>';
+  if(!(f.horas||[]).length) return '<div class="hint" style="margin-top:14px;">Elige al menos una hora de clase para tomar asistencia.</div>';
   var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
   if(!estudiantes.length) return '<div class="hint" style="margin-top:14px;">No hay estudiantes activos registrados en este curso todavía (los registra Inspección General).</div>';
   var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, f.fecha);
@@ -2983,10 +2973,14 @@ function bindMiAsistenciaEvents(){
   if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; state.editingMiAsistencia=null; render(); };
   var fechaInp = document.getElementById('maFecha');
   if(fechaInp) fechaInp.onchange = function(e){ f.fecha=e.target.value; state.editingMiAsistencia=null; render(); };
-  var horaInp = document.getElementById('maHoraInicio');
-  if(horaInp) horaInp.onchange = function(e){ f.horaInicio=e.target.value; state.editingMiAsistencia=null; render(); };
-  var horasInp = document.getElementById('maHoras');
-  if(horasInp) horasInp.oninput = function(e){ f.horas=e.target.value; renderMiAsistenciaResultOnly(); };
+  document.querySelectorAll('.maasis-hora-cb').forEach(function(cb){
+    cb.onchange = function(){
+      var n = parseInt(cb.value,10);
+      var idx = f.horas.indexOf(n);
+      if(cb.checked){ if(idx===-1) f.horas.push(n); } else { if(idx!==-1) f.horas.splice(idx,1); }
+      renderMiAsistenciaResultOnly();
+    };
+  });
   bindMiAsistenciaResultEvents();
 }
 function bindMiAsistenciaResultEvents(){
@@ -6433,6 +6427,7 @@ function renderSemanalListInner(d, scopeAll, banda){
     + '  <td>' + fmtDateTime(s.updatedAt) + '</td>'
     + '  <td style="white-space:nowrap;">'
     + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">Ver / Editar</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-replanificar-semanal="' + s.id + '" title="Crea un nuevo plan duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA para reforzar">Replanificar</button> '
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-excel="' + s.id + '">Excel</button> '
@@ -6520,6 +6515,14 @@ function bindSemanalListSharedEvents(){
         eliminarConDeshacer(LS.SEMANAL, btn.getAttribute('data-delete-semanal'), 'Plan semanal eliminado.', 'Plan semanal restaurado.');
         render();
       });
+    };
+  });
+  document.querySelectorAll('[data-replanificar-semanal]').forEach(function(btn){
+    btn.onclick = function(){
+      var semId = btn.getAttribute('data-replanificar-semanal');
+      confirmDialog('¿Crear un nuevo plan semanal duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA en el primer día (para reforzar)?', function(){
+        replanificarSemanal(semId);
+      }, 'Replanificar');
     };
   });
   document.querySelectorAll('[data-export-semanal-word]').forEach(function(btn){ btn.onclick = function(){ exportSemanalWord(btn.getAttribute('data-export-semanal-word')); }; });
@@ -6636,7 +6639,6 @@ function recomputeSemanalPca(s){
 
 function openSemanalForm(semId, returnTo){
   state.semanalReturnTo = returnTo || 'semanallist';
-  state.semanalReplanificarActivo = false;
   var d = currentDocente();
   if(semId){
     var found = load(LS.SEMANAL).find(function(s){ return s.id===semId; });
@@ -6651,11 +6653,9 @@ function openSemanalForm(semId, returnTo){
 
 function semanalToolbarHtml(s){
   var isIngles = semanalEsIngles(s);
-  var replanActivo = !!state.semanalReplanificarActivo;
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
-    + '  <button class="btn btn-sm ' + (replanActivo?'btn-primary':'btn-ghost') + '" id="btnReplanificar" title="Vuelve a mostrar los temas y niveles de logro de la semana anterior para reforzarlos, además de los de esta semana y los pendientes">' + te('Replanificar', isIngles) + '</button>'
     + '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>'
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
@@ -6782,7 +6782,7 @@ function renderSemanalForm(d){
   // "Replanificar" (botón en la barra de arriba) agrega un 3er bloque con los ítems de la semana
   // anterior del PCA que YA se cubrieron (los que faltan por cubrir ya están en "Pendientes") —
   // para que el docente pueda elegir reforzarlos aunque ya se hayan dado.
-  var replanificarActivo = !!state.semanalReplanificarActivo;
+  var replanificarActivo = false;
   function reforzarNivelLogro(tier, pendientes){
     if(!replanificarActivo) return [];
     return nivelLogroSemanaAnteriorCompleta(s.pcaId, semanaActual.id, tier).filter(function(t){ return pendientes.indexOf(t)===-1; });
@@ -6904,12 +6904,6 @@ function bindSemanalFormEvents(){
   document.getElementById('btnExportSemanalWordNow').onclick = function(){ saveSemanal(s, true); exportSemanalWord(s.id); };
   document.getElementById('btnExportSemanalExcelNow').onclick = function(){ saveSemanal(s, true); exportSemanalExcel(s.id); };
   document.getElementById('btnExportSemanalPdfNow').onclick = printAsPdf;
-  var btnReplan = document.getElementById('btnReplanificar');
-  if(btnReplan) btnReplan.onclick = function(){
-    state.semanalReplanificarActivo = !state.semanalReplanificarActivo;
-    renderSemanalFormAgain();
-    toast(state.semanalReplanificarActivo ? 'Mostrando también los temas y niveles de logro de la semana anterior para reforzar.' : 'Replanificar desactivado.', 'success');
-  };
   bindAutoguardadoDelegado('semanalDoc', 'semanal');
 
   document.getElementById('sfNivel').addEventListener('change', function(e){ s.nivel=e.target.value; s.especialidad=''; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
@@ -6993,6 +6987,64 @@ function renderSemanalFormAgain(){
   bindSemanalFormEvents();
 }
 
+/* "Replanificar" (botón de la lista de Planes Semanales): duplica un plan existente en uno nuevo,
+   agregando en el primer día los temas y niveles de logro COMPLETOS de la semana anterior del PCA
+   (ver temasSemanaAnteriorCompleta/nivelLogroSemanaAnteriorCompleta) para reforzarlos, sin perder
+   los que ya tenía el plan original. Numera el nuevo plan como el original + ".1" (p.ej. "3.1"),
+   o ".2"/".3"... si ya existe ese número (por si se replanifica más de una vez). */
+function mergeSemicolonLista(actual, nuevos){
+  var items = (actual||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var set = {}; items.forEach(function(t){ set[t]=1; });
+  (nuevos||[]).forEach(function(t){ if(!set[t]){ items.push(t); set[t]=1; } });
+  return items.join(';');
+}
+function numeroReplanificado(docenteId, base){
+  var existentes = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).map(function(s){ return String(s.numero); });
+  var i = 1, candidato;
+  do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
+  return candidato;
+}
+function replanificarSemanal(semId){
+  var s = load(LS.SEMANAL).find(function(x){ return x.id===semId; });
+  if(!s) return;
+  var temasReforzar = s.semanaRowId ? temasSemanaAnteriorCompleta(s.pcaId, s.semanaRowId) : [];
+  var basicoReforzar = s.semanaRowId ? nivelLogroSemanaAnteriorCompleta(s.pcaId, s.semanaRowId, 'basico') : [];
+  var intermedioReforzar = s.semanaRowId ? nivelLogroSemanaAnteriorCompleta(s.pcaId, s.semanaRowId, 'intermedio') : [];
+  var avanzadoReforzar = s.semanaRowId ? nivelLogroSemanaAnteriorCompleta(s.pcaId, s.semanaRowId, 'avanzado') : [];
+  if(!temasReforzar.length && !basicoReforzar.length && !intermedioReforzar.length && !avanzadoReforzar.length){
+    toast('No se encontró una semana anterior en el PCA con temas o niveles de logro para reforzar.', 'error');
+    return;
+  }
+  var dias = (s.dias||[]).map(function(dia, idx){
+    var nuevo = {
+      id: uid('dia'), fecha: dia.fecha||'', contenidos: dia.contenidos||'',
+      nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
+      actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+    };
+    if(idx===0){
+      nuevo.contenidos = mergeSemicolonLista(nuevo.contenidos, temasReforzar);
+      nuevo.nivelLogroBasico = mergeSemicolonLista(nuevo.nivelLogroBasico, basicoReforzar);
+      nuevo.nivelLogroIntermedio = mergeSemicolonLista(nuevo.nivelLogroIntermedio, intermedioReforzar);
+      nuevo.nivelLogroAvanzado = mergeSemicolonLista(nuevo.nivelLogroAvanzado, avanzadoReforzar);
+    }
+    return nuevo;
+  });
+  var nuevoNumero = numeroReplanificado(s.docenteId, s.numero);
+  var nuevo = {
+    id: uid('sem'), docenteId: s.docenteId, numero: nuevoNumero,
+    nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
+    pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
+    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
+    dias: dias,
+    revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  var all = load(LS.SEMANAL).slice();
+  all.push(nuevo);
+  save(LS.SEMANAL, all);
+  toast('Plan replanificado como N.º ' + nuevoNumero + ', con los temas y niveles de logro de la semana anterior agregados en el primer día.', 'success');
+  render();
+}
 function saveSemanal(s, silent){
   var d = currentDocente();
   var existingHeader = load(LS.SEMANAL).find(function(x){ return x.id===s.id; });
