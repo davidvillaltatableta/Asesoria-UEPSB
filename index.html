@@ -2107,6 +2107,11 @@ function renderManualAdmin(){
     + manualExample('Uso típico', 'Antes de una reunión de área, el administrador elige al docente y su PCA de Matemática, pone la fecha de hoy, y obtiene un reporte de todo lo avanzado en el año hasta ese momento, listo para imprimir.')
   );
 
+  var corteEscuelaManual = unidadCortePca('escuela');
+  var corteColegioManual = unidadCortePca('colegio');
+  var corteTextoManual = corteEscuelaManual === corteColegioManual
+    ? ('la Unidad <b>' + corteEscuelaManual + '</b>')
+    : ('la Unidad <b>' + corteEscuelaManual + '</b> en Escuela y la Unidad <b>' + corteColegioManual + '</b> en Colegio');
   var secPresentacion = manualSection('sec-a9', '8. Presentación de Planes y de PCA — cómo se calcula la Observación', ''
     + '<p>Estas 4 pestañas (2 para Planes Semanales, 2 para PCA, cada una dividida en Escuela/Colegio como en la sección 6) le dicen al administrador, de un vistazo, quién entregó su planificación <b>a tiempo</b>, quién la entregó <b>incompleta</b> y quién la entregó <b>atrasada</b> — sin que nadie tenga que revisar plan por plan manualmente.</p>'
     + '<h3>La Observación tiene 3 posibles resultados</h3>'
@@ -2121,14 +2126,14 @@ function renderManualAdmin(){
     + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen, cada uno: al menos un <b>Contenido Esencial</b> marcado, algo escrito en <b>Actividades</b>, y al menos un <b>Nivel de Logro</b> (Básico, Intermedio o Avanzado) marcado. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>.</p>'
     + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
     + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
-    + '<p>Un PCA se considera completo cuando tiene <b>al menos 3 unidades creadas</b> y, en <b>cada una de esas 3 primeras unidades</b> (no hace falta revisar más allá de la Unidad 3), al menos una semana con contenido real: una Destreza, unos Temas, o algún Nivel de Logro escrito — una unidad vacía (creada pero sin ninguna semana llena) no cuenta como completa. Si el PCA tiene menos de 3 unidades, o alguna de las 3 primeras está vacía, queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto.</p>'
+    + '<p>Un PCA se considera completo cuando tiene <b>unidades creadas hasta ' + corteTextoManual + '</b> y, en cada una de esas primeras unidades (no hace falta revisar más allá), al menos una semana con contenido real: una Destreza, unos Temas, o algún Nivel de Logro escrito — una unidad vacía (creada pero sin ninguna semana llena) no cuenta como completa. Si al PCA le faltan unidades hasta ese punto, o alguna de las primeras está vacía, queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
     + '<p>El mismo concepto que en Planes Semanales: compara la fecha en que el docente creó su PCA contra la Fecha Límite que tú definiste, y te dice si lo presentó a tiempo, incompleto, o atrasado.</p>'
     + manualShot('Observación de presentación', ''
         + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
         + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
         + '<tr><td>Jorge Añazco</td><td>19/09/2026</td><td>15/09/2026</td><td><span style="color:#D62828; background:#FBE4E4; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Incompleto</span></td></tr>'
         + '</tbody></table>')
-    + manualExample('Por qué un plan creado a tiempo puede salir "Incompleto"', 'El Prof. Añazco creó su PCA el 10 de septiembre, tres días antes de la Fecha Límite (13 de septiembre). Pero solo llenó la Unidad 1 — la Unidad 2 y la Unidad 3 las creó vacías, sin ninguna semana con destreza ni temas. Aunque la fecha de creación fue puntual, la Observación muestra "Incompleto", porque no llegó a tener contenido real hasta la Unidad 3.')
+    + manualExample('Por qué un plan creado a tiempo puede salir "Incompleto"', 'El Prof. Añazco creó su PCA el 10 de septiembre, tres días antes de la Fecha Límite (13 de septiembre). Pero solo llenó la Unidad 1 — dejó vacías las unidades siguientes hasta la Unidad <b>' + corteEscuelaManual + '</b> (el corte configurado actualmente para Escuela), sin ninguna semana con destreza ni temas. Aunque la fecha de creación fue puntual, la Observación muestra "Incompleto", porque no llegó a tener contenido real hasta ese punto.')
   );
 
   var secFechas = manualSection('sec-a10', '9. Fechas Límite', ''
