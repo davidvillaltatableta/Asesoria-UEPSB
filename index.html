@@ -766,6 +766,14 @@ function esAsignaturaTallerPractico(nivel, asignatura){
   if(ASIGNATURAS_TALLER_PRACTICO_CUALQUIER_NIVEL.indexOf(asignatura) !== -1) return true;
   return nivel === 'Bachillerato' && ASIGNATURAS_TALLER_PRACTICO_BACHILLERATO.indexOf(asignatura) !== -1;
 }
+/* Mismo criterio de "asignatura técnica" (Computación, Robótica, Diseño Gráfico práctico) pero
+   aplicado a un PCA — usado para cambiar la terminología "Unidad" → "Proyecto" en Temporalización
+   y Contenidos sin tocar el dato guardado (solo las etiquetas/valores por defecto de filas nuevas;
+   ver renderPcaForm). */
+function esPcaAsignaturaTecnica(p){
+  var asig = p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura;
+  return esAsignaturaTallerPractico(p.nivel, asig);
+}
 /* Para decidir qué mostrar en el menú lateral: si TODA la Carga Horaria del docente es de
    asignaturas técnicas, no tiene sentido mostrarle "Planes Semanales" (siempre le saldría vacío);
    si NINGUNA de sus asignaturas es técnica, no tiene sentido mostrarle "Taller Práctico". Un
@@ -5851,18 +5859,19 @@ function renderPcaForm(d){
   var misAsig = misAsignaturasPara(ownerId, p.nivel, p.especialidad, p.curso);
   var asigOpts = misAsig.length ? misAsig : asignaturasFor(p.nivel, p.especialidad);
   var totalSemanas = (p.temporalizacion||[]).reduce(function(s,t){ return s + (parseFloat(t.semanas)||0); }, 0);
+  var esTecnico = esPcaAsignaturaTecnica(p);
 
   var temporalizacionRows = (p.temporalizacion||[]).map(function(t){
     return '<tr data-tmrow="'+t.id+'">'
-    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="'+te('p.ej. Unidad 1', isIngles)+'" /></td>'
-    + '<td><input class="cell-input" data-tf="nombreUnidad" value="'+escapeHtml(t.nombreUnidad||'')+'" placeholder="'+te('Nombre de la unidad', isIngles)+'" /></td>'
+    + '<td><input class="cell-input" data-tf="unidad" value="'+escapeHtml(t.unidad)+'" placeholder="'+(esTecnico?'p.ej. Proyecto 1':te('p.ej. Unidad 1', isIngles))+'" /></td>'
+    + '<td><input class="cell-input" data-tf="nombreUnidad" value="'+escapeHtml(t.nombreUnidad||'')+'" placeholder="'+(esTecnico?'Nombre del proyecto':te('Nombre de la unidad', isIngles))+'" /></td>'
     + '<td><select class="cell-select" data-tf="trimestre">' + optionsHtml(['1er Trimestre','2do Trimestre','3er Trimestre'], t.trimestre, null, function(x){ return te(x, isIngles); }) + '</select></td>'
     + '<td><input class="cell-input tabular" data-tf="semanas" type="number" min="0" value="'+escapeHtml(t.semanas)+'" /></td>'
     + '<td><button class="row-remove" data-tmremove="'+t.id+'">✕</button></td>'
     + '</tr>';
   }).join('');
 
-  var unidadesHtml = (p.unidades||[]).map(function(u, ui){ return unitBlockHtml(u, ui, p.id, isIngles); }).join('');
+  var unidadesHtml = (p.unidades||[]).map(function(u, ui){ return unitBlockHtml(u, ui, p.id, isIngles, esTecnico); }).join('');
 
   return ''
   + pcaToolbarHtml(p)
@@ -5894,7 +5903,7 @@ function renderPcaForm(d){
   + '  </div>'
   + '  <div class="pca-band band-section">' + te('Temporalización', isIngles) + '</div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th>' + te('Unidad didáctica', isIngles) + '</th><th>' + te('Nombre de la Unidad', isIngles) + '</th><th>' + te('Trimestre en que se trabajará', isIngles) + '</th><th>' + te('N.º de semanas', isIngles) + '</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th>' + (esTecnico?'Proyecto':te('Unidad didáctica', isIngles)) + '</th><th>' + (esTecnico?'Nombre del Proyecto':te('Nombre de la Unidad', isIngles)) + '</th><th>' + te('Trimestre en que se trabajará', isIngles) + '</th><th>' + te('N.º de semanas', isIngles) + '</th><th></th></tr></thead>'
   + '    <tbody id="tmBody">' + temporalizacionRows + '</tbody>'
   + '    <tfoot><tr class="totals-row"><td colspan="3">' + te('TOTAL', isIngles) + '</td><td class="tabular">' + totalSemanas + '</td><td></td></tr></tfoot></table></div>'
   + '    <button class="btn btn-ghost btn-sm" id="btnAddTemporalizacion" style="margin-top:10px;">' + te('+ Agregar unidad a la temporalización', isIngles) + '</button>'
@@ -5911,7 +5920,7 @@ function renderPcaForm(d){
   + '</div>';
 }
 
-function unitBlockHtml(u, ui, pcaId, isIngles){
+function unitBlockHtml(u, ui, pcaId, isIngles, esTecnico){
   var rows = u.filas.map(function(f, fi){
     return '<tr data-wkrow="'+f.id+'">'
     + '<td class="tabular" style="text-align:center;">' + (fi+1) + '</td>'
@@ -5931,10 +5940,10 @@ function unitBlockHtml(u, ui, pcaId, isIngles){
   }).join('');
   return ''
   + '<div class="unit-block" data-unit="' + u.id + '">'
-  + '  <div class="pca-band band-unit"><input class="unit-head-input" data-unitname="'+u.id+'" value="'+escapeHtml(u.nombre)+'" placeholder="'+te('Nombre de la unidad', isIngles)+'" />'
+  + '  <div class="pca-band band-unit"><input class="unit-head-input" data-unitname="'+u.id+'" value="'+escapeHtml(u.nombre)+'" placeholder="'+(esTecnico?'Nombre del proyecto':te('Nombre de la unidad', isIngles))+'" />'
   + '    <button class="btn btn-danger btn-sm no-print" data-removeunit="'+u.id+'" style="margin-left:auto; background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">' + te('Eliminar unidad', isIngles) + '</button></div>'
   + '  <div class="pca-section">'
-  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">' + te('Semana', isIngles) + '</th><th style="width:150px;">' + te('Fecha', isIngles) + '</th><th>' + te('Niveles de Logro', isIngles) + '</th><th>' + te('Temas y subtemas', isIngles) + '</th><th style="width:70px;">' + te('Página', isIngles) + '</th><th>' + te('Observación', isIngles) + '</th><th></th></tr></thead>'
+  + '    <div class="table-wrap"><table><thead><tr><th style="width:36px; text-align:center;">' + (esTecnico?'Proyecto':te('Semana', isIngles)) + '</th><th style="width:150px;">' + te('Fecha', isIngles) + '</th><th>' + te('Niveles de Logro', isIngles) + '</th><th>' + te('Temas y subtemas', isIngles) + '</th><th style="width:70px;">' + te('Página', isIngles) + '</th><th>' + te('Observación', isIngles) + '</th><th></th></tr></thead>'
   + '    <tbody data-unitbody="' + u.id + '">' + rows + '</tbody></table></div>'
   + '    <button class="btn btn-ghost btn-sm no-print" data-addweek="' + u.id + '" style="margin-top:10px;">' + te('+ Agregar semana', isIngles) + '</button>'
   + '  </div>'
@@ -5979,7 +5988,8 @@ function bindPcaFormEvents(){
 
   // Temporalización
   document.getElementById('btnAddTemporalizacion').onclick = function(){
-    p.temporalizacion.push({id:uid('tm'), unidad:'Unidad ' + (p.temporalizacion.length+1), nombreUnidad:'', trimestre:'1er Trimestre', semanas:''});
+    var prefijo = esPcaAsignaturaTecnica(p) ? 'Proyecto ' : 'Unidad ';
+    p.temporalizacion.push({id:uid('tm'), unidad:prefijo + (p.temporalizacion.length+1), nombreUnidad:'', trimestre:'1er Trimestre', semanas:''});
     renderPcaFormAgain();
   };
   document.querySelectorAll('[data-tmremove]').forEach(function(btn){
@@ -5998,7 +6008,8 @@ function bindPcaFormEvents(){
   // Unidades / semanas
   document.getElementById('btnAddUnidad').onclick = function(){
     var n = p.unidades.length + 1;
-    p.unidades.push({id:uid('un'), nombre:'Unidad ' + n, filas:[weekRow(1)]});
+    var prefijo = esPcaAsignaturaTecnica(p) ? 'Proyecto ' : 'Unidad ';
+    p.unidades.push({id:uid('un'), nombre:prefijo + n, filas:[weekRow(1)]});
     renderPcaFormAgain();
   };
   document.querySelectorAll('[data-removeunit]').forEach(function(btn){
