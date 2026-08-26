@@ -7611,23 +7611,17 @@ function tallerToolbarHtml(t){
 /* Arma las casillas de Temas y Niveles de Logro a partir de la semana del PCA vinculada — mismo
    mecanismo que el Plan Semanal (ver temasSemana/nivelesLogroDiaHtml), pero en una sola sección
    (el Taller Práctico no tiene días separados). */
-function tallerContenidosHtml(t, isIngles){
+function tallerContexto(t){
   var semanasDelPca = t.pcaId ? semanasDePca(t.pcaId) : [];
   var semanaActual = t.semanaRowId ? semanasDelPca.find(function(r){ return r.id===t.semanaRowId; }) : null;
   var motivo = t.pcaId
     ? (!semanasDelPca.length ? 'El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.'
        : (!semanaActual ? 'La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.' : null))
     : 'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".';
-
-  var temas = semanaActual ? parseLinesList(semanaActual.temas) : [];
-  var seleccionTemas = (t.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-  seleccionTemas.forEach(function(x){ if(temas.indexOf(x)===-1) temas.push(x); });
-  var temasHtml = motivo
-    ? '<div class="hint">' + escapeHtml(motivo) + '</div>'
-    : (temas.length
-        ? '<div class="checkbox-grid">' + temas.map(function(x){ return '<label class="checkbox-pill"><input type="checkbox" class="taller-contenido-cb" value="' + escapeHtml(x) + '" ' + (seleccionTemas.indexOf(x)!==-1?'checked':'') + ' />' + escapeHtml(x) + '</label>'; }).join('') + '</div>'
-        : '<div class="hint">El PCA no tiene temas registrados para esta semana.</div>');
-
+  return {semanaActual: semanaActual, motivo: motivo};
+}
+function tallerNivelesLogroHtml(t){
+  var ctx = tallerContexto(t), semanaActual = ctx.semanaActual, motivo = ctx.motivo;
   var columnas = ['basico','intermedio','avanzado'].map(function(tier){
     var campoPca = NIVEL_LOGRO_PCA_FIELD[tier];
     var campoTaller = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
@@ -7637,30 +7631,49 @@ function tallerContenidosHtml(t, isIngles){
     var body = motivo
       ? ''
       : (items.length
-          ? '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(x){ return '<label class="checkbox-pill"><input type="checkbox" class="taller-nivellogro-cb" data-tier="' + tier + '" value="' + escapeHtml(x) + '" ' + (seleccion.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>'; }).join('') + '</div>'
+          ? '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(x){ return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="taller-nivellogro-cb" data-tier="' + tier + '" value="' + escapeHtml(x) + '" ' + (seleccion.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>'; }).join('') + '</div>'
           : '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + NIVEL_LOGRO_DIA_LABEL[tier] + ' para esta semana.</div>');
     return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div>' + body + '</div>';
   }).join('');
-
-  return ''
-    + '<div class="field" style="margin-top:12px;"><label class="semanal-section-title">Temas asociados a la práctica</label>' + temasHtml + '</div>'
-    + '<div class="field" style="margin-top:12px;"><label class="semanal-section-title">Niveles de Logro</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+  return '<div class="field" style="margin-top:12px;"><label class="semanal-section-title">Niveles de Logro</label>'
+    + (motivo ? '<div class="hint">' + escapeHtml(motivo) + '</div>' : '<div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div>')
+    + '</div>';
 }
-function taillerFaseHtml(t, fase){
-  var kP=fase.key+'Presencial', kA=fase.key+'Autonomo', kR=fase.key+'Recursos', kT=fase.key+'Tecnica', kI=fase.key+'Instrumento';
-  return ''
-  + '<div class="pca-band band-unit"><div class="unit-head-input" style="cursor:default;">' + escapeHtml(fase.label) + '</div></div>'
-  + '<div class="pca-section">'
-  + '  <div class="grid-2">'
-  + '    <div class="field"><label>Trabajo presencial <span class="hint">(dentro del aula)</span></label>' + richEditorHtml(kP, t.id, t[kP], 'Actividades que realizará el estudiante en el aula…') + '</div>'
-  + '    <div class="field"><label>Trabajo autónomo <span class="hint">(en casa)</span></label>' + richEditorHtml(kA, t.id, t[kA], 'Actividades que realizará el estudiante en casa…') + '</div>'
-  + '  </div>'
-  + '  <div class="field" style="margin-top:12px;"><label>Recursos</label>' + richEditorHtml(kR, t.id, t[kR], 'Materiales o recursos que se emplearán…') + '</div>'
-  + '  <div class="field-row" style="margin-top:12px;">'
-  + '    <div class="field"><label>Técnica de evaluación</label><input class="cell-input" data-tf="' + kT + '" value="' + escapeHtml(t[kT]||'') + '" /></div>'
-  + '    <div class="field"><label>Instrumento de evaluación</label><input class="cell-input" data-tf="' + kI + '" value="' + escapeHtml(t[kI]||'') + '" /></div>'
-  + '  </div>'
-  + '</div>';
+/* Tabla "Temas asociados a la práctica" + "Estrategias metodológicas" — replica la tabla del
+   formato institucional: los Temas van en una sola celda a la izquierda (combinada verticalmente
+   con rowspan) junto a las 3 Fases (Planificación/Desarrollo/Presentación), cada una con su
+   Trabajo presencial, Trabajo autónomo, Recursos y Técnica/Instrumento de evaluación. */
+function tallerTemasFasesTableHtml(t){
+  var ctx = tallerContexto(t), semanaActual = ctx.semanaActual, motivo = ctx.motivo;
+  var temas = semanaActual ? parseLinesList(semanaActual.temas) : [];
+  var seleccionTemas = (t.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  seleccionTemas.forEach(function(x){ if(temas.indexOf(x)===-1) temas.push(x); });
+  var temasHtml = motivo
+    ? '<div class="hint">' + escapeHtml(motivo) + '</div>'
+    : (temas.length
+        ? '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + temas.map(function(x){ return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="taller-contenido-cb" value="' + escapeHtml(x) + '" ' + (seleccionTemas.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>'; }).join('') + '</div>'
+        : '<div class="hint">El PCA no tiene temas registrados para esta semana.</div>');
+
+  var faseRows = TALLER_FASES.map(function(fase, i){
+    var kP=fase.key+'Presencial', kA=fase.key+'Autonomo', kR=fase.key+'Recursos', kT=fase.key+'Tecnica', kI=fase.key+'Instrumento';
+    var temasCell = i===0 ? '<td rowspan="' + TALLER_FASES.length + '" style="min-width:200px; vertical-align:top;">' + temasHtml + '</td>' : '';
+    return '<tr>'
+      + temasCell
+      + '<td class="tabular" style="text-align:center; font-weight:700; white-space:nowrap; vertical-align:top;">' + (i+1) + '. ' + escapeHtml(fase.label) + '</td>'
+      + '<td style="min-width:220px;">' + richEditorHtml(kP, t.id, t[kP], 'Actividades que realizará el estudiante en el aula…') + '</td>'
+      + '<td style="min-width:220px;">' + richEditorHtml(kA, t.id, t[kA], 'Actividades que realizará el estudiante en casa…') + '</td>'
+      + '<td style="min-width:180px;">' + richEditorHtml(kR, t.id, t[kR], 'Materiales o recursos que se emplearán…') + '</td>'
+      + '<td style="min-width:160px; vertical-align:top;">'
+      +   '<div class="field"><label class="hint">Técnica</label><input class="cell-input" data-tf="' + kT + '" value="' + escapeHtml(t[kT]||'') + '" /></div>'
+      +   '<div class="field" style="margin-top:6px;"><label class="hint">Instrumento</label><input class="cell-input" data-tf="' + kI + '" value="' + escapeHtml(t[kI]||'') + '" /></div>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
+
+  return '<div class="table-wrap"><table><thead>'
+    + '<tr><th rowspan="2" style="min-width:200px;">Temas asociados a la práctica</th><th colspan="3">Estrategias metodológicas</th><th rowspan="2">Recursos</th><th rowspan="2">Instrumentos de evaluación</th></tr>'
+    + '<tr><th>Fases</th><th>Trabajo presencial</th><th>Trabajo autónomo</th></tr>'
+    + '</thead><tbody>' + faseRows + '</tbody></table></div>';
 }
 function renderTallerForm(d){
   var t = state.editingTaller || blankTaller(d);
@@ -7670,8 +7683,6 @@ function renderTallerForm(d){
   var especialidades = especialidadesFor(t.nivel);
   var asignaturas = misAsignaturasTallerPara(ownerId, t.nivel, t.especialidad); if(!asignaturas.length) asignaturas = ASIGNATURAS_TALLER_PRACTICO;
   var cursos = misCursosTallerPara(ownerId, t.nivel, t.especialidad, t.asignatura); if(!cursos.length) cursos = cursosFor(t.nivel, t.especialidad);
-
-  var fasesHtml = TALLER_FASES.map(function(f){ return taillerFaseHtml(t, f); }).join('');
 
   return ''
   + tallerToolbarHtml(t)
@@ -7694,9 +7705,9 @@ function renderTallerForm(d){
   + '  <div class="pca-band band-section">Datos Curriculares</div>'
   + '  <div class="pca-section">'
   + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
-  + tallerContenidosHtml(t)
+  + tallerNivelesLogroHtml(t)
+  + tallerTemasFasesTableHtml(t)
   + '  </div>'
-  + fasesHtml
   + '  <div class="pca-band band-section">Firmas de Responsabilidad</div>'
   + '  <div class="pca-section">'
   + '    <div class="signature-grid">'
