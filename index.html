@@ -535,14 +535,16 @@ var LS = {
   OBSERVACIONES: 'OBSERVACIONES',
   DECE: 'DECE',
   FICHA_DETECCION: 'FICHA_DETECCION',
-  CONFIG: 'CONFIG'
+  CONFIG: 'CONFIG',
+  PAPELERA: 'PAPELERA',
+  TALLER: 'TALLER'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
   ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece',
-  FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config'
+  FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config', PAPELERA: 'papelera', TALLER: 'taller'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [], PAPELERA: [], TALLER: [] };
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -742,6 +744,52 @@ function misAsignaturasPara(docenteId, nivel, especialidad, curso){
   var rows = misCargaRows(docenteId).filter(function(r){ return r.nivel===nivel && (!especialidad || r.especialidad===especialidad) && (!curso || r.curso===curso); });
   var set = {};
   rows.forEach(function(r){ if(r.asignatura) set[r.asignatura]=1; });
+  return Object.keys(set).sort();
+}
+/* Asignaturas técnicas de Bachillerato que usan el formulario de "Taller Práctico" en vez del
+   Plan Semanal normal — Computación, Robótica e Informática Aplicada (comunes a todo Bachillerato)
+   más las asignaturas de la especialidad Diseño Gráfico que son prácticas/de taller (se excluyen
+   a propósito las teóricas: Historia del Arte, Formación y Orientación Laboral, y Publicidad del
+   Colegio, que siguen usando el Plan Semanal normal). */
+var ASIGNATURAS_TALLER_PRACTICO = [
+  'Computación', 'Robótica', 'Informática Aplicada (Programación)',
+  'Diseño Editorial/Diagramación', 'Fundamentos del Diseño/Técnicas de Representación',
+  'Ilustración Digital y Diseño/Branding', 'Publicidad/Comunicación Visual', 'Dibujo Técnico Aplicado',
+  'Producción Gráfica Integral', 'Desarrollo Multimedia y Web', 'Módulos Prácticos',
+  'Procesos del Diseño', 'Elaboración del Arte', 'Diseño Asistido por el Ordenador', 'Arte Final'
+];
+function esAsignaturaTallerPractico(nivel, asignatura){
+  return nivel === 'Bachillerato' && ASIGNATURAS_TALLER_PRACTICO.indexOf(asignatura) !== -1;
+}
+/* Para decidir qué mostrar en el menú lateral: si TODA la Carga Horaria del docente es de
+   asignaturas técnicas, no tiene sentido mostrarle "Planes Semanales" (siempre le saldría vacío);
+   si NINGUNA de sus asignaturas es técnica, no tiene sentido mostrarle "Taller Práctico". Un
+   docente con asignaturas de ambos tipos ve los dos menús, cada uno con lo que corresponde. */
+function tieneAsignaturaTallerPractico(docenteId){
+  return misCargaRows(docenteId).some(function(r){ return esAsignaturaTallerPractico(r.nivel, r.asignatura); });
+}
+function tieneAsignaturaNoTallerPractico(docenteId){
+  return misCargaRows(docenteId).some(function(r){ return !esAsignaturaTallerPractico(r.nivel, r.asignatura); });
+}
+function misNivelesTallerPara(docenteId){
+  var set = {};
+  misCargaRows(docenteId).forEach(function(r){ if(esAsignaturaTallerPractico(r.nivel, r.asignatura)) set[r.nivel]=1; });
+  return Object.keys(set).sort();
+}
+function misAsignaturasTallerPara(docenteId, nivel, especialidad, curso){
+  var rows = misCargaRows(docenteId).filter(function(r){
+    return r.nivel===nivel && (!especialidad || r.especialidad===especialidad) && (!curso || r.curso===curso) && esAsignaturaTallerPractico(r.nivel, r.asignatura);
+  });
+  var set = {};
+  rows.forEach(function(r){ if(r.asignatura) set[r.asignatura]=1; });
+  return Object.keys(set).sort();
+}
+function misCursosTallerPara(docenteId, nivel, especialidad, asignatura){
+  var rows = misCargaRows(docenteId).filter(function(r){
+    return r.nivel===nivel && (!especialidad || r.especialidad===especialidad) && (!asignatura || r.asignatura===asignatura) && esAsignaturaTallerPractico(r.nivel, r.asignatura);
+  });
+  var set = {};
+  rows.forEach(function(r){ if(r.curso) set[r.curso]=1; });
   return Object.keys(set).sort();
 }
 /* ============================= SESSION ============================= */
@@ -1027,6 +1075,26 @@ function toast(msg, type){
 /* Toast con botón "Deshacer": igual que toast() pero se queda más tiempo (8s en vez de 3.6s) y
    ofrece un botón que ejecuta onDeshacer() una sola vez. Usado por eliminarConDeshacer para que
    cualquier "Eliminar" del sistema pueda revertirse justo después de confirmarse. */
+/* ============================= DETECCIÓN DE CONFLICTOS AL GUARDAR =============================
+   Si el mismo PCA/Plan Semanal se abre en dos pestañas o dispositivos a la vez, el que guarda
+   último pisaba en silencio lo que el otro ya había guardado — sin ningún aviso. Para evitarlo,
+   se recuerda el updatedAt que tenía el registro justo cuando se ABRIÓ el formulario; al guardar,
+   si el updatedAt actual en la nube ya no coincide con ese (porque alguien más guardó algo en el
+   mientras tanto — el listener en tiempo real ya trajo ese cambio a esta misma pestaña), se avisa
+   antes de sobrescribir en vez de hacerlo directamente. */
+var CONFLICTO_BASE = {};
+function marcarBaseConflicto(tipo, updatedAt){ CONFLICTO_BASE[tipo] = updatedAt || ''; }
+function hayConflictoGuardado(tipo, updatedAtActual){
+  var base = CONFLICTO_BASE[tipo];
+  return !!base && !!updatedAtActual && updatedAtActual !== base;
+}
+function avisarConflictoGuardado(tipo, updatedAtActual, onSobrescribir){
+  confirmDialog(
+    'Este plan fue modificado en otro dispositivo o pestaña después de que lo abriste aquí (última actualización: ' + fmtDateTime(updatedAtActual) + '). Si continúas, vas a reemplazar esos cambios con lo que tienes en esta pantalla ahora mismo. Si no estás seguro, cancela y recarga la página para revisar la versión más reciente antes de seguir editando.',
+    onSobrescribir,
+    'Sobrescribir de todas formas'
+  );
+}
 function toastConDeshacer(msg, onDeshacer){
   var region = document.getElementById('toastRegion');
   var el = document.createElement('div');
@@ -1041,20 +1109,73 @@ function toastConDeshacer(msg, onDeshacer){
     onDeshacer();
   };
 }
+/* ============================= PAPELERA =============================
+   Cada eliminación (individual o en cascada) queda registrada aquí ANTES de borrarse de verdad,
+   para que un administrador pueda restaurarla después — no solo durante los 8 segundos del toast
+   "Deshacer". Un solo documento de papelera puede agrupar VARIOS bloques de VARIAS colecciones
+   (p.ej. un PCA + sus filas de Contenidos), para que restaurar sea una sola acción atómica. La
+   purga definitiva (pasados PAPELERA_DIAS_RETENCION días) es oportunista: se revisa cada vez que
+   un admin abre la pantalla de Papelera, no hay una tarea de fondo en el servidor. */
+var PAPELERA_DIAS_RETENCION = 7;
+var PAPELERA_COLECCION_LABEL = {
+  PCA:'Plan Curricular (PCA)', CONT:'Semana del PCA', SEMANAL:'Plan Semanal', TALLER:'Taller Práctico', ESTUDIANTES:'Estudiante',
+  CARGA:'Carga Horaria', INCIDENTES:'Incidente de disciplina', OBSERVACIONES:'Observación de clase',
+  DECE:'Ficha de Datos Informativos (DECE)', FICHA_DETECCION:'Ficha de Detección', DOCENTES:'Docente'
+};
+function resumenPapelera(bloques){
+  var primero = bloques[0];
+  var r = primero && primero.registros && primero.registros[0];
+  var etiqueta = PAPELERA_COLECCION_LABEL[primero.key] || primero.key;
+  if(!r) return etiqueta;
+  var detalle;
+  if(r.nombres && r.apellidos) detalle = r.apellidos + ' ' + r.nombres;
+  else if(r.numero!==undefined && (r.curso || r.asignatura)) detalle = 'N.º ' + r.numero + ' · ' + (r.asignatura||'') + (r.curso?(' · '+r.curso):'');
+  else if(r.asignatura || r.curso) detalle = ((r.asignatura==='Otra…'?r.asignaturaManual:r.asignatura)||'') + (r.curso ? (' · ' + (r.curso==='Otro…'?r.cursoManual:r.curso)) : '');
+  else if(r.titulo) detalle = r.titulo;
+  else detalle = r.id;
+  var extra = bloques.length>1 ? (' (+' + bloques.slice(1).reduce(function(n,b){ return n+b.registros.length; },0) + ' registro(s) relacionado(s))') : '';
+  return etiqueta + ' — ' + detalle + extra;
+}
+function moverAPapelera(bloques, motivo){
+  var d = currentDocente();
+  var entrada = {
+    id: uid('trash'), bloques: bloques, resumen: resumenPapelera(bloques), motivo: motivo||'',
+    eliminadoPor: d.id, eliminadoPorNombre: nombreFormal(d), eliminadoEn: nowISO()
+  };
+  save(LS.PAPELERA, load(LS.PAPELERA).concat([entrada]));
+  return entrada.id;
+}
+function quitarDePapelera(trashId){
+  save(LS.PAPELERA, load(LS.PAPELERA).filter(function(x){ return x.id!==trashId; }));
+}
+/* Trae de vuelta TODOS los bloques de una entrada de papelera (todas las colecciones que tocó esa
+   eliminación) y la quita de la papelera. Usada tanto por "Deshacer" del toast como por el botón
+   "Restaurar" de la propia pantalla de Papelera. */
+function restaurarDePapelera(trashId){
+  var entrada = load(LS.PAPELERA).find(function(x){ return x.id===trashId; });
+  if(!entrada) return;
+  entrada.bloques.forEach(function(b){
+    var actuales = load(b.key);
+    var actualesIds = {}; actuales.forEach(function(x){ actualesIds[x.id]=1; });
+    var faltantes = b.registros.filter(function(r){ return !actualesIds[r.id]; });
+    if(faltantes.length) save(b.key, actuales.concat(faltantes));
+  });
+  quitarDePapelera(trashId);
+}
 /* ============================= ELIMINAR CON DESHACER =============================
    Envoltorio genérico para CUALQUIER botón "Eliminar" de una sola colección: guarda el registro
-   completo antes de borrarlo, y ofrece deshacerlo desde el toast (ver toastConDeshacer). Se usa
-   en lugar de escribir save(KEY, load(KEY).filter(...)) directamente en cada sitio, así que
-   cualquier eliminación individual del sistema queda cubierta con el mismo mecanismo. */
+   completo antes de borrarlo (en la papelera, no solo en memoria) y ofrece deshacerlo desde el
+   toast (ver toastConDeshacer). Se usa en lugar de escribir save(KEY, load(KEY).filter(...))
+   directamente en cada sitio, así que cualquier eliminación individual del sistema queda
+   protegida por la papelera automáticamente, sin tener que tocar cada botón "Eliminar" uno por
+   uno. */
 function eliminarConDeshacer(key, id, mensajeEliminado, mensajeDeshecho){
   var registro = load(key).find(function(x){ return x.id===id; });
   if(!registro) return;
   save(key, load(key).filter(function(x){ return x.id!==id; }));
+  var trashId = moverAPapelera([{key:key, registros:[registro]}]);
   toastConDeshacer(mensajeEliminado, function(){
-    var actuales = load(key);
-    if(!actuales.some(function(x){ return x.id===registro.id; })){
-      save(key, actuales.concat([registro]));
-    }
+    restaurarDePapelera(trashId);
     toast(mensajeDeshecho || 'Se deshizo la eliminación.', 'success');
   });
 }
@@ -1063,15 +1184,12 @@ function eliminarConDeshacer(key, id, mensajeEliminado, mensajeDeshecho){
    capturados ANTES de borrar nada. */
 function eliminarVariasConDeshacer(bloques, mensajeEliminado, mensajeDeshecho){
   bloques.forEach(function(b){
-    save(b.key, load(b.key).filter(function(x){ return b.ids.indexOf(x.id)===-1; }));
+    var ids = b.ids || b.registros.map(function(r){ return r.id; });
+    save(b.key, load(b.key).filter(function(x){ return ids.indexOf(x.id)===-1; }));
   });
+  var trashId = moverAPapelera(bloques.map(function(b){ return {key:b.key, registros:b.registros}; }));
   toastConDeshacer(mensajeEliminado, function(){
-    bloques.forEach(function(b){
-      var actuales = load(b.key);
-      var actualesIds = {}; actuales.forEach(function(x){ actualesIds[x.id]=1; });
-      var faltantes = b.registros.filter(function(r){ return !actualesIds[r.id]; });
-      if(faltantes.length) save(b.key, actuales.concat(faltantes));
-    });
+    restaurarDePapelera(trashId);
     toast(mensajeDeshecho || 'Se deshizo la eliminación.', 'success');
   });
 }
@@ -1110,6 +1228,7 @@ function ejecutarAutoguardado(tipo){
   AUTOSAVE_SUCIO[tipo] = false;
   if(tipo==='pca' && state.editingPca) savePca(state.editingPca, true);
   else if(tipo==='semanal' && state.editingSemanal) saveSemanal(state.editingSemanal, true);
+  else if(tipo==='taller' && state.editingTaller) saveTaller(state.editingTaller, true);
   else if(tipo==='fichadeteccion' && state.editingFichaDeteccion) saveFichaDeteccion(state.editingFichaDeteccion, true);
   AUTOSAVE_ULTIMO[tipo] = Date.now();
   actualizarIndicadorAutoguardado(tipo);
@@ -1120,7 +1239,7 @@ function autoguardadoHintTexto(tipo){
   if(!ts || Date.now() - ts > 6000) return '';
   return '✓ Guardado automáticamente · ' + fmtDateTime(new Date(ts).toISOString());
 }
-var AUTOSAVE_HINT_ID = {pca:'pcaAutosaveHint', semanal:'semanalAutosaveHint', fichadeteccion:'fdAutosaveHint'};
+var AUTOSAVE_HINT_ID = {pca:'pcaAutosaveHint', semanal:'semanalAutosaveHint', taller:'tallerAutosaveHint', fichadeteccion:'fdAutosaveHint'};
 function actualizarIndicadorAutoguardado(tipo){
   var el = document.getElementById(AUTOSAVE_HINT_ID[tipo]);
   if(el) el.textContent = autoguardadoHintTexto(tipo);
@@ -1221,6 +1340,8 @@ var state = {
   pcaReturnTo: 'pcalist',
   editingSemanal: null,  // working copy of a Plan Semanal while editing
   semanalReturnTo: 'semanallist',
+  editingTaller: null,  // working copy of a Taller Práctico while editing
+  tallerReturnTo: 'tallerlist',
   adminTab: 'docentes',
   adminEditingDocenteId: null,
   editingAdminDocente: null,  // working copy of the docente being edited by admin (survives concurrent real-time updates)
@@ -1242,8 +1363,8 @@ function goAuth(view){ state.authView = view; state.loginError=''; state.registe
    navegador, el sistema vuelva ahí en vez de mandarlo siempre a Inicio. Para el PCA y el Plan
    Semanal guarda también el id del registro abierto, para reabrirlo (no el borrador sin guardar:
    eso se pierde igual que antes, ya que solo existe en memoria). */
-var SUBVIEW_ID_FIELD = {pcaform:'editingPca', semanalform:'editingSemanal'};
-var SUBVIEW_RETURN_FIELD = {pcaform:'pcaReturnTo', semanalform:'semanalReturnTo'};
+var SUBVIEW_ID_FIELD = {pcaform:'editingPca', semanalform:'editingSemanal', tallerform:'editingTaller'};
+var SUBVIEW_RETURN_FIELD = {pcaform:'pcaReturnTo', semanalform:'semanalReturnTo', tallerform:'tallerReturnTo'};
 function guardarUltimaVista(){
   var d = currentDocente();
   if(!d) return;
@@ -1277,7 +1398,7 @@ function intentarRestaurarUltimaVista(d){
     if(state.subview !== SUBVIEW_SIN_RESTAURAR[saved.subview]) go(SUBVIEW_SIN_RESTAURAR[saved.subview]);
     return;
   }
-  var col = saved.subview==='pcaform' ? LS.PCA : (saved.subview==='semanalform' ? LS.SEMANAL : null);
+  var col = saved.subview==='pcaform' ? LS.PCA : (saved.subview==='semanalform' ? LS.SEMANAL : (saved.subview==='tallerform' ? LS.TALLER : null));
   if(!col){
     RESTORED_LAST_VIEW = true;
     if(saved.subview !== state.subview) go(saved.subview);
@@ -1288,7 +1409,8 @@ function intentarRestaurarUltimaVista(d){
   if(existe){
     RESTORED_LAST_VIEW = true;
     if(col===LS.PCA) openPcaForm(saved.id, saved.returnTo||'pcalist');
-    else openSemanalForm(saved.id, saved.returnTo||'semanallist');
+    else if(col===LS.SEMANAL) openSemanalForm(saved.id, saved.returnTo||'semanallist');
+    else openTallerForm(saved.id, saved.returnTo||'tallerlist');
   } else if(Date.now() - RESTORE_STARTED_AT > 4000){
     // Se agotó la espera de los listeners en tiempo real, o el registro ya no existe (se borró):
     // mejor quedarse en Inicio que esperar indefinidamente.
@@ -1520,7 +1642,8 @@ var NAV_GROUPS = [
   ]},
   {label:'Lo Pedagógico', hue:'green', items:[
     {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
-    {key:'semanallist', label:'Planes Semanales', ic:'📅'},
+    {key:'semanallist', label:'Planes Semanales', ic:'📅', hideIf:function(d, isAdmin){ return !isAdmin && tieneAsignaturaTallerPractico(d.id) && !tieneAsignaturaNoTallerPractico(d.id); }},
+    {key:'tallerlist', label:'Taller Práctico', ic:'🛠️', showIf:function(d, isAdmin){ return isAdmin || tieneAsignaturaTallerPractico(d.id); }},
     {key:'observacion', label:'Observación de Clases', ic:'📋'},
     {key:'misasistencia', label:'Asistencia', ic:'✅'}
   ]},
@@ -1547,12 +1670,13 @@ function renderShell(){
   /* El Inspector General solo puede ver "Perfil y Datos del Docente" e "Inspección General" —
      si por cualquier vía (estado viejo, enlace directo) queda apuntando a otra sección, lo manda
      de vuelta a Inicio. */
-  if(esInspector && ['pcalist','pcaform','semanallist','semanalform','observacion','misasistencia','fichadeteccion','database','manualdocente','manualadmin'].indexOf(state.subview)!==-1){ state.subview = 'dashboard'; }
+  if(esInspector && ['pcalist','pcaform','semanallist','semanalform','tallerlist','tallerform','observacion','misasistencia','fichadeteccion','database','manualdocente','manualadmin'].indexOf(state.subview)!==-1){ state.subview = 'dashboard'; }
   function navItemActive(item){
     return (state.subview === item.key
       || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
       || (state.subview==='semanalform' && item.key==='semanallist' && state.semanalReturnTo!=='admin')
-      || ((state.subview==='pcaform'||state.subview==='semanalform') && item.key==='admin' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'))
+      || (state.subview==='tallerform' && item.key==='tallerlist' && state.tallerReturnTo!=='admin')
+      || ((state.subview==='pcaform'||state.subview==='semanalform'||state.subview==='tallerform') && item.key==='admin' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'||state.tallerReturnTo==='admin'))
       || ((state.subview==='adminEditDocente'||state.subview==='adminNewDocente') && item.key==='admin'));
   }
   var navHtml = NAV_GROUPS.filter(function(group){
@@ -1561,6 +1685,8 @@ function renderShell(){
   }).map(function(group){
     var visibleItems = group.items.filter(function(item){
       if(item.staffOrInspector) return isAdmin || esInspector;
+      if(item.showIf && !item.showIf(d, isAdmin)) return false;
+      if(item.hideIf && item.hideIf(d, isAdmin)) return false;
       return !item.adminOnly || isAdmin;
     });
     if(!visibleItems.length) return '';
@@ -1588,6 +1714,8 @@ function renderShell(){
   else if(state.subview === 'pcaform') sub = renderPcaForm(d);
   else if(state.subview === 'semanallist') sub = renderSemanalList(d);
   else if(state.subview === 'semanalform') sub = renderSemanalForm(d);
+  else if(state.subview === 'tallerlist') sub = renderTallerList(d);
+  else if(state.subview === 'tallerform') sub = renderTallerForm(d);
   else if(state.subview === 'perfil') sub = renderPerfil(d);
   else if(state.subview === 'database') sub = renderDatabase(d);
   else if(state.subview === 'admin') sub = renderAdmin(d);
@@ -1645,6 +1773,8 @@ function bindSubviewEvents(){
   else if(state.subview === 'pcaform') bindPcaFormEvents();
   else if(state.subview === 'semanallist') bindSemanalListEvents();
   else if(state.subview === 'semanalform') bindSemanalFormEvents();
+  else if(state.subview === 'tallerlist') bindTallerListEvents();
+  else if(state.subview === 'tallerform') bindTallerFormEvents();
   else if(state.subview === 'perfil') bindPerfilEvents();
   else if(state.subview === 'database') bindDatabaseEvents();
   else if(state.subview === 'admin') bindAdminEvents();
@@ -1736,7 +1866,8 @@ function renderDashboard(d){
   + '<div class="grid-4">'
   + '  <button class="action-card" data-go="cargahoraria"><div class="ic">🗂️</div><h3>Registrar carga horaria</h3><p>Indica qué asignaturas dictas y en qué cursos o grados.</p></button>'
   + '  <button class="action-card" data-go="pcalist"><div class="ic">📘</div><h3>Plan Curricular Anual</h3><p>Crea o edita tus PCA siguiendo el formato institucional.</p></button>'
-  + '  <button class="action-card" data-go="semanallist"><div class="ic">📅</div><h3>Planes Semanales</h3><p>Crea o revisa tus planes semanales de clase.</p></button>'
+  + (tieneAsignaturaTallerPractico(d.id) && !tieneAsignaturaNoTallerPractico(d.id) ? '' : '  <button class="action-card" data-go="semanallist"><div class="ic">📅</div><h3>Planes Semanales</h3><p>Crea o revisa tus planes semanales de clase.</p></button>')
+  + (tieneAsignaturaTallerPractico(d.id) ? '  <button class="action-card" data-go="tallerlist"><div class="ic">🛠️</div><h3>Taller Práctico</h3><p>Crea o revisa tus planes de taller práctico.</p></button>' : '')
   + '  <button class="action-card" data-go="database"><div class="ic">💾</div><h3>Base de datos</h3><p>Exporta o importa un respaldo de la información.</p></button>'
   + '  <button class="action-card" data-go="manualdocente"><div class="ic">📖</div><h3>Manual de Usuario</h3><p>Guía paso a paso de todas las funciones del sistema.</p></button>'
   + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
@@ -2003,6 +2134,11 @@ function renderManualDocente(){
     + '<p>Es normal — las fichas quedan bloqueadas apenas se envían, para que el DECE trabaje siempre con la versión original. Contacta directamente al DECE para la corrección.</p>'
     + '<h3>¿Por qué mi Plan Semanal aparece como "Incompleto" para el administrador si ya lo guardé?</h3>'
     + '<p>Guardar el plan no es lo mismo que llenarlo por completo. Revisa que <b>todos</b> los días que agregaste tengan Contenidos Esenciales, Actividades y al menos un Nivel de Logro marcado — si a un solo día le falta algo, el plan entero cuenta como incompleto.</p>'
+    + '<h3>Al guardar mi PCA o Plan Semanal me sale un aviso de que "se modificó en otro dispositivo o pestaña" — ¿qué significa "Sobrescribir" y "Cancelar"?</h3>'
+    + '<p>Este aviso aparece cuando el mismo plan se abrió en dos lugares a la vez (por ejemplo, una pestaña del celular y otra de la laptop, o una pestaña que dejaste abierta desde la mañana mientras seguiste trabajando en otra por la tarde) y en el otro lugar ya se guardó un cambio más reciente. El sistema te avisa ANTES de guardar, en vez de reemplazar en silencio lo que ya estaba guardado.</p>'
+    + '<ul><li><b>Sobrescribir de todas formas:</b> guarda lo que tienes en ESTA pantalla ahora mismo, y reemplaza en la nube lo que se había guardado en el otro dispositivo o pestaña — ese otro cambio se pierde. Úsalo solo si estás seguro de que la versión que ves en pantalla es la buena y completa.</li>'
+    + '<li><b>Cancelar:</b> no guarda nada todavía, y NO recarga la página por sí solo. Tu pantalla se queda igual, con tus cambios sin guardar, pero lo que ya estaba guardado en el otro dispositivo queda a salvo. Después de cancelar, tú decides: si quieres ver esa versión más reciente, recarga la página (perdiendo lo que tenías sin guardar aquí); si quieres conservar ambas cosas, copia primero lo que tienes en pantalla, recarga, y vuelve a agregarlo a mano sobre la versión más nueva.</li></ul>'
+    + manualTip('Para evitar este aviso, la forma más simple es: no dejes el PCA o el Plan Semanal abierto en una pestaña olvidada durante horas. Si vas a seguir editando más tarde, cierra esa pestaña o recárgala antes de empezar de nuevo.')
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Docente')
@@ -2246,6 +2382,10 @@ function renderManualAdmin(){
     + '<p>Las fichas quedan bloqueadas para el docente apenas se envían, así que él no puede corregirla. Tú sí puedes abrirla y editarla desde el módulo DECE.</p>'
     + '<h3>¿Por qué un Plan Semanal o un PCA ya no tienen candado 🔒?</h3>'
     + '<p>Es intencional: se quitó esa opción en ambos para que el docente siempre pueda seguir completando o corrigiendo su plan, sin depender de que un administrador lo desbloquee. El control de puntualidad ahora es automático, vía la Observación en Presentación de Planes y Presentación de PCA.</p>'
+    + '<h3>Al guardar un PCA o Plan Semanal me sale un aviso de que "se modificó en otro dispositivo o pestaña" — ¿qué significa "Sobrescribir" y "Cancelar"?</h3>'
+    + '<p>Aparece cuando ese mismo plan está abierto en dos lugares a la vez — por ejemplo, tú lo abriste desde el panel de administración mientras el docente lo tenía abierto en su propia cuenta, y uno de los dos ya guardó un cambio más reciente. El sistema avisa ANTES de guardar, en vez de reemplazar en silencio lo que ya estaba guardado.</p>'
+    + '<ul><li><b>Sobrescribir de todas formas:</b> guarda lo que está en esta pantalla ahora mismo, y reemplaza en la nube el cambio más reciente que se había guardado en el otro lado — ese cambio se pierde. Úsalo solo si estás seguro de que la versión que ves en pantalla es la correcta y completa.</li>'
+    + '<li><b>Cancelar:</b> no guarda nada todavía y NO recarga la página por sí solo. Lo que ya estaba guardado en el otro lado queda a salvo. Si quieres ver esa versión más reciente, recarga la página; si quieres conservar ambos cambios, cópialos primero y vuelve a agregarlos a mano después de recargar.</li></ul>'
   );
 
   return manualToolbarHtml('dashboard', 'Manual del Administrador')
@@ -5526,6 +5666,7 @@ function openPcaForm(pcaId, returnTo){
       temporalizacion: (header.temporalizacion||[]).map(function(t){ return Object.assign({}, t); }),
       unidades: unidades
     });
+    marcarBaseConflicto('pca', header.updatedAt);
   } else {
     state.editingPca = blankPca(d);
   }
@@ -5950,6 +6091,12 @@ function quitarMarcasPegado(html){
 function savePca(p, silent){
   var d = currentDocente();
   var existingHeader = load(LS.PCA).find(function(x){ return x.id===p.id; });
+  if(existingHeader && !p._forzarGuardado && hayConflictoGuardado('pca', existingHeader.updatedAt)){
+    if(silent){ toast('No se autoguardó: este PCA se modificó en otro dispositivo o pestaña. Recarga la página antes de seguir editando.', 'error'); return; }
+    avisarConflictoGuardado('pca', existingHeader.updatedAt, function(){ p._forzarGuardado = true; savePca(p, silent); });
+    return;
+  }
+  delete p._forzarGuardado;
   var isNew = !existingHeader;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
   p.updatedAt = nowISO();
@@ -5979,6 +6126,7 @@ function savePca(p, silent){
   var pcas = load(LS.PCA).filter(function(x){ return x.id!==p.id; });
   pcas.push(header);
   save(LS.PCA, pcas);
+  marcarBaseConflicto('pca', header.updatedAt);
 
   var cont = load(LS.CONT).filter(function(c){ return c.pcaId!==p.id; });
   p.unidades.forEach(function(u){
@@ -6081,6 +6229,20 @@ function guardarSeleccionPersistenteRte(editable){
     RTE_HIGHLIGHT.add(sel.getRangeAt(0).cloneRange());
   }
 }
+/* Para la numeración automática al escribir "1. ": confirma que no hay NINGÚN otro contenido
+   antes del número en su línea — sube por los padres hasta el bloque (párrafo/div/li) que lo
+   contiene, comprobando en cada nivel que no haya un hermano anterior. Si el número está en medio
+   de una oración (p.ej. "ver punto 3. y 4.") no se activa. */
+function esInicioDeLineaRte(nodo, editable){
+  var actual = nodo;
+  while(actual && actual !== editable){
+    if(actual.previousSibling) return false;
+    var padre = actual.parentNode;
+    if(padre && /^(DIV|P|LI|TD|BLOCKQUOTE)$/.test(padre.tagName)) return true;
+    actual = padre;
+  }
+  return true;
+}
 function bindRteToolbars(root){
   if(!root) return;
   root.querySelectorAll('[data-rte-cmd]').forEach(function(btn){
@@ -6120,6 +6282,37 @@ function bindRteToolbars(root){
       var wrap = editable.closest('.rte');
       if(wrap) wrap.querySelectorAll('.rte-toolbar [data-rte-cmd].active').forEach(function(b){ b.classList.remove('active'); });
       guardarSeleccionPersistenteRte(editable);
+    });
+    /* Tab / Shift+Tab como en Word: aumenta o reduce la sangría del párrafo o ítem de lista donde
+       está el cursor, en vez de mover el foco al siguiente campo del formulario. */
+    editable.addEventListener('keydown', function(e){
+      if(e.key !== 'Tab') return;
+      e.preventDefault();
+      document.execCommand(e.shiftKey ? 'outdent' : 'indent', false, null);
+      actualizarBarraRteActiva(editable);
+    });
+    /* Numeración automática como en Word: al escribir "1." (o cualquier número) seguido de un
+       espacio, al INICIO de una línea vacía de contenido previo, esas dos teclas se reemplazan por
+       una lista numerada real y el cursor queda listo para seguir escribiendo el primer ítem. */
+    editable.addEventListener('keydown', function(e){
+      if(e.key !== ' ') return;
+      var sel = window.getSelection();
+      if(!sel || !sel.rangeCount || !sel.isCollapsed) return;
+      var range = sel.getRangeAt(0);
+      var nodo = range.startContainer;
+      if(nodo.nodeType !== 3) return;
+      var textoAntes = nodo.textContent.slice(0, range.startOffset);
+      if(!/^\d{1,3}\.$/.test(textoAntes)) return;
+      if(!esInicioDeLineaRte(nodo, editable)) return;
+      var enLista = range.startContainer.parentElement && range.startContainer.parentElement.closest('li, ol, ul');
+      if(enLista) return;
+      e.preventDefault();
+      nodo.textContent = nodo.textContent.slice(range.startOffset);
+      var r2 = document.createRange();
+      r2.setStart(nodo, 0); r2.collapse(true);
+      sel.removeAllRanges(); sel.addRange(r2);
+      document.execCommand('insertOrderedList', false, null);
+      editable.dispatchEvent(new Event('input', {bubbles:true}));
     });
   });
   root.querySelectorAll('[data-rte-symbol]').forEach(function(sel){
@@ -6403,7 +6596,7 @@ function quitarFuenteHtml(html){
    event-handler attributes into localStorage. */
 function sanitizeRte(html){
   if(!html) return '';
-  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1,SUP:1,SUB:1,FONT:1};
+  var allowed = {DIV:1,P:1,B:1,STRONG:1,U:1,I:1,EM:1,UL:1,OL:1,LI:1,BR:1,A:1,SPAN:1,SUP:1,SUB:1,FONT:1,BLOCKQUOTE:1};
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
   function clean(node){
     Array.from(node.childNodes).forEach(function(ch){
@@ -6423,6 +6616,9 @@ function sanitizeRte(html){
           // El selector de color y de tipo de letra de la barra de herramientas usan execCommand,
           // que en este navegador produce <font color="..." face="...">, no <span style="...">
           // — por eso son las únicas etiquetas/atributos de formato "en crudo" que se conservan.
+        } else if(ch.tagName === 'BLOCKQUOTE' && attr.name === 'style'){
+          // La sangría con Tab (execCommand('indent')) genera <blockquote style="margin:...">
+          // — sin conservar ese estilo, la sangría desaparecería apenas se guarda el campo.
         } else {
           ch.removeAttribute(attr.name);
         }
@@ -6901,6 +7097,7 @@ function openSemanalForm(semId, returnTo){
   if(semId){
     var found = load(LS.SEMANAL).find(function(s){ return s.id===semId; });
     state.editingSemanal = Object.assign({}, found, { dias: (found.dias||[]).map(function(x){ return Object.assign({}, x); }) });
+    marcarBaseConflicto('semanal', found.updatedAt);
   } else {
     state.editingSemanal = blankSemanal(d);
     var pca = findMiPca(d.id, state.editingSemanal.nivel, state.editingSemanal.especialidad, state.editingSemanal.curso, state.editingSemanal.asignatura);
@@ -7311,6 +7508,12 @@ function replanificarSemanal(semId){
 function saveSemanal(s, silent){
   var d = currentDocente();
   var existingHeader = load(LS.SEMANAL).find(function(x){ return x.id===s.id; });
+  if(existingHeader && !s._forzarGuardado && hayConflictoGuardado('semanal', existingHeader.updatedAt)){
+    if(silent){ toast('No se autoguardó: este plan semanal se modificó en otro dispositivo o pestaña. Recarga la página antes de seguir editando.', 'error'); return; }
+    avisarConflictoGuardado('semanal', existingHeader.updatedAt, function(){ s._forzarGuardado = true; saveSemanal(s, silent); });
+    return;
+  }
+  delete s._forzarGuardado;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
   s.updatedAt = nowISO();
   var record = {
@@ -7332,8 +7535,314 @@ function saveSemanal(s, silent){
   var all = load(LS.SEMANAL).filter(function(x){ return x.id!==s.id; });
   all.push(record);
   save(LS.SEMANAL, all);
+  marcarBaseConflicto('semanal', record.updatedAt);
   state.editingSemanal = Object.assign({}, record, { dias: record.dias.map(function(x){ return Object.assign({}, x); }) });
   if(!silent) toast('Plan semanal guardado correctamente.', 'success');
+}
+
+/* ============================= TALLER PRÁCTICO =============================
+   Formulario alternativo al Plan Semanal, exclusivo para asignaturas técnicas de Bachillerato
+   (ver ASIGNATURAS_TALLER_PRACTICO). Se alimenta del PCA igual que el Plan Semanal (Temas y
+   Niveles de Logro de la semana vinculada), pero en vez de días con Contenidos/Actividades tiene
+   3 fases fijas (Planificación, Desarrollo, Presentación), cada una con Trabajo presencial,
+   Trabajo autónomo, Recursos, Técnica e Instrumento de evaluación — siguiendo el formato
+   institucional "Plan de Clase para Proyectos". Reutiliza fechaLimiteVigente('semanal') como
+   fecha límite (no tiene categoría propia en Fechas Límite todavía). */
+var TALLER_FASES = [
+  {key:'plan', label:'Planificación'},
+  {key:'des', label:'Desarrollo'},
+  {key:'pres', label:'Presentación'}
+];
+function siguienteNumeroTaller(docenteId){
+  var max = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId; }).reduce(function(m,t){ return Math.max(m, t.numero||0); }, 0);
+  return max + 1;
+}
+function blankTaller(d){
+  var niveles = misNivelesTallerPara(d.id);
+  var nivel = niveles[0] || 'Bachillerato';
+  var especialidades = misEspecialidadesPara(d.id, nivel).filter(function(e){ return misAsignaturasTallerPara(d.id, nivel, e).length; });
+  var especialidad = especialidades[0] || '';
+  var asignaturas = misAsignaturasTallerPara(d.id, nivel, especialidad);
+  var asignatura = asignaturas[0] || '';
+  var cursos = misCursosTallerPara(d.id, nivel, especialidad, asignatura);
+  var curso = cursos[0] || '';
+  var t = {
+    id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id),
+    nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
+    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    productoFinal:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'',
+    revisadoPor:'Lic. David Villalta', aprobadoPor:'Lic. José Gómez',
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  TALLER_FASES.forEach(function(f){
+    t[f.key+'Presencial']=''; t[f.key+'Autonomo']=''; t[f.key+'Recursos']=''; t[f.key+'Tecnica']=''; t[f.key+'Instrumento']='';
+  });
+  return t;
+}
+function openTallerForm(id, returnTo){
+  state.tallerReturnTo = returnTo || 'tallerlist';
+  var d = currentDocente();
+  if(id){
+    var found = load(LS.TALLER).find(function(t){ return t.id===id; });
+    state.editingTaller = Object.assign({}, found);
+    marcarBaseConflicto('taller', found.updatedAt);
+  } else {
+    state.editingTaller = blankTaller(d);
+    recomputeSemanalPca(state.editingTaller);
+  }
+  go('tallerform');
+}
+function tallerToolbarHtml(t){
+  return ''
+    + '<div class="pca-toolbar no-print">'
+    + '  <button class="btn btn-ghost btn-sm" id="btnBackToTallerList">← Volver a la lista</button>'
+    + '  <span class="hint" id="tallerAutosaveHint">' + escapeHtml(autoguardadoHintTexto('taller')) + '</span>'
+    + '  <div class="spacer"></div>'
+    + '  <button class="btn btn-gold btn-sm" id="btnExportTallerPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
+    + '  <button class="btn btn-primary btn-sm" id="btnSaveTaller">Guardar plan</button>'
+    + '</div>'
+    + (t.importadoDeDocente ? '<div class="lock-banner no-print">📥 Importado del plan de <strong>' + escapeHtml(t.importadoDeDocente) + '</strong> el ' + escapeHtml(fmtDateTime(t.importadoFecha)) + '. Revisa y ajusta el contenido antes de guardar.</div>' : '');
+}
+/* Arma las casillas de Temas y Niveles de Logro a partir de la semana del PCA vinculada — mismo
+   mecanismo que el Plan Semanal (ver temasSemana/nivelesLogroDiaHtml), pero en una sola sección
+   (el Taller Práctico no tiene días separados). */
+function tallerContenidosHtml(t, isIngles){
+  var semanasDelPca = t.pcaId ? semanasDePca(t.pcaId) : [];
+  var semanaActual = t.semanaRowId ? semanasDelPca.find(function(r){ return r.id===t.semanaRowId; }) : null;
+  var motivo = t.pcaId
+    ? (!semanasDelPca.length ? 'El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.'
+       : (!semanaActual ? 'La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.' : null))
+    : 'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".';
+
+  var temas = semanaActual ? parseLinesList(semanaActual.temas) : [];
+  var seleccionTemas = (t.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  seleccionTemas.forEach(function(x){ if(temas.indexOf(x)===-1) temas.push(x); });
+  var temasHtml = motivo
+    ? '<div class="hint">' + escapeHtml(motivo) + '</div>'
+    : (temas.length
+        ? '<div class="checkbox-grid">' + temas.map(function(x){ return '<label class="checkbox-pill"><input type="checkbox" class="taller-contenido-cb" value="' + escapeHtml(x) + '" ' + (seleccionTemas.indexOf(x)!==-1?'checked':'') + ' />' + escapeHtml(x) + '</label>'; }).join('') + '</div>'
+        : '<div class="hint">El PCA no tiene temas registrados para esta semana.</div>');
+
+  var columnas = ['basico','intermedio','avanzado'].map(function(tier){
+    var campoPca = NIVEL_LOGRO_PCA_FIELD[tier];
+    var campoTaller = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
+    var items = semanaActual ? parseLinesList(semanaActual[campoPca]) : [];
+    var seleccion = (t[campoTaller]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+    seleccion.forEach(function(x){ if(items.indexOf(x)===-1) items.push(x); });
+    var body = motivo
+      ? ''
+      : (items.length
+          ? '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(x){ return '<label class="checkbox-pill"><input type="checkbox" class="taller-nivellogro-cb" data-tier="' + tier + '" value="' + escapeHtml(x) + '" ' + (seleccion.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>'; }).join('') + '</div>'
+          : '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + NIVEL_LOGRO_DIA_LABEL[tier] + ' para esta semana.</div>');
+    return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div>' + body + '</div>';
+  }).join('');
+
+  return ''
+    + '<div class="field" style="margin-top:12px;"><label class="semanal-section-title">Temas asociados a la práctica</label>' + temasHtml + '</div>'
+    + '<div class="field" style="margin-top:12px;"><label class="semanal-section-title">Niveles de Logro</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+}
+function taillerFaseHtml(t, fase){
+  var kP=fase.key+'Presencial', kA=fase.key+'Autonomo', kR=fase.key+'Recursos', kT=fase.key+'Tecnica', kI=fase.key+'Instrumento';
+  return ''
+  + '<div class="pca-band band-unit"><div class="unit-head-input" style="cursor:default;">' + escapeHtml(fase.label) + '</div></div>'
+  + '<div class="pca-section">'
+  + '  <div class="grid-2">'
+  + '    <div class="field"><label>Trabajo presencial <span class="hint">(dentro del aula)</span></label>' + richEditorHtml(kP, t.id, t[kP], 'Actividades que realizará el estudiante en el aula…') + '</div>'
+  + '    <div class="field"><label>Trabajo autónomo <span class="hint">(en casa)</span></label>' + richEditorHtml(kA, t.id, t[kA], 'Actividades que realizará el estudiante en casa…') + '</div>'
+  + '  </div>'
+  + '  <div class="field" style="margin-top:12px;"><label>Recursos</label>' + richEditorHtml(kR, t.id, t[kR], 'Materiales o recursos que se emplearán…') + '</div>'
+  + '  <div class="field-row" style="margin-top:12px;">'
+  + '    <div class="field"><label>Técnica de evaluación</label><input class="cell-input" data-tf="' + kT + '" value="' + escapeHtml(t[kT]||'') + '" /></div>'
+  + '    <div class="field"><label>Instrumento de evaluación</label><input class="cell-input" data-tf="' + kI + '" value="' + escapeHtml(t[kI]||'') + '" /></div>'
+  + '  </div>'
+  + '</div>';
+}
+function renderTallerForm(d){
+  var t = state.editingTaller || blankTaller(d);
+  state.editingTaller = t;
+  var ownerId = t.docenteId || d.id;
+  var niveles = misNivelesTallerPara(ownerId); if(!niveles.length) niveles = ['Bachillerato'];
+  var especialidades = especialidadesFor(t.nivel);
+  var asignaturas = misAsignaturasTallerPara(ownerId, t.nivel, t.especialidad); if(!asignaturas.length) asignaturas = ASIGNATURAS_TALLER_PRACTICO;
+  var cursos = misCursosTallerPara(ownerId, t.nivel, t.especialidad, t.asignatura); if(!cursos.length) cursos = cursosFor(t.nivel, t.especialidad);
+
+  var fasesHtml = TALLER_FASES.map(function(f){ return taillerFaseHtml(t, f); }).join('');
+
+  return ''
+  + tallerToolbarHtml(t)
+  + '<div class="pca-doc" id="tallerDoc">'
+  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+  + '  <div class="pca-band band-title">Plan de Clase para Proyectos — Taller Práctico</div>'
+  + '  <div class="pca-band band-section">Datos Informativos</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="grid-4">'
+  + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="tfNivel">' + optionsHtml(niveles, t.nivel, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Especialidad</label><select class="cell-select" id="tfEspecialidad" ' + (especialidades.length?'':'disabled') + '>' + optionsHtml(especialidades, t.especialidad, especialidades.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '      <div class="field"><label>Asignatura</label><select class="cell-select" id="tfAsignatura">' + optionsHtml(asignaturas, t.asignatura, 'Elija un elemento…') + '</select></div>'
+  + '      <div class="field"><label>Curso / Grado</label><select class="cell-select" id="tfCurso">' + optionsHtml(cursos, t.curso, 'Elija un elemento…') + '</select></div>'
+  + '    </div>'
+  + '    <div class="field-row" style="margin-top:14px;">'
+  + '      <div class="field"><label>Fecha de inicio del proyecto</label><input class="cell-input" type="date" id="tfFechaInicio" value="' + escapeHtml(t.fechaInicio) + '" /></div>'
+  + '      <div class="field"><label>Fecha de fin del proyecto</label><input class="cell-input" type="date" id="tfFechaFin" value="' + escapeHtml(t.fechaFin) + '" /></div>'
+  + '    </div>'
+  + '  </div>'
+  + '  <div class="pca-band band-section">Datos Curriculares</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
+  + tallerContenidosHtml(t)
+  + '  </div>'
+  + fasesHtml
+  + '  <div class="pca-band band-section">Firmas de Responsabilidad</div>'
+  + '  <div class="pca-section">'
+  + '    <div class="signature-grid">'
+  + '      <div class="signature-box"><div class="role">Elaborado por · Docente</div><input class="cell-input" readonly value="' + escapeHtml(nombreFormal(d)) + '" /></div>'
+  + '      <div class="signature-box"><div class="role">Revisado por · Asesor Pedagógico</div><input class="cell-input" id="tfRevisado" value="' + escapeHtml(t.revisadoPor) + '" /></div>'
+  + '      <div class="signature-box"><div class="role">Aprobado por · Vicerrector</div><input class="cell-input" id="tfAprobado" value="' + escapeHtml(t.aprobadoPor) + '" /></div>'
+  + '    </div>'
+  + '  </div>'
+  + '</div>';
+}
+function renderTallerFormAgain(){
+  document.querySelector('main.content').innerHTML = renderTallerForm(currentDocente());
+  bindTallerFormEvents();
+}
+function bindTallerFormEvents(){
+  var t = state.editingTaller;
+  var d = currentDocente();
+  document.getElementById('btnBackToTallerList').onclick = function(){ go(state.tallerReturnTo || 'tallerlist'); };
+  document.getElementById('btnExportTallerPdfNow').onclick = printAsPdf;
+  document.getElementById('btnSaveTaller').onclick = function(){ saveTaller(t, false); };
+  bindAutoguardadoDelegado('tallerDoc', 'taller');
+
+  document.getElementById('tfNivel').addEventListener('change', function(e){ t.nivel=e.target.value; t.especialidad=''; t.curso=''; t.asignatura=''; recomputeSemanalPca(t); renderTallerFormAgain(); });
+  var espSel = document.getElementById('tfEspecialidad');
+  if(espSel) espSel.addEventListener('change', function(e){ t.especialidad=e.target.value; t.asignatura=''; t.curso=''; recomputeSemanalPca(t); renderTallerFormAgain(); });
+  document.getElementById('tfAsignatura').addEventListener('change', function(e){ t.asignatura=e.target.value; t.curso=''; recomputeSemanalPca(t); renderTallerFormAgain(); });
+  document.getElementById('tfCurso').addEventListener('change', function(e){ t.curso=e.target.value; recomputeSemanalPca(t); renderTallerFormAgain(); });
+  document.getElementById('tfFechaInicio').addEventListener('change', function(e){ t.fechaInicio=e.target.value; applyFechaSelection(t); renderTallerFormAgain(); });
+  document.getElementById('tfFechaFin').addEventListener('change', function(e){ t.fechaFin=e.target.value; marcarAutoguardadoPendiente('taller'); });
+  document.getElementById('tfRevisado').addEventListener('input', function(e){ t.revisadoPor=e.target.value; });
+  document.getElementById('tfAprobado').addEventListener('input', function(e){ t.aprobadoPor=e.target.value; });
+
+  document.querySelectorAll('[data-tf]').forEach(function(el){
+    el.addEventListener('input', function(){ t[el.getAttribute('data-tf')] = el.value; });
+  });
+  document.querySelectorAll('.rte-editable').forEach(function(el){
+    var key = el.getAttribute('data-rte-field');
+    el.addEventListener('input', function(){ t[key] = el.innerHTML; });
+  });
+  bindRteToolbars(document.getElementById('tallerDoc'));
+
+  document.querySelectorAll('.taller-contenido-cb').forEach(function(cb){
+    cb.onchange = function(){
+      var seleccion = (t.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+      var idx = seleccion.indexOf(cb.value);
+      if(cb.checked){ if(idx===-1) seleccion.push(cb.value); } else if(idx!==-1) seleccion.splice(idx,1);
+      t.contenidos = seleccion.join(';');
+      marcarAutoguardadoPendiente('taller');
+    };
+  });
+  document.querySelectorAll('.taller-nivellogro-cb').forEach(function(cb){
+    cb.onchange = function(){
+      var tier = cb.getAttribute('data-tier');
+      var campo = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
+      var seleccion = (t[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+      var idx = seleccion.indexOf(cb.value);
+      if(cb.checked){ if(idx===-1) seleccion.push(cb.value); } else if(idx!==-1) seleccion.splice(idx,1);
+      t[campo] = seleccion.join(';');
+      marcarAutoguardadoPendiente('taller');
+    };
+  });
+}
+function saveTaller(t, silent){
+  var d = currentDocente();
+  var existingHeader = load(LS.TALLER).find(function(x){ return x.id===t.id; });
+  if(existingHeader && !t._forzarGuardado && hayConflictoGuardado('taller', existingHeader.updatedAt)){
+    if(silent){ toast('No se autoguardó: este Taller Práctico se modificó en otro dispositivo o pestaña. Recarga la página antes de seguir editando.', 'error'); return; }
+    avisarConflictoGuardado('taller', existingHeader.updatedAt, function(){ t._forzarGuardado = true; saveTaller(t, silent); });
+    return;
+  }
+  delete t._forzarGuardado;
+  var ownerId = existingHeader ? existingHeader.docenteId : d.id;
+  t.updatedAt = nowISO();
+  var record = {
+    id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId),
+    nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
+    pcaId: t.pcaId||'', semanaRowId: t.semanaRowId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: t.fechaHoraLimite||'',
+    productoFinal: sanitizeRte(t.productoFinal||''), contenidos: t.contenidos||'',
+    nivelLogroBasico: t.nivelLogroBasico||'', nivelLogroIntermedio: t.nivelLogroIntermedio||'', nivelLogroAvanzado: t.nivelLogroAvanzado||'',
+    revisadoPor: t.revisadoPor||'', aprobadoPor: t.aprobadoPor||'',
+    importadoDeDocente: t.importadoDeDocente||'', importadoFecha: t.importadoFecha||'',
+    createdAt: t.createdAt, updatedAt: t.updatedAt
+  };
+  TALLER_FASES.forEach(function(f){
+    ['Presencial','Autonomo','Recursos'].forEach(function(sub){ record[f.key+sub] = sanitizeRte(t[f.key+sub]||''); });
+    ['Tecnica','Instrumento'].forEach(function(sub){ record[f.key+sub] = t[f.key+sub]||''; });
+  });
+  var all = load(LS.TALLER).filter(function(x){ return x.id!==t.id; });
+  all.push(record);
+  save(LS.TALLER, all);
+  marcarBaseConflicto('taller', record.updatedAt);
+  state.editingTaller = Object.assign({}, record);
+  if(!silent) toast('Taller práctico guardado correctamente.', 'success');
+}
+function renderTallerListInner(d, scopeAll){
+  var isAdmin = isStaffRole(currentDocente().role);
+  var talleres = scopeAll ? load(LS.TALLER) : load(LS.TALLER).filter(function(t){ return t.docenteId===d.id; });
+  talleres.sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
+  var docentesById = {};
+  if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id]=x; });
+
+  function rowHtml(t){
+    var owner = scopeAll ? docentesById[t.docenteId] : null;
+    var docenteCell = scopeAll ? '<td>' + (owner ? escapeHtml(nombreFormal(owner)) : '<span class="hint">(docente eliminado)</span>') + '</td>' : '';
+    return ''
+    + '<tr>'
+    + '  <td class="tabular">' + (t.numero ? 'N.º ' + t.numero : '—') + '</td>'
+    + docenteCell
+    + '  <td><strong>' + escapeHtml(t.asignatura||'(sin asignatura)') + '</strong></td>'
+    + '  <td>' + escapeHtml(t.curso||'—') + '</td>'
+    + '  <td>' + fmtDate(t.fechaInicio) + ' al ' + fmtDate(t.fechaFin) + '</td>'
+    + '  <td>' + fmtDateTime(t.updatedAt) + '</td>'
+    + '  <td style="white-space:nowrap;">'
+    + '    <button class="btn btn-ghost btn-sm" data-edit-taller="' + t.id + '">Ver / Editar</button> '
+    + '    <button class="btn btn-gold btn-sm" data-export-taller-pdf="' + t.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
+    + '    <button class="btn btn-danger btn-sm" data-delete-taller="' + t.id + '">Eliminar</button>'
+    + '  </td>'
+    + '</tr>';
+  }
+
+  var theadDocente = scopeAll ? '<th>Docente</th>' : '';
+  var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
+  var head = scopeAll
+    ? '<p class="hint" style="margin-bottom:14px;">Talleres Prácticos de las asignaturas técnicas de Bachillerato (Diseño Gráfico, Computación, Robótica e Informática Aplicada).</p>'
+    : '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Taller Práctico</h1><p>Plan de clase para proyectos de tu asignatura técnica, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewTaller">+ Nuevo Taller Práctico</button></div>';
+
+  if(talleres.length===0){
+    return head + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>' + (scopeAll ? 'No hay Talleres Prácticos registrados todavía.' : 'Todavía no has creado ningún Taller Práctico.<br/><button class="btn btn-primary" id="btnNewTaller2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
+  }
+  return head + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + talleres.map(rowHtml).join('') + '</tbody></table></div></div>';
+}
+function renderTallerList(d){ return renderTallerListInner(d, false); }
+function bindTallerListEvents(){
+  ['btnNewTaller','btnNewTaller2'].forEach(function(id){
+    var b = document.getElementById(id);
+    if(b) b.onclick = function(){ openTallerForm(null, 'tallerlist'); };
+  });
+  document.querySelectorAll('[data-edit-taller]').forEach(function(btn){
+    btn.onclick = function(){ openTallerForm(btn.getAttribute('data-edit-taller'), state.subview==='admin' ? 'admin' : 'tallerlist'); };
+  });
+  document.querySelectorAll('[data-delete-taller]').forEach(function(btn){
+    btn.onclick = function(){
+      confirmDialog('¿Eliminar este Taller Práctico?', function(){
+        eliminarConDeshacer(LS.TALLER, btn.getAttribute('data-delete-taller'), 'Taller Práctico eliminado.', 'Taller Práctico restaurado.');
+        render();
+      });
+    };
+  });
+  document.querySelectorAll('[data-export-taller-pdf]').forEach(function(btn){
+    btn.onclick = function(){ openTallerForm(btn.getAttribute('data-export-taller-pdf'), state.subview==='admin' ? 'admin' : 'tallerlist'); setTimeout(printAsPdf, 250); };
+  });
 }
 
 /* ============================= ZIP (STORE) + DOCX BUILDER ============================= */
@@ -8000,6 +8509,7 @@ var ADMIN_TABS = [
   {key:'pca', label:'Planes (PCA)'},
   {key:'semanal', label:'Planes Semanales (Escuela)'},
   {key:'semanalcolegio', label:'Planes Semanales (Colegio)'},
+  {key:'taller', label:'Taller Práctico'},
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
   {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
@@ -8015,6 +8525,7 @@ var ADMIN_TAB_PASTEL = {
   pca: 'var(--indigo-100)',
   semanal: 'var(--green-100)',
   semanalcolegio: 'var(--orange-100)',
+  taller: 'var(--teal-100)',
   consultas: 'var(--lime-100)',
   presentacion: 'var(--blue-100)',
   presentacioncolegio: 'var(--gold-100)',
@@ -8042,6 +8553,7 @@ function renderAdmin(d){
   else if(tab === 'pca') body = renderAdminPca();
   else if(tab === 'semanal') body = renderAdminSemanal('escuela');
   else if(tab === 'semanalcolegio') body = renderAdminSemanal('colegio');
+  else if(tab === 'taller') body = renderTallerListInner(d, true);
   else if(tab === 'consultas') body = renderAdminConsultas();
   else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
@@ -8064,6 +8576,7 @@ function bindAdminEvents(){
   else if(tab === 'pca') bindPcaListSharedEvents();
   else if(tab === 'semanal') bindSemanalListSharedEvents();
   else if(tab === 'semanalcolegio') bindSemanalListSharedEvents();
+  else if(tab === 'taller') bindTallerListEvents();
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
@@ -8214,12 +8727,14 @@ function bindAdminEditDocenteEvents(){
       var pcaIds = pcaReg.map(function(p){ return p.id; });
       var contReg = load(LS.CONT).filter(function(c){ return pcaIds.indexOf(c.pcaId)!==-1; });
       var semanalReg = load(LS.SEMANAL).filter(function(s){ return s.docenteId===target.id; });
+      var tallerReg = load(LS.TALLER).filter(function(t){ return t.docenteId===target.id; });
       eliminarVariasConDeshacer([
         {key: LS.DOCENTES, ids: docenteReg.map(function(x){return x.id;}), registros: docenteReg},
         {key: LS.CARGA, ids: cargaReg.map(function(x){return x.id;}), registros: cargaReg},
         {key: LS.PCA, ids: pcaIds, registros: pcaReg},
         {key: LS.CONT, ids: contReg.map(function(x){return x.id;}), registros: contReg},
-        {key: LS.SEMANAL, ids: semanalReg.map(function(x){return x.id;}), registros: semanalReg}
+        {key: LS.SEMANAL, ids: semanalReg.map(function(x){return x.id;}), registros: semanalReg},
+        {key: LS.TALLER, ids: tallerReg.map(function(x){return x.id;}), registros: tallerReg}
       ], 'Docente eliminado.', 'Docente y sus datos restaurados.');
       state.editingAdminDocente = null;
       state.subview='admin'; state.adminTab='docentes';
@@ -8910,7 +9425,19 @@ function bindAdminFechasLimiteEvents(){
 }
 
 /* ============================= BASE DE DATOS (Exportar / Importar) ============================= */
+/* No hay tarea de fondo en un servidor que borre la papelera sola con el tiempo — se revisa y
+   purga lo vencido cada vez que un admin abre esta pantalla (que es, en la práctica, la única
+   forma en que alguien la va a ver). */
+function purgarPapeleraVencida(){
+  var actuales = load(LS.PAPELERA);
+  var ahora = Date.now();
+  var vigentes = actuales.filter(function(e){
+    return (ahora - new Date(e.eliminadoEn).getTime()) < PAPELERA_DIAS_RETENCION*24*60*60*1000;
+  });
+  if(vigentes.length !== actuales.length) save(LS.PAPELERA, vigentes);
+}
 function renderDatabase(d){
+  purgarPapeleraVencida();
   var docentes = allDocentes();
   var carga = load(LS.CARGA);
   var pcas = load(LS.PCA);
@@ -8927,9 +9454,10 @@ function renderDatabase(d){
   + '<div class="grid-4" style="margin-top:14px;">'
   + '  <div class="stat"><div class="stat-num tabular">' + semanal.length + '</div><div class="stat-label">Planes (PLAN SEMANAL)</div></div>'
   + '</div>'
+  + respaldoRecordatorioHtml()
   + '<div class="card">'
   + '  <h2>Descargar respaldo completo</h2>'
-  + '  <div class="card-sub">Genera un archivo .json con las 4 bases de datos completas tal como están en este navegador.</div>'
+  + '  <div class="card-sub">Genera un archivo .json con todas las bases de datos completas tal como están en este navegador.</div>'
   + '  <button class="btn btn-primary" id="btnExportAll">Descargar respaldo (.json)</button>'
   + '</div>'
   + '<div class="card">'
@@ -8937,30 +9465,82 @@ function renderDatabase(d){
   + '  <div class="card-sub">Sube un archivo .json exportado desde este mismo sistema (de otro docente o dispositivo). Los registros se fusionan por ID: si ya existen, se actualizan; si son nuevos, se agregan.</div>'
   + '  <input type="file" id="importFile" accept="application/json" />'
   + '  <div id="importResult" class="hint" style="margin-top:8px;"></div>'
+  + '</div>'
+  + '<div class="card">'
+  + '  <h2>Papelera <span class="hint">(' + load(LS.PAPELERA).length + ' elemento(s))</span></h2>'
+  + '  <div class="card-sub">Todo lo que se elimina en el sistema (planes, estudiantes, incidentes, fichas, etc.) queda guardado aquí durante ' + PAPELERA_DIAS_RETENCION + ' días antes de borrarse en serio, por si hace falta recuperarlo.</div>'
+  + renderPapeleraLista()
   + '</div>';
 }
+/* Recordatorio de respaldo semanal: como esta app no tiene servidor propio para programar tareas,
+   "automático" se implementa como un aviso que aparece solo cuando ya toca (7 días desde el
+   último respaldo descargado) — se guarda la fecha de la última descarga en config/respaldo. Un
+   verdadero archivo descargado sin que nadie haga clic no es posible de forma confiable desde el
+   navegador (se bloquea o pide confirmación), así que este aviso empuja a hacerlo con un clic. */
+var RESPALDO_DIAS_RECORDATORIO = 7;
+function configRespaldo(){
+  return load(LS.CONFIG).find(function(c){ return c.id==='respaldo'; }) || {id:'respaldo', ultimaDescarga:''};
+}
+function registrarRespaldoDescargado(){
+  var otros = load(LS.CONFIG).filter(function(c){ return c.id!=='respaldo'; });
+  save(LS.CONFIG, otros.concat([{id:'respaldo', ultimaDescarga: nowISO()}]));
+}
+function respaldoRecordatorioHtml(){
+  var cfg = configRespaldo();
+  var dias = cfg.ultimaDescarga ? Math.floor((Date.now() - new Date(cfg.ultimaDescarga).getTime()) / 86400000) : null;
+  if(dias !== null && dias < RESPALDO_DIAS_RECORDATORIO) return '';
+  var texto = dias === null
+    ? 'Todavía no se ha descargado ningún respaldo desde este panel. Te recomendamos descargar uno ahora y repetirlo cada semana.'
+    : 'Han pasado ' + dias + ' días desde tu último respaldo descargado (' + fmtDateTime(cfg.ultimaDescarga) + '). Te recomendamos descargar uno nuevo.';
+  return '<div class="lock-banner no-print" style="margin-bottom:14px;">⚠️ ' + escapeHtml(texto) + ' <button class="btn btn-primary btn-sm" id="btnRespaldoRecordatorio" style="margin-left:10px;">Descargar ahora</button></div>';
+}
+function renderPapeleraLista(){
+  var entradas = load(LS.PAPELERA).slice().sort(function(a,b){ return (b.eliminadoEn||'').localeCompare(a.eliminadoEn||''); });
+  if(!entradas.length) return '<div class="hint" style="margin-top:10px;">La papelera está vacía.</div>';
+  var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id]=x; });
+  var rows = entradas.map(function(e){
+    var vence = addDays((e.eliminadoEn||'').slice(0,10), PAPELERA_DIAS_RETENCION);
+    return '<tr>'
+      + '<td>' + escapeHtml(e.resumen) + '</td>'
+      + '<td>' + escapeHtml(e.eliminadoPorNombre||'—') + '</td>'
+      + '<td>' + fmtDateTime(e.eliminadoEn) + '</td>'
+      + '<td>' + fmtDate(vence) + '</td>'
+      + '<td><button class="btn btn-primary btn-sm" data-restaurar-papelera="' + e.id + '">Restaurar</button> <button class="btn btn-danger btn-sm" data-purgar-papelera="' + e.id + '">Eliminar definitivamente</button></td>'
+      + '</tr>';
+  }).join('');
+  return '<div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>Qué se eliminó</th><th>Quién lo eliminó</th><th>Cuándo</th><th>Se borra en serio el</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+/* Las 4 colecciones originales (DOCENTES/CARGA/PCA/CONT/SEMANAL) usan los nombres de siempre en
+   el .json por compatibilidad con respaldos viejos; el resto se agregó después con el nombre de
+   su propia clave LS. */
+var RESPALDO_CAMPOS = {
+  DOCENTES:'DOCENTES', CARGA:'CARGA_HORARIA', PCA:'PCA', CONT:'CONTENIDOS_ANUALES', SEMANAL:'PLAN_SEMANAL',
+  ESTUDIANTES:'ESTUDIANTES', ASISTENCIA:'ASISTENCIA', INCIDENTES:'INCIDENTES', OBSERVACIONES:'OBSERVACIONES',
+  DECE:'DECE', FICHA_DETECCION:'FICHA_DETECCION', FECHAS_LIMITE:'FECHAS_LIMITE', CONFIG:'CONFIG'
+};
+async function descargarRespaldoCompleto(){
+  var payload = { exportedAt: nowISO() };
+  Object.keys(RESPALDO_CAMPOS).forEach(function(key){ payload[RESPALDO_CAMPOS[key]] = load(LS[key]); });
+  var json = JSON.stringify(payload, null, 2);
+  var filename = 'respaldo_seb_' + todayISO() + '.json';
+  if(!window.claude || !window.claude.downloads){
+    browserDownloadFallback(filename, json);
+    registrarRespaldoDescargado();
+    toast('Respaldo descargado.', 'success');
+    render();
+    return;
+  }
+  try{
+    await window.claude.downloads.save({filename: filename, data: json});
+    registrarRespaldoDescargado();
+    toast('Respaldo descargado.', 'success');
+    render();
+  }catch(err){ if(err && err.code!=='declined') toast('No se pudo exportar: ' + (err.message||err.code), 'error'); }
+}
 function bindDatabaseEvents(){
-  document.getElementById('btnExportAll').onclick = async function(){
-    var payload = {
-      exportedAt: nowISO(),
-      DOCENTES: load(LS.DOCENTES),
-      CARGA_HORARIA: load(LS.CARGA),
-      PCA: load(LS.PCA),
-      CONTENIDOS_ANUALES: load(LS.CONT),
-      PLAN_SEMANAL: load(LS.SEMANAL)
-    };
-    var json = JSON.stringify(payload, null, 2);
-    var filename = 'respaldo_seb_' + todayISO() + '.json';
-    if(!window.claude || !window.claude.downloads){
-      browserDownloadFallback(filename, json);
-      toast('Respaldo descargado.', 'success');
-      return;
-    }
-    try{
-      await window.claude.downloads.save({filename: filename, data: json});
-      toast('Respaldo descargado.', 'success');
-    }catch(err){ if(err && err.code!=='declined') toast('No se pudo exportar: ' + (err.message||err.code), 'error'); }
-  };
+  document.getElementById('btnExportAll').onclick = descargarRespaldoCompleto;
+  var btnRecordatorio = document.getElementById('btnRespaldoRecordatorio');
+  if(btnRecordatorio) btnRecordatorio.onclick = descargarRespaldoCompleto;
   document.getElementById('importFile').addEventListener('change', function(e){
     var file = e.target.files[0];
     if(!file) return;
@@ -8968,17 +9548,35 @@ function bindDatabaseEvents(){
     reader.onload = function(){
       try{
         var data = JSON.parse(reader.result);
-        var res = mergeBy(LS.DOCENTES, data.DOCENTES || []);
-        var res2 = mergeBy(LS.CARGA, data.CARGA_HORARIA || []);
-        var res3 = mergeBy(LS.PCA, data.PCA || []);
-        var res4 = mergeBy(LS.CONT, data.CONTENIDOS_ANUALES || []);
-        var res5 = mergeBy(LS.SEMANAL, data.PLAN_SEMANAL || []);
-        document.getElementById('importResult').textContent = 'Fusionado: ' + (res+res2+res3+res4+res5) + ' registros procesados.';
+        var total = 0;
+        Object.keys(RESPALDO_CAMPOS).forEach(function(key){ total += mergeBy(LS[key], data[RESPALDO_CAMPOS[key]] || []); });
+        document.getElementById('importResult').textContent = 'Fusionado: ' + total + ' registros procesados.';
         toast('Base de datos fusionada correctamente.', 'success');
         render();
       }catch(err){ toast('El archivo no es un respaldo válido.', 'error'); }
     };
     reader.readAsText(file);
+  });
+  document.querySelectorAll('[data-restaurar-papelera]').forEach(function(btn){
+    btn.onclick = function(){
+      var id = btn.getAttribute('data-restaurar-papelera');
+      var entrada = load(LS.PAPELERA).find(function(x){ return x.id===id; });
+      confirmDialog('¿Restaurar "' + (entrada?entrada.resumen:'') + '"? Vuelve a aparecer donde estaba antes de eliminarse.', function(){
+        restaurarDePapelera(id);
+        toast('Restaurado correctamente.', 'success');
+        render();
+      }, 'Restaurar');
+    };
+  });
+  document.querySelectorAll('[data-purgar-papelera]').forEach(function(btn){
+    btn.onclick = function(){
+      var id = btn.getAttribute('data-purgar-papelera');
+      confirmDialog('¿Eliminar esto de la papelera para siempre? Ya no se podrá recuperar.', function(){
+        quitarDePapelera(id);
+        toast('Eliminado definitivamente.', 'success');
+        render();
+      });
+    };
   });
 }
 function mergeBy(key, incoming){
@@ -9017,7 +9615,7 @@ function detachRealtimeListeners(){
    asistencia de TODA la institución (igual que ya ocurre con carga/pca/semanal, que también se
    sincronizan completos para todos) — la pantalla solo le muestra sus propios cursos, pero un
    docente técnicamente podría inspeccionar en el navegador los datos de otros cursos. */
-var COLECCIONES_SOLO_STAFF = ['INCIDENTES', 'DECE'];
+var COLECCIONES_SOLO_STAFF = ['INCIDENTES', 'DECE', 'PAPELERA'];
 /* Ver el comentario dentro de attachRealtimeListeners: evita el redibujado completo (y el
    "congelamiento" que se siente en documentos grandes) cuando el cambio recién llegado es
    simplemente el eco del autoguardado del formulario que el propio docente tiene abierto en este
@@ -9025,6 +9623,7 @@ var COLECCIONES_SOLO_STAFF = ['INCIDENTES', 'DECE'];
 function debeOmitirRenderPorEdicionActiva(key){
   if((key === 'PCA' || key === 'CONT') && state.subview === 'pcaform' && state.editingPca) return true;
   if(key === 'SEMANAL' && state.subview === 'semanalform' && state.editingSemanal) return true;
+  if(key === 'TALLER' && state.subview === 'tallerform' && state.editingTaller) return true;
   if(key === 'FICHA_DETECCION' && state.subview === 'fichadeteccion' && state.fichaDeteccionView === 'form' && state.editingFichaDeteccion) return true;
   if(key === 'DECE' && state.subview === 'dece' && state.deceView === 'form' && state.editingDece) return true;
   return false;
