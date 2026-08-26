@@ -746,20 +746,25 @@ function misAsignaturasPara(docenteId, nivel, especialidad, curso){
   rows.forEach(function(r){ if(r.asignatura) set[r.asignatura]=1; });
   return Object.keys(set).sort();
 }
-/* Asignaturas técnicas de Bachillerato que usan el formulario de "Taller Práctico" en vez del
-   Plan Semanal normal — Computación, Robótica e Informática Aplicada (comunes a todo Bachillerato)
-   más las asignaturas de la especialidad Diseño Gráfico que son prácticas/de taller (se excluyen
-   a propósito las teóricas: Historia del Arte, Formación y Orientación Laboral, y Publicidad del
-   Colegio, que siguen usando el Plan Semanal normal). */
-var ASIGNATURAS_TALLER_PRACTICO = [
-  'Computación', 'Robótica', 'Informática Aplicada (Programación)',
+/* Asignaturas que usan el formulario de "Taller Práctico" en vez del Plan Semanal normal.
+   Computación y Robótica activan el Taller Práctico en CUALQUIER nivel educativo (Iniciales,
+   Básica y Bachillerato) porque son prácticas en todos los niveles donde se dictan. Informática
+   Aplicada y las asignaturas de la especialidad Diseño Gráfico que son prácticas/de taller solo
+   existen (y por tanto solo aplican) en Bachillerato — se excluyen a propósito las teóricas de esa
+   especialidad: Historia del Arte, Formación y Orientación Laboral, y Publicidad del Colegio, que
+   siguen usando el Plan Semanal normal. */
+var ASIGNATURAS_TALLER_PRACTICO_CUALQUIER_NIVEL = ['Computación', 'Robótica'];
+var ASIGNATURAS_TALLER_PRACTICO_BACHILLERATO = [
+  'Informática Aplicada (Programación)',
   'Diseño Editorial/Diagramación', 'Fundamentos del Diseño/Técnicas de Representación',
   'Ilustración Digital y Diseño/Branding', 'Publicidad/Comunicación Visual', 'Dibujo Técnico Aplicado',
   'Producción Gráfica Integral', 'Desarrollo Multimedia y Web', 'Módulos Prácticos',
   'Procesos del Diseño', 'Elaboración del Arte', 'Diseño Asistido por el Ordenador', 'Arte Final'
 ];
+var ASIGNATURAS_TALLER_PRACTICO = ASIGNATURAS_TALLER_PRACTICO_CUALQUIER_NIVEL.concat(ASIGNATURAS_TALLER_PRACTICO_BACHILLERATO);
 function esAsignaturaTallerPractico(nivel, asignatura){
-  return nivel === 'Bachillerato' && ASIGNATURAS_TALLER_PRACTICO.indexOf(asignatura) !== -1;
+  if(ASIGNATURAS_TALLER_PRACTICO_CUALQUIER_NIVEL.indexOf(asignatura) !== -1) return true;
+  return nivel === 'Bachillerato' && ASIGNATURAS_TALLER_PRACTICO_BACHILLERATO.indexOf(asignatura) !== -1;
 }
 /* Para decidir qué mostrar en el menú lateral: si TODA la Carga Horaria del docente es de
    asignaturas técnicas, no tiene sentido mostrarle "Planes Semanales" (siempre le saldría vacío);
