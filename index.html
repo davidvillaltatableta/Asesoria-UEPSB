@@ -9730,9 +9730,18 @@ var COLECCIONES_SOLO_STAFF = ['INCIDENTES', 'DECE', 'PAPELERA'];
    simplemente el eco del autoguardado del formulario que el propio docente tiene abierto en este
    momento — su copia en memoria (state.editingPca/editingSemanal/etc.) ya refleja ese cambio. */
 function debeOmitirRenderPorEdicionActiva(key){
-  if((key === 'PCA' || key === 'CONT') && state.subview === 'pcaform' && state.editingPca) return true;
-  if(key === 'SEMANAL' && state.subview === 'semanalform' && state.editingSemanal) return true;
-  if(key === 'TALLER' && state.subview === 'tallerform' && state.editingTaller) return true;
+  /* Mientras el docente tiene abierto un PCA, Plan Semanal o Taller Práctico (formularios pesados,
+     con muchos editores de texto enriquecido), CUALQUIER colección que reciba una actualización en
+     tiempo real —no solo la propia del formulario— se ignora hasta que salga de esa pantalla. Antes
+     esto solo protegía la colección propia (p.ej. SEMANAL mientras edita un Plan Semanal); un cambio
+     en cualquier OTRA colección (el eco del autoguardado de otro campo, otro docente guardando algo
+     en paralelo, etc.) igual disparaba un redibujado completo de toda la pantalla — visible como un
+     "parpadeo" — mientras seguía escribiendo. Su copia en memoria (state.editingPca/editingSemanal/
+     editingTaller) ya tiene todo lo que escribió, así que no hace falta reconstruir el HTML por un
+     cambio ajeno a lo que está editando. */
+  if(state.subview === 'pcaform' && state.editingPca) return true;
+  if(state.subview === 'semanalform' && state.editingSemanal) return true;
+  if(state.subview === 'tallerform' && state.editingTaller) return true;
   if(key === 'FICHA_DETECCION' && state.subview === 'fichadeteccion' && state.fichaDeteccionView === 'form' && state.editingFichaDeteccion) return true;
   if(key === 'DECE' && state.subview === 'dece' && state.deceView === 'form' && state.editingDece) return true;
   return false;
