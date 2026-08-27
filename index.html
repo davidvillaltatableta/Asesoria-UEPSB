@@ -3001,6 +3001,7 @@ function asistenciaResultHtml(){
   + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>Justif.</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
   + '    <button class="btn btn-ghost btn-sm" id="btnAsisTodosPresentes">Marcar todos Presente</button>'
+  + '    <button class="btn btn-ghost btn-sm" id="btnAsisDesmarcarTodos">Desmarcar todos</button>'
   + '    <div class="spacer"></div>'
   + '    <button class="btn btn-primary" id="btnGuardarAsistencia">Guardar asistencia</button>'
   + '  </div>'
@@ -3050,6 +3051,15 @@ function bindAsistenciaResultEvents(){
     PERIODOS.forEach(function(p){
       a.periodos[p.n] = a.periodos[p.n] || {};
       estudiantes.forEach(function(e){ a.periodos[p.n][e.id] = 'P'; });
+    });
+    renderAsistenciaResultOnly();
+  };
+  var desmarcarBtn = document.getElementById('btnAsisDesmarcarTodos');
+  if(desmarcarBtn) desmarcarBtn.onclick = function(){
+    var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+    PERIODOS.forEach(function(p){
+      if(!a.periodos[p.n]) return;
+      estudiantes.forEach(function(e){ delete a.periodos[p.n][e.id]; });
     });
     renderAsistenciaResultOnly();
   };
@@ -3131,6 +3141,7 @@ function miAsistenciaResultHtml(){
   + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
   + '    <button class="btn btn-ghost btn-sm" id="btnMiAsisTodosPresentes">Marcar todos Presente</button>'
+  + '    <button class="btn btn-ghost btn-sm" id="btnMiAsisDesmarcarTodos">Desmarcar todos</button>'
   + '    <div class="spacer"></div>'
   + '    <button class="btn btn-primary" id="btnGuardarMiAsistencia">Guardar asistencia</button>'
   + '  </div>'
@@ -3182,6 +3193,21 @@ function bindMiAsistenciaResultEvents(){
     periodosElegidosMiAsistencia(f).forEach(function(n){
       a.periodos[n] = a.periodos[n] || {};
       estudiantes.forEach(function(e){ a.periodos[n][e.id] = 'P'; });
+    });
+    renderMiAsistenciaResultOnly();
+  };
+  var desmarcarBtn = document.getElementById('btnMiAsisDesmarcarTodos');
+  if(desmarcarBtn) desmarcarBtn.onclick = function(){
+    /* A diferencia de Inspección (que sobrescribe el documento entero al guardar), Mi Asistencia
+       guarda con setDoc(..., {merge:true}) para no pisar las horas que otro docente ya guardó ese
+       mismo día — y en un merge de Firestore, una clave que simplemente no se envía NO se borra
+       (se conserva tal cual estaba). Por eso aquí hay que dejar la clave presente con valor ''
+       (que la pantalla ya trata igual que "sin marcar") en vez de con delete: así el guardado sí
+       viaja y sí limpia lo que había en la nube. */
+    var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+    periodosElegidosMiAsistencia(f).forEach(function(n){
+      a.periodos[n] = a.periodos[n] || {};
+      estudiantes.forEach(function(e){ a.periodos[n][e.id] = ''; });
     });
     renderMiAsistenciaResultOnly();
   };
@@ -6299,6 +6325,17 @@ function bindRteToolbars(root){
       if(wrap) wrap.querySelectorAll('.rte-toolbar [data-rte-cmd].active').forEach(function(b){ b.classList.remove('active'); });
       guardarSeleccionPersistenteRte(editable);
     });
+    /* Dentro de un campo editable, un clic normal sobre un enlace solo coloca el cursor ahí (no lo
+       abre) — así funciona cualquier contenteditable, y normalmente hace falta Ctrl+clic. Como eso
+       confunde a los docentes ("hago clic y no abre"), un clic simple sobre el enlace lo abre
+       directamente en una pestaña nueva. */
+    editable.addEventListener('click', function(e){
+      var a = e.target.closest ? e.target.closest('a') : null;
+      if(a && editable.contains(a) && a.href){
+        e.preventDefault();
+        window.open(a.href, '_blank', 'noopener');
+      }
+    });
     /* Tab / Shift+Tab como en Word: aumenta o reduce la sangría del párrafo o ítem de lista donde
        está el cursor, en vez de mover el foco al siguiente campo del formulario. */
     editable.addEventListener('keydown', function(e){
@@ -7228,8 +7265,8 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasRe
   });
 
   function grupoHtml(opciones){
-    return '<div class="checkbox-grid">' + opciones.map(function(t){
-      return '<label class="checkbox-pill"><input type="checkbox" class="contenidos-cb" value="' + escapeHtml(t) + '" ' + (seleccionados.indexOf(t)!==-1?'checked':'') + ' />' + escapeHtml(t) + '</label>';
+    return '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + opciones.map(function(t){
+      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="contenidos-cb" value="' + escapeHtml(t) + '" ' + (seleccionados.indexOf(t)!==-1?'checked':'') + ' /><span>' + escapeHtml(t) + '</span></label>';
     }).join('') + '</div>';
   }
 
