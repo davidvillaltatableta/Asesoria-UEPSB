@@ -6472,6 +6472,7 @@ function mostrarMenuColorRte(btn, editable){
 function insertarPegadoInmediato(editable, htmlRaw, textoPlano){
   var marcaId = 'pm_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
   var htmlPorDefecto = htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+  htmlPorDefecto = linkificarUrls(htmlPorDefecto);
   document.execCommand('insertHTML', false, '<span data-paste-marker="' + marcaId + '">' + htmlPorDefecto + '</span>');
   editable.dispatchEvent(new Event('input', {bubbles:true}));
   var marcador = editable.querySelector('[data-paste-marker="' + marcaId + '"]');
@@ -6547,6 +6548,7 @@ function mostrarSubmenuFormatoPegado(btn, marcador, htmlRaw, textoPlano, alTermi
       if(modo === 'texto') htmlFinal = escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
       else if(modo === 'combinar') htmlFinal = htmlRaw ? quitarFuenteHtml(limpiarHtmlPegadoCombinado(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
       else htmlFinal = htmlRaw ? quitarFuenteHtml(sanitizeRte(htmlRaw)) : escapeHtml(textoPlano||'').replace(/\n/g,'<br>');
+      htmlFinal = linkificarUrls(htmlFinal);
       var contenedorEditable = marcador && marcador.closest('.rte-editable');
       if(marcador) marcador.innerHTML = htmlFinal;
       menu.remove();
@@ -6644,6 +6646,49 @@ function sanitizeRte(html){
     });
   }
   clean(doc.body.firstChild);
+  return doc.body.firstChild.innerHTML;
+}
+/* Convierte en enlace real cualquier URL que aparezca como texto plano (p.ej. al pegar
+   "https://..." o "www...." copiado desde un chat o documento sin que venga ya como <a>) —
+   recorre los nodos de texto que NO estén ya dentro de un <a> y envuelve cada URL encontrada.
+   Se aplica sobre el HTML ya sanitizado, así que es seguro (no hay más etiquetas que <br>/<b>/etc.,
+   ninguna con atributos que puedan confundirse con una URL). */
+var RTE_URL_REGEX = /\b((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+function linkificarUrls(html){
+  if(!html || !/https?:\/\/|www\./i.test(html)) return html;
+  var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  function procesar(node){
+    Array.from(node.childNodes).forEach(function(ch){
+      if(ch.nodeType === 1){
+        if(ch.tagName !== 'A') procesar(ch);
+        return;
+      }
+      if(ch.nodeType !== 3) return;
+      var texto = ch.textContent;
+      RTE_URL_REGEX.lastIndex = 0;
+      if(!RTE_URL_REGEX.test(texto)) return;
+      RTE_URL_REGEX.lastIndex = 0;
+      var frag = document.createDocumentFragment();
+      var lastIndex = 0, m;
+      while((m = RTE_URL_REGEX.exec(texto))){
+        var url = m[1];
+        var trailing = '';
+        var limpio = url.replace(/[.,;:!?)\]"']+$/, function(coincidencia){ trailing = coincidencia; return ''; });
+        if(!limpio){ continue; }
+        if(m.index > lastIndex) frag.appendChild(document.createTextNode(texto.slice(lastIndex, m.index)));
+        var a = document.createElement('a');
+        a.setAttribute('href', /^https?:\/\//i.test(limpio) ? limpio : 'https://' + limpio);
+        a.setAttribute('target', '_blank');
+        a.textContent = limpio;
+        frag.appendChild(a);
+        if(trailing) frag.appendChild(document.createTextNode(trailing));
+        lastIndex = m.index + url.length;
+      }
+      if(lastIndex < texto.length) frag.appendChild(document.createTextNode(texto.slice(lastIndex)));
+      node.replaceChild(frag, ch);
+    });
+  }
+  procesar(doc.body.firstChild);
   return doc.body.firstChild.innerHTML;
 }
 function richTextToPlain(html){
