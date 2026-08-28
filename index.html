@@ -7761,8 +7761,26 @@ function tallerSemanaContexto(t, sem){
     : 'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura.';
   return {semanaActual: semanaActual, motivo: motivo};
 }
+/* Lo que ya está marcado EN VIVO en cualquier semana de este mismo Taller Práctico, aunque
+   todavía no se haya guardado (temasVistosDelPca/nivelLogroVistosDelPca solo ven lo que ya está
+   persistido en Firestore, así que sin esto un ítem recién marcado en la semana 1 seguía
+   apareciendo como "pendiente" en la semana 2 hasta el próximo guardado). */
+function tallerVistosEnVivo(t){
+  var temas = {}, niveles = {basico:{}, intermedio:{}, avanzado:{}};
+  (t.fases||[]).forEach(function(fase){
+    (fase.semanas||[]).forEach(function(s){
+      (s.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(x){ temas[x]=1; });
+      ['basico','intermedio','avanzado'].forEach(function(tier){
+        var campo = NIVEL_LOGRO_DIA_FIELD[tier];
+        (s[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(x){ niveles[tier][x]=1; });
+      });
+    });
+  });
+  return {temas: temas, niveles: niveles};
+}
 function tallerSemanaRowHtml(t, fase, sem){
   var ctx = tallerSemanaContexto(t, sem), semanaActual = ctx.semanaActual, motivo = ctx.motivo;
+  var vivos = tallerVistosEnVivo(t);
 
   // Igual que en Plan Semanal: los temas/ítems de la semana INMEDIATAMENTE ANTERIOR del PCA que
   // ningún plan (Semanal o Taller) marcó todavía se ofrecen aparte, como "Pendientes de la
@@ -7774,7 +7792,7 @@ function tallerSemanaRowHtml(t, fase, sem){
   }
 
   var temasEstaSemana = semanaActual ? parseLinesList(semanaActual.temas) : [];
-  var temasPendientes = semanaActual ? temasPendientesAnteriores(t.pcaId, semanaActual.id).filter(function(x){ return temasEstaSemana.indexOf(x)===-1; }) : [];
+  var temasPendientes = semanaActual ? temasPendientesAnteriores(t.pcaId, semanaActual.id).filter(function(x){ return temasEstaSemana.indexOf(x)===-1 && !vivos.temas[x]; }) : [];
   var seleccionTemas = (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   seleccionTemas.forEach(function(x){
     if(temasEstaSemana.indexOf(x)===-1 && temasPendientes.indexOf(x)===-1) temasEstaSemana.push(x);
@@ -7792,7 +7810,7 @@ function tallerSemanaRowHtml(t, fase, sem){
     var campoPca = NIVEL_LOGRO_PCA_FIELD[tier];
     var campoSem = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
     var itemsEstaSemana = semanaActual ? parseLinesList(semanaActual[campoPca]) : [];
-    var itemsPendientes = semanaActual ? nivelLogroPendientesAnteriores(t.pcaId, semanaActual.id, tier).filter(function(x){ return itemsEstaSemana.indexOf(x)===-1; }) : [];
+    var itemsPendientes = semanaActual ? nivelLogroPendientesAnteriores(t.pcaId, semanaActual.id, tier).filter(function(x){ return itemsEstaSemana.indexOf(x)===-1 && !vivos.niveles[tier][x]; }) : [];
     var seleccion = (sem[campoSem]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
     seleccion.forEach(function(x){
       if(itemsEstaSemana.indexOf(x)===-1 && itemsPendientes.indexOf(x)===-1) itemsEstaSemana.push(x);
@@ -8031,6 +8049,49 @@ function saveTaller(t, silent){
   });
   if(!silent) toast('Taller práctico guardado correctamente.', 'success');
 }
+/* "Replanificar" (botón de la lista de Taller Práctico): duplica un Taller Práctico existente en
+   uno nuevo, con todas sus fases y semanas —y los mismos temas y niveles de logro que ya tenía
+   marcados— pero editable de forma independiente (no comparte fases/semanas con el original).
+   Numera el nuevo como el original + ".1" (p.ej. "3.1"), o ".2"/".3"... si ya existe ese número
+   (por si se replanifica más de una vez). Igual que numeroReplanificado/replanificarSemanal. */
+function numeroReplanificadoTaller(docenteId, base){
+  var existentes = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId; }).map(function(t){ return String(t.numero); });
+  var i = 1, candidato;
+  do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
+  return candidato;
+}
+function replanificarTaller(tallerId){
+  var t = load(LS.TALLER).find(function(x){ return x.id===tallerId; });
+  if(!t) return;
+  var nuevoNumero = numeroReplanificadoTaller(t.docenteId, t.numero);
+  var nuevo = {
+    id: uid('tp'), docenteId: t.docenteId, numero: nuevoNumero,
+    nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
+    pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    productoFinal: t.productoFinal||'',
+    fases: (t.fases||[]).map(function(fase){
+      return {
+        id: uid('fase'), nombre: fase.nombre||'',
+        semanas: (fase.semanas||[]).map(function(sem){
+          return {
+            id: uid('tsem'), fechaInicio: sem.fechaInicio||'', fechaFin: sem.fechaFin||'', semanaRowId: sem.semanaRowId||'',
+            contenidos: sem.contenidos||'',
+            nivelLogroBasico: sem.nivelLogroBasico||'', nivelLogroIntermedio: sem.nivelLogroIntermedio||'', nivelLogroAvanzado: sem.nivelLogroAvanzado||'',
+            actividades: sem.actividades||'', recursos: sem.recursos||'',
+            tecnica: sem.tecnica||'', instrumento: sem.instrumento||''
+          };
+        })
+      };
+    }),
+    revisadoPor: t.revisadoPor||'', aprobadoPor: t.aprobadoPor||'',
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  var all = load(LS.TALLER).slice();
+  all.push(nuevo);
+  save(LS.TALLER, all);
+  toast('Taller Práctico replanificado como N.º ' + nuevoNumero + ', con los mismos temas y niveles de logro (editables).', 'success');
+  render();
+}
 function renderTallerListInner(d, scopeAll){
   var isAdmin = isStaffRole(currentDocente().role);
   var talleres = scopeAll ? load(LS.TALLER) : load(LS.TALLER).filter(function(t){ return t.docenteId===d.id; });
@@ -8051,6 +8112,7 @@ function renderTallerListInner(d, scopeAll){
     + '  <td>' + fmtDateTime(t.updatedAt) + '</td>'
     + '  <td style="white-space:nowrap;">'
     + '    <button class="btn btn-ghost btn-sm" data-edit-taller="' + t.id + '">Ver / Editar</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-replanificar-taller="' + t.id + '" title="Duplica este Taller Práctico en uno nuevo, con los mismos temas y niveles de logro (editables)">Replanificar</button> '
     + '    <button class="btn btn-gold btn-sm" data-export-taller-pdf="' + t.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-danger btn-sm" data-delete-taller="' + t.id + '">Eliminar</button>'
     + '  </td>'
@@ -8083,6 +8145,14 @@ function bindTallerListEvents(){
         eliminarConDeshacer(LS.TALLER, btn.getAttribute('data-delete-taller'), 'Taller Práctico eliminado.', 'Taller Práctico restaurado.');
         render();
       });
+    };
+  });
+  document.querySelectorAll('[data-replanificar-taller]').forEach(function(btn){
+    btn.onclick = function(){
+      var tallerId = btn.getAttribute('data-replanificar-taller');
+      confirmDialog('¿Crear un nuevo Taller Práctico duplicando este, con los mismos temas y niveles de logro (podrás editarlos después)?', function(){
+        replanificarTaller(tallerId);
+      }, 'Replanificar');
     };
   });
   document.querySelectorAll('[data-export-taller-pdf]').forEach(function(btn){
