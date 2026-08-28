@@ -7932,7 +7932,10 @@ function bindTallerFormEvents(){
       var fase = t.fases.find(function(f){ return f.id===btn.getAttribute('data-addsemana'); });
       var nueva = blankTallerSemana();
       var ultima = fase.semanas[fase.semanas.length-1];
-      if(ultima && ultima.fechaFin) nueva.fechaInicio = addDays(ultima.fechaFin, 1);
+      if(ultima){
+        if(ultima.fechaInicio) nueva.fechaInicio = addDays(ultima.fechaInicio, 7);
+        if(ultima.fechaFin) nueva.fechaFin = addDays(ultima.fechaFin, 7);
+      }
       aplicarFechaSemanaTaller(nueva, t.pcaId);
       fase.semanas.push(nueva);
       renderTallerFormAgain();
