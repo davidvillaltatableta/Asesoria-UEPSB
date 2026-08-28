@@ -981,6 +981,45 @@ function semanasDePca(pcaId){
    exactamente a esta semana): así, si un tema pendiente de esta semana se termina marcando en
    el plan de la semana siguiente (ver temasPendientesAnteriores), esta semana también queda
    COMPLETADO — sin importar si el registro llegó tarde. */
+/* Un tema/ítem de nivel de logro cuenta como "visto" si quedó marcado en CUALQUIERA de los dos
+   planes que pueden registrar el avance semanal de un PCA — Plan Semanal (por día) o Taller
+   Práctico (por semana de cada fase) — así un docente de Computación/Robótica/Informática
+   Aplicada/Diseño que solo llena Taller Práctico (o que usa ambos planes a la vez) no ve temas
+   ya cubiertos ofrecidos otra vez como pendientes, y la OBSERVACION del PCA (computeEstadoSemana)
+   se calcula igual sin importar en cuál de los dos planes se registró el avance. */
+function temasVistosDelPca(pcaId){
+  var vistos = {};
+  load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
+    (s.dias||[]).forEach(function(dia){
+      (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+    });
+  });
+  load(LS.TALLER).filter(function(t){ return t.pcaId===pcaId; }).forEach(function(t){
+    (t.fases||[]).forEach(function(fase){
+      (fase.semanas||[]).forEach(function(sem){
+        (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+      });
+    });
+  });
+  return vistos;
+}
+function nivelLogroVistosDelPca(pcaId, tier){
+  var campoDia = NIVEL_LOGRO_DIA_FIELD[tier];
+  var vistos = {};
+  load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
+    (s.dias||[]).forEach(function(dia){
+      (dia[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+    });
+  });
+  load(LS.TALLER).filter(function(t){ return t.pcaId===pcaId; }).forEach(function(t){
+    (t.fases||[]).forEach(function(fase){
+      (fase.semanas||[]).forEach(function(sem){
+        (sem[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+      });
+    });
+  });
+  return vistos;
+}
 function computeEstadoSemana(f, pcaId){
   var minD = f.fechaInicio || '';
   var maxD = f.fechaFin || '';
@@ -988,12 +1027,7 @@ function computeEstadoSemana(f, pcaId){
 
   var temasPca = parseLinesList(f.temas);
   if(temasPca.length){
-    var vistos = {};
-    load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
-      (s.dias||[]).forEach(function(dia){
-        (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
-      });
-    });
+    var vistos = temasVistosDelPca(pcaId);
     if(temasPca.every(function(t){ return vistos[t]; })) return 'COMPLETADO';
   }
 
@@ -1002,9 +1036,9 @@ function computeEstadoSemana(f, pcaId){
   if(maxD && today > maxD) return 'CON RETRASO';
   return 'EN PROCESO';
 }
-/* Temas de la semana INMEDIATAMENTE ANTERIOR del PCA que ningún plan semanal marcó todavía —
-   se agregan a las opciones de Contenidos Esenciales de la semana siguiente para que el
-   docente pueda ponerse al día. */
+/* Temas de la semana INMEDIATAMENTE ANTERIOR del PCA que ningún Plan Semanal ni Taller Práctico
+   marcó todavía — se agregan a las opciones de Contenidos Esenciales / Temas asociados a la
+   práctica de la semana siguiente para que el docente pueda ponerse al día. */
 function temasPendientesAnteriores(pcaId, semanaActualId){
   var semanas = semanasDePca(pcaId);
   var idx = semanas.findIndex(function(r){ return r.id===semanaActualId; });
@@ -1012,12 +1046,7 @@ function temasPendientesAnteriores(pcaId, semanaActualId){
   var anterior = semanas[idx-1];
   var temasAnt = parseLinesList(anterior.temas);
   if(!temasAnt.length) return [];
-  var vistos = {};
-  load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
-    (s.dias||[]).forEach(function(dia){
-      (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
-    });
-  });
+  var vistos = temasVistosDelPca(pcaId);
   return temasAnt.filter(function(t){ return !vistos[t]; });
 }
 /* Para el botón "Replanificar": a diferencia de temasPendientesAnteriores (que solo trae lo que
@@ -1029,12 +1058,14 @@ function temasSemanaAnteriorCompleta(pcaId, semanaActualId){
   if(idx <= 0) return [];
   return parseLinesList(semanas[idx-1].temas);
 }
-/* Campo del PCA (destreza=Básico) y del día del Plan Semanal donde vive cada nivel de logro —
-   compartido por temasPendientesAnteriores-equivalente y por el formulario de Plan Semanal. */
+/* Campo del PCA (destreza=Básico) y del día del Plan Semanal / semana del Taller Práctico donde
+   vive cada nivel de logro — compartido por temasPendientesAnteriores-equivalente y por ambos
+   formularios. */
 var NIVEL_LOGRO_PCA_FIELD = {basico:'destreza', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
 /* Igual que temasPendientesAnteriores, pero para los ítems de Nivel de Logro (Básico/Intermedio/
-   Avanzado) de la semana INMEDIATAMENTE ANTERIOR del PCA que ningún plan semanal marcó todavía:
-   se ofrecen como pendientes en la semana siguiente para que no se pierdan de vista. */
+   Avanzado) de la semana INMEDIATAMENTE ANTERIOR del PCA que ningún Plan Semanal ni Taller
+   Práctico marcó todavía: se ofrecen como pendientes en la semana siguiente para que no se
+   pierdan de vista. */
 function nivelLogroPendientesAnteriores(pcaId, semanaActualId, tier){
   var semanas = semanasDePca(pcaId);
   var idx = semanas.findIndex(function(r){ return r.id===semanaActualId; });
@@ -1042,13 +1073,7 @@ function nivelLogroPendientesAnteriores(pcaId, semanaActualId, tier){
   var anterior = semanas[idx-1];
   var itemsAnt = parseLinesList(anterior[NIVEL_LOGRO_PCA_FIELD[tier]]);
   if(!itemsAnt.length) return [];
-  var campoDia = NIVEL_LOGRO_DIA_FIELD[tier];
-  var vistos = {};
-  load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
-    (s.dias||[]).forEach(function(dia){
-      (dia[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
-    });
-  });
+  var vistos = nivelLogroVistosDelPca(pcaId, tier);
   return itemsAnt.filter(function(t){ return !vistos[t]; });
 }
 /* Para "Replanificar": TODOS los ítems de Nivel de Logro de la semana anterior del PCA, ya se
@@ -7739,25 +7764,45 @@ function tallerSemanaContexto(t, sem){
 function tallerSemanaRowHtml(t, fase, sem){
   var ctx = tallerSemanaContexto(t, sem), semanaActual = ctx.semanaActual, motivo = ctx.motivo;
 
-  var temas = semanaActual ? parseLinesList(semanaActual.temas) : [];
+  // Igual que en Plan Semanal: los temas/ítems de la semana INMEDIATAMENTE ANTERIOR del PCA que
+  // ningún plan (Semanal o Taller) marcó todavía se ofrecen aparte, como "Pendientes de la
+  // semana anterior", para que el docente pueda ponerse al día sin perderlos de vista.
+  function grupoCbHtml(claseCb, extraAttrs, opciones, seleccion){
+    return '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + opciones.map(function(x){
+      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="' + claseCb + '" ' + extraAttrs + ' value="' + escapeHtml(x) + '" ' + (seleccion.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>';
+    }).join('') + '</div>';
+  }
+
+  var temasEstaSemana = semanaActual ? parseLinesList(semanaActual.temas) : [];
+  var temasPendientes = semanaActual ? temasPendientesAnteriores(t.pcaId, semanaActual.id).filter(function(x){ return temasEstaSemana.indexOf(x)===-1; }) : [];
   var seleccionTemas = (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-  seleccionTemas.forEach(function(x){ if(temas.indexOf(x)===-1) temas.push(x); });
+  seleccionTemas.forEach(function(x){
+    if(temasEstaSemana.indexOf(x)===-1 && temasPendientes.indexOf(x)===-1) temasEstaSemana.push(x);
+  });
+  var temaAttrs = 'data-fase="' + fase.id + '" data-sem="' + sem.id + '"';
   var temasHtml = motivo
     ? '<div class="hint">' + escapeHtml(motivo) + '</div>'
-    : (temas.length
-        ? '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + temas.map(function(x){ return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="taller-sem-tema-cb" data-fase="' + fase.id + '" data-sem="' + sem.id + '" value="' + escapeHtml(x) + '" ' + (seleccionTemas.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>'; }).join('') + '</div>'
+    : (temasEstaSemana.length || temasPendientes.length
+        ? ''
+          + (temasEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">De esta semana</div>' + grupoCbHtml('taller-sem-tema-cb', temaAttrs, temasEstaSemana, seleccionTemas) : '')
+          + (temasPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">Pendientes de la semana anterior</div>' + grupoCbHtml('taller-sem-tema-cb', temaAttrs, temasPendientes, seleccionTemas) : '')
         : '<div class="hint">El PCA no tiene temas registrados para esta semana.</div>');
 
   var nivelesHtml = motivo ? '' : ['basico','intermedio','avanzado'].map(function(tier){
     var campoPca = NIVEL_LOGRO_PCA_FIELD[tier];
     var campoSem = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
-    var items = semanaActual ? parseLinesList(semanaActual[campoPca]) : [];
+    var itemsEstaSemana = semanaActual ? parseLinesList(semanaActual[campoPca]) : [];
+    var itemsPendientes = semanaActual ? nivelLogroPendientesAnteriores(t.pcaId, semanaActual.id, tier).filter(function(x){ return itemsEstaSemana.indexOf(x)===-1; }) : [];
     var seleccion = (sem[campoSem]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
-    seleccion.forEach(function(x){ if(items.indexOf(x)===-1) items.push(x); });
-    if(!items.length) return '';
-    return '<div style="margin-top:6px;"><div class="hint" style="font-weight:700;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div><div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(x){
-      return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="taller-sem-nivel-cb" data-fase="' + fase.id + '" data-sem="' + sem.id + '" data-tier="' + tier + '" value="' + escapeHtml(x) + '" ' + (seleccion.indexOf(x)!==-1?'checked':'') + ' /><span>' + escapeHtml(x) + '</span></label>';
-    }).join('') + '</div></div>';
+    seleccion.forEach(function(x){
+      if(itemsEstaSemana.indexOf(x)===-1 && itemsPendientes.indexOf(x)===-1) itemsEstaSemana.push(x);
+    });
+    if(!itemsEstaSemana.length && !itemsPendientes.length) return '';
+    var nivelAttrs = 'data-fase="' + fase.id + '" data-sem="' + sem.id + '" data-tier="' + tier + '"';
+    return '<div style="margin-top:6px;"><div class="hint" style="font-weight:700;">' + NIVEL_LOGRO_DIA_LABEL[tier] + '</div>'
+      + (itemsEstaSemana.length ? '<div class="hint" style="margin-bottom:2px;">De esta semana</div>' + grupoCbHtml('taller-sem-nivel-cb', nivelAttrs, itemsEstaSemana, seleccion) : '')
+      + (itemsPendientes.length ? '<div class="hint" style="margin:6px 0 2px;">Pendientes de la semana anterior</div>' + grupoCbHtml('taller-sem-nivel-cb', nivelAttrs, itemsPendientes, seleccion) : '')
+      + '</div>';
   }).join('');
 
   return '<tr data-fase-row="' + fase.id + '" data-sem-row="' + sem.id + '">'
