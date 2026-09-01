@@ -364,6 +364,17 @@
   .admin-tabs button{background:none; border:none; border-bottom:2px solid transparent; padding:10px 14px; font-size:13.5px; font-weight:600; color:var(--muted); cursor:pointer;}
   .admin-tabs button:hover{color:var(--blue-700);}
   .admin-tabs button.active{color:var(--blue-700); border-bottom-color:var(--blue-600);}
+  /* Submenús de Administración: cada grupo temático (Personal, Planificación Curricular,
+     Presentaciones, Configuración) se puede plegar/desplegar; solo uno se muestra abierto a la vez,
+     por defecto el que contiene la pestaña activa. Dentro, reutiliza el mismo .admin-tabs de arriba. */
+  .admin-groups{display:flex; flex-direction:column; gap:10px; margin-bottom:18px;}
+  .admin-group{border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--surface);}
+  .admin-group-head{width:100%; display:flex; align-items:center; gap:9px; text-align:left; padding:13px 16px; background:var(--surface-2); border:none; cursor:pointer; font-size:14px; font-weight:700; color:var(--muted);}
+  .admin-group-head:hover{background:var(--blue-50);}
+  .admin-group.has-active .admin-group-head{color:var(--blue-700);}
+  .admin-group-caret{font-size:11px; color:var(--muted); transition:transform .15s ease; width:12px; display:inline-block; flex-shrink:0;}
+  .admin-group.open .admin-group-caret{transform:rotate(90deg);}
+  .admin-group .admin-tabs{margin:0; padding:8px 12px 2px; border-bottom:none;}
 
   .kbd{font-family:var(--mono); font-size:11px; background:var(--surface-2); border:1px solid var(--line-strong); padding:1px 6px; border-radius:4px;}
   .checkbox-grid{display:flex; flex-wrap:wrap; gap:6px; padding:8px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--surface-2); min-height:20px;}
@@ -8865,14 +8876,38 @@ function pastelBorde(tabKey, mapa){
   var color = (mapa || ADMIN_TAB_PASTEL)[tabKey];
   return color ? ' style="border-top:4px solid '+color+';"' : '';
 }
+/* Submenús del panel de Administración: agrupa las 12 pestañas (antes en una sola fila larga) en
+   4 categorías temáticas. Es solo una agrupación VISUAL — state.adminTab sigue siendo la misma
+   pestaña de siempre, cada key de ADMIN_GROUPS.tabs debe existir en ADMIN_TABS. */
+var ADMIN_GROUPS = [
+  {key:'personal', label:'Personal', tabs:['docentes','carga']},
+  {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller']},
+  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentacionpca','presentacionpcacolegio']},
+  {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
+];
+function grupoDeAdminTab(tabKey){
+  var g = ADMIN_GROUPS.find(function(gr){ return gr.tabs.indexOf(tabKey)!==-1; });
+  return g ? g.key : ADMIN_GROUPS[0].key;
+}
 
 function renderAdmin(d){
   if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.adminTab || 'docentes';
-  var tabsHtml = ADMIN_TABS.map(function(t){
-    var pastel = ADMIN_TAB_PASTEL[t.key];
-    var estilo = pastel ? ' style="background:'+pastel+'; border-radius:8px 8px 0 0;"' : '';
-    return '<button class="'+(tab===t.key?'active':'')+'"'+estilo+' data-admintab="'+t.key+'">'+t.label+'</button>';
+  if(!state.adminGroupOpen) state.adminGroupOpen = grupoDeAdminTab(tab);
+  var gruposHtml = ADMIN_GROUPS.map(function(grupo){
+    var abierto = state.adminGroupOpen === grupo.key;
+    var tieneActivo = grupo.tabs.indexOf(tab)!==-1;
+    var botonesHtml = grupo.tabs.map(function(tk){
+      var t = ADMIN_TABS.find(function(x){ return x.key===tk; });
+      var pastel = ADMIN_TAB_PASTEL[tk];
+      var estilo = pastel ? ' style="background:'+pastel+'; border-radius:8px 8px 0 0;"' : '';
+      return '<button class="'+(tab===tk?'active':'')+'"'+estilo+' data-admintab="'+tk+'">'+t.label+'</button>';
+    }).join('');
+    return ''
+      + '<div class="admin-group' + (abierto?' open':'') + (tieneActivo?' has-active':'') + '">'
+      + '  <button class="admin-group-head" data-admingroup="' + grupo.key + '"><span class="admin-group-caret">▸</span><span>' + grupo.label + '</span></button>'
+      + (abierto ? '<div class="admin-tabs">' + botonesHtml + '</div>' : '')
+      + '</div>';
   }).join('');
   var body;
   if(tab === 'carga') body = renderAdminCarga();
@@ -8889,12 +8924,24 @@ function renderAdmin(d){
   else body = renderAdminDocentes();
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Administración</div><h1>Panel de administración</h1><p>Como administrador puedes ver y editar todos los campos de las bases de datos: DOCENTES, CARGA HORARIA, PCA y PLAN SEMANAL.</p></div></div>'
-  + '<div class="admin-tabs">' + tabsHtml + '</div>'
+  + '<div class="admin-groups">' + gruposHtml + '</div>'
   + body;
 }
 function bindAdminEvents(){
   document.querySelectorAll('[data-admintab]').forEach(function(btn){
-    btn.onclick = function(){ state.adminTab = btn.getAttribute('data-admintab'); render(); };
+    btn.onclick = function(){
+      var key = btn.getAttribute('data-admintab');
+      state.adminTab = key;
+      state.adminGroupOpen = grupoDeAdminTab(key);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-admingroup]').forEach(function(btn){
+    btn.onclick = function(){
+      var key = btn.getAttribute('data-admingroup');
+      state.adminGroupOpen = (state.adminGroupOpen === key) ? null : key;
+      render();
+    };
   });
   var tab = state.adminTab || 'docentes';
   if(tab === 'docentes') bindAdminDocentesEvents();
