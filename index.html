@@ -1,5 +1,9 @@
 <title>Sistema Académico · UEP Simón Bolívar</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="app-build" content="20260902151336">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -10236,6 +10240,62 @@ function activarEnlacesEnCamposDeTexto(root){
   });
   observer.observe(appRoot, {childList:true, subtree:true});
 })();
+
+/* ============================= AVISO DE NUEVA VERSIÓN DISPONIBLE ============================= */
+/* Este sistema es UN SOLO archivo HTML: cuando se sube una nueva versión a GitHub Pages, el
+   navegador de un docente que ya tenía la página abierta (o que la abre de nuevo sin recargar a
+   fondo) puede seguir corriendo el código VIEJO servido desde el caché del navegador — no hay
+   ningún aviso de que existe una versión más nueva. Eso ya causó confusión real: un comportamiento
+   raro (p.ej. un "parpadeo" al agregar un día en el Plan Semanal) que ya estaba arreglado en el
+   código, pero el docente seguía viéndolo porque su navegador no había refrescado el archivo.
+   Esto compara, cada cierto tiempo, la versión que está corriendo (meta "app-build", ver build.ps1)
+   contra la versión real publicada ahora mismo (pidiéndola de nuevo con cache:'no-store'); si son
+   distintas, muestra una barra fija para que el docente actualice con un clic, en vez de tener que
+   saber que existe el truco de Ctrl+Shift+R. */
+var APP_BUILD_VERSION = (function(){
+  var m = document.querySelector('meta[name="app-build"]');
+  return (m && m.getAttribute('content')) || '';
+})();
+var ultimaVerificacionVersionNueva = 0;
+function verificarVersionNueva(){
+  if(!APP_BUILD_VERSION || APP_BUILD_VERSION.indexOf('{{')===0) return; // plantilla sin compilar: nada que comparar
+  var ahora = Date.now();
+  if(ahora - ultimaVerificacionVersionNueva < 60000) return; // como mucho una vez por minuto
+  ultimaVerificacionVersionNueva = ahora;
+  fetch(location.pathname + '?_v=' + ahora, {cache:'no-store'})
+    .then(function(r){ return r.text(); })
+    .then(function(html){
+      var m = html.match(/<meta name="app-build" content="([^"]*)"/);
+      var remota = m ? m[1] : '';
+      if(remota && remota !== APP_BUILD_VERSION) mostrarBannerActualizacion();
+    })
+    .catch(function(){ /* sin conexión o red inestable en este momento: no molestar, se reintenta luego */ });
+}
+function mostrarBannerActualizacion(){
+  if(document.getElementById('bannerActualizarApp')) return;
+  var banner = document.createElement('div');
+  banner.id = 'bannerActualizarApp';
+  banner.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99999; background:#0A2A5E; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:center; gap:14px; font-size:13.5px; flex-wrap:wrap; box-shadow:0 -2px 12px rgba(0,0,0,.25);';
+  var texto = document.createElement('span');
+  texto.textContent = '🔄 Hay una versión más reciente del sistema disponible.';
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Actualizar ahora';
+  btn.style.cssText = 'background:#F2B705; color:#0A2A5E; border:none; padding:8px 16px; border-radius:6px; font-weight:700; cursor:pointer; font-size:13.5px;';
+  btn.onclick = function(){ location.href = location.pathname + '?_v=' + Date.now(); };
+  var cerrar = document.createElement('button');
+  cerrar.type = 'button';
+  cerrar.textContent = '✕';
+  cerrar.title = 'Recordarme más tarde';
+  cerrar.style.cssText = 'background:none; color:#fff; border:none; font-size:16px; cursor:pointer; opacity:.75; padding:0 4px;';
+  cerrar.onclick = function(){ banner.remove(); };
+  banner.appendChild(texto);
+  banner.appendChild(btn);
+  banner.appendChild(cerrar);
+  document.body.appendChild(banner);
+}
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') verificarVersionNueva(); });
+setTimeout(verificarVersionNueva, 8000);
 
 /* ============================= INIT ============================= */
 render();
