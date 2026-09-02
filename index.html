@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260902151336">
+<meta name="app-build" content="20260902172535">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1699,7 +1699,11 @@ function isStaffRole(role){ return STAFF_ROLES.indexOf(role) !== -1; }
    Asistencia, Disciplina, Reportes) y su propio Perfil/Carga Horaria, nada más. No es "staff"
    (isStaffRole sigue sin incluirlo) porque no debe tener acceso a Administración, DECE ni Base
    de Datos — ver renderShell (filtro del menú) y attachRealtimeListeners (sincronización). */
-function puedeVerInspeccion(role){ return isStaffRole(role) || role==='inspector'; }
+/* Antes solo Administración/Directivo/DECE/Inspector veían el módulo de Inspección — ahora, por
+   pedido explícito, TODOS los docentes pueden entrar (registrar/ver asistencia, estudiantes,
+   reportes e incidentes de disciplina). La única restricción que queda dentro del módulo es la
+   subpestaña "Personal" de Disciplina, ver renderInspDisciplina. */
+function puedeVerInspeccion(role){ return true; }
 var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', inspector:'Inspector General', docente:'Docente' };
 function rolePillHtml(role){
   if(role==='admin') return '<span class="pill pill-gold">Administrador</span>';
@@ -1724,7 +1728,7 @@ var NAV_GROUPS = [
     {key:'misasistencia', label:'Asistencia', ic:'✅'}
   ]},
   {label:'Inspección', hue:'peach', items:[
-    {key:'inspeccion', label:'Inspección General', ic:'🧭', staffOrInspector:true}
+    {key:'inspeccion', label:'Inspección General', ic:'🧭'}
   ]},
   {label:'Departamento de Consejería Estudiantil (DECE)', hue:'purple', items:[
     {key:'dece', label:'Ficha de Datos Informativos', ic:'🧑‍⚕️', adminOnly:true},
@@ -2373,7 +2377,7 @@ function renderManualAdmin(){
   );
 
   var secInspeccion = manualSection('sec-a11', '10. Inspección General', ''
-    + '<p>Sección exclusiva de Administradores, Directivos y DECE, para organizar y supervisar la disciplina, la asistencia y la convivencia de los estudiantes. Tiene cuatro pestañas, también con su propio color pastel cada una: <b>Estudiantes</b>, <b>Asistencia</b>, <b>Disciplina</b> y <b>Reportes</b>.</p>'
+    + '<p>Sección visible para todos los docentes, para organizar y supervisar la disciplina, la asistencia y la convivencia de los estudiantes. Tiene cuatro pestañas, también con su propio color pastel cada una: <b>Estudiantes</b>, <b>Asistencia</b>, <b>Disciplina</b> y <b>Reportes</b>. Dentro de Disciplina, la subpestaña <b>Personal</b> (incidentes del personal, no de estudiantes) queda reservada solo para Administradores, Directivos y DECE.</p>'
     + '<h3>Estudiantes</h3>'
     + '<p>Registra la ficha de cada estudiante: nombres, apellidos, cédula, nivel, curso, datos del representante y estado (Activo/Inactivo). Cada estudiante puede tener una <b>foto tipo carnet</b>: acepta cualquier formato de imagen (JPG, PNG, HEIC, etc.) — el sistema la redimensiona y comprime automáticamente antes de guardarla, así que no necesitas preocuparte por el tamaño del archivo original.</p>'
     + manualStep(1, 'Haz clic en <b>“+ Nuevo estudiante”</b> (o “+ Carga masiva” para registrar varios a la vez desde una tabla).')
@@ -2523,7 +2527,7 @@ function renderInspeccion(d){
   else if(tab === 'reportes') body = renderInspReportes();
   else body = renderInspEstudiantes();
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Inspección General</div><h1>Disciplina, asistencia y convivencia</h1><p>Organiza, coordina y supervisa la disciplina, la asistencia y la convivencia armónica entre estudiantes, docentes y personal administrativo. Visible solo para administradores.</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Inspección General</div><h1>Disciplina, asistencia y convivencia</h1><p>Organiza, coordina y supervisa la disciplina, la asistencia y la convivencia armónica entre estudiantes, docentes y personal administrativo.</p></div></div>'
   + '<div class="admin-tabs">' + tabsHtml + '</div>'
   + body;
 }
@@ -3384,13 +3388,22 @@ function blankIncidente(tipoInvolucrado){
     estado:'Abierto', bitacora:[], registradoPor:'', createdAt:'', updatedAt:''
   };
 }
+/* La subpestaña "Personal" (incidentes de disciplina del personal, no de estudiantes) queda
+   reservada para Administración/Directivo/DECE — el resto de Disciplina (y de Inspección en
+   general) ya es visible para todos los docentes, ver puedeVerInspeccion. Si alguien sin permiso
+   quedó apuntando a "personal" (estado guardado de antes de este cambio), se regresa a
+   "estudiantes" en vez de dejarlo ver esa subpestaña. */
+function puedeVerDisciplinaPersonal(role){ return isStaffRole(role) || role==='inspector'; }
 function renderInspDisciplina(){
+  var d = currentDocente();
+  var puedeVerPersonal = puedeVerDisciplinaPersonal(d.role);
+  if(!puedeVerPersonal && state.inspDiscTab==='personal') state.inspDiscTab = 'estudiantes';
   var sub = state.inspDiscTab || 'estudiantes';
   var view = state.inspDiscView || 'lista';
   var subTabsHtml = ''
     + '<div class="admin-tabs" style="margin-bottom:16px;">'
     + '  <button class="'+(sub==='estudiantes'?'active':'')+'" data-discsub="estudiantes">Estudiantes</button>'
-    + '  <button class="'+(sub==='personal'?'active':'')+'" data-discsub="personal">Personal</button>'
+    + (puedeVerPersonal ? '  <button class="'+(sub==='personal'?'active':'')+'" data-discsub="personal">Personal</button>' : '')
     + '</div>';
   if(view === 'form') return subTabsHtml + renderInspIncidenteForm();
   return subTabsHtml + renderInspIncidentesLista(sub);
@@ -7771,7 +7784,24 @@ function saveSemanal(s, silent){
   all.push(record);
   save(LS.SEMANAL, all);
   marcarBaseConflicto('semanal', record.updatedAt);
-  state.editingSemanal = Object.assign({}, record, { dias: record.dias.map(function(x){ return Object.assign({}, x); }) });
+  /* Antes esto hacía state.editingSemanal = Object.assign({}, record, {...}) — un objeto NUEVO.
+     Los campos del formulario (checkboxes, editores de texto enriquecido) quedan enlazados por
+     closure al objeto "s"/"dia" que existía en el momento de dibujar el formulario; si luego se
+     reemplaza state.editingSemanal por otro objeto, esos campos siguen escribiendo en el objeto
+     VIEJO, que ya nadie vuelve a leer. Cualquier guardado SILENCIOSO (autoguardado cada 5 min, o
+     "Exportar Word/Excel") disparaba justo eso: lo que el docente seguía escribiendo después de
+     ese guardado se perdía en el siguiente redibujado (p.ej. al pulsar "Agregar día", que además
+     terminaba agregando el día al objeto huérfano en vez de al que se estaba mostrando). La
+     corrección es actualizar el MISMO objeto en memoria en vez de reemplazarlo, para que los
+     campos ya enlazados sigan apuntando a datos vigentes. */
+  Object.keys(record).forEach(function(key){
+    if(key === 'dias') return;
+    s[key] = record[key];
+  });
+  record.dias.forEach(function(diaGuardado, i){
+    var diaVigente = s.dias[i];
+    if(diaVigente) Object.assign(diaVigente, diaGuardado);
+  });
   if(!silent) toast('Plan semanal guardado correctamente.', 'success');
 }
 
@@ -8160,8 +8190,26 @@ function saveTaller(t, silent){
   all.push(record);
   save(LS.TALLER, all);
   marcarBaseConflicto('taller', record.updatedAt);
-  state.editingTaller = Object.assign({}, record, {
-    fases: record.fases.map(function(f){ return Object.assign({}, f, { semanas: f.semanas.map(function(s){ return Object.assign({}, s); }) }); })
+  /* Igual que en saveSemanal: actualizar el MISMO objeto en memoria (y las mismas fases/semanas)
+     en vez de reemplazar state.editingTaller por uno nuevo — si no, los campos ya dibujados
+     (checkboxes, editores de texto) quedan enlazados por closure al objeto viejo, y cualquier
+     edición hecha después de un guardado silencioso (autoguardado, "Exportar"/"PDF") se perdía en
+     el siguiente redibujado. */
+  Object.keys(record).forEach(function(key){
+    if(key === 'fases') return;
+    t[key] = record[key];
+  });
+  record.fases.forEach(function(faseGuardada, i){
+    var faseVigente = t.fases[i];
+    if(!faseVigente) return;
+    Object.keys(faseGuardada).forEach(function(key){
+      if(key === 'semanas') return;
+      faseVigente[key] = faseGuardada[key];
+    });
+    faseGuardada.semanas.forEach(function(semGuardada, j){
+      var semVigente = faseVigente.semanas[j];
+      if(semVigente) Object.assign(semVigente, semGuardada);
+    });
   });
   if(!silent) toast('Taller práctico guardado correctamente.', 'success');
 }
