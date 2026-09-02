@@ -315,6 +315,7 @@
   .asis-cell.asis-P{background:var(--green-100); color:var(--green-600); border-color:var(--green-100);}
   .asis-cell.asis-A{background:var(--gold-100); color:var(--gold-600); border-color:var(--gold-100);}
   .asis-cell.asis-F{background:var(--red-100); color:var(--red-600); border-color:var(--red-100);}
+  .asis-novedad-btn.has-novedad{background:var(--gold-100); color:var(--gold-600); border-color:var(--gold-100); font-weight:600;}
 
 
   .empty-state{text-align:center; padding:40px 20px; color:var(--muted);}
@@ -2575,6 +2576,7 @@ function renderInspEstudiantesLista(){
   var f = state.inspEstFiltro || (state.inspEstFiltro = {nivel:'', especialidad:'', curso:''});
   var espOpts = especialidadesFor(f.nivel);
   var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
+  var seleccion = state.estSeleccionados || (state.estSeleccionados = {});
   var todos = load(LS.ESTUDIANTES).slice().sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
   var filtrados = todos.filter(function(e){
     if(f.nivel && e.nivel !== f.nivel) return false;
@@ -2582,16 +2584,19 @@ function renderInspEstudiantesLista(){
     if(f.curso && e.curso !== f.curso) return false;
     return true;
   });
+  var nSeleccionados = filtrados.filter(function(e){ return seleccion[e.id]; }).length;
+  var todosSeleccionados = filtrados.length>0 && nSeleccionados===filtrados.length;
   var rows = filtrados.map(function(e){
     return '<tr>'
+    + '<td style="text-align:center;"><input type="checkbox" class="est-sel-cb" data-est-sel="'+e.id+'" '+(seleccion[e.id]?'checked':'')+' /></td>'
     + '<td>' + (e.foto ? '<img src="'+e.foto+'" alt="" style="width:32px; height:40px; object-fit:cover; border-radius:4px; border:1px solid var(--line); vertical-align:middle; margin-right:8px;" />' : '<span style="display:inline-block; width:32px; height:40px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); vertical-align:middle; margin-right:8px;"></span>') + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>'
     + '<td>' + escapeHtml(e.nivel) + (e.especialidad?' · '+escapeHtml(e.especialidad):'') + '</td>'
     + '<td>' + escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso) + '</td>'
     + '<td>' + escapeHtml(e.nombreRepresentante||'—') + '</td>'
     + '<td>' + (e.estado==='Inactivo' ? '<span class="pill pill-muted">Inactivo</span>' : '<span class="pill pill-gold">Activo</span>') + '</td>'
-    + '<td><button class="btn btn-ghost btn-sm" data-est-edit="'+e.id+'">Editar</button></td>'
+    + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-est-edit="'+e.id+'">Editar</button></td>'
     + '</tr>';
-  }).join('') || '<tr><td colspan="6" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
   return ''
   + '<div class="card"'+pastelBorde('estudiantes', INSP_TAB_PASTEL)+'>'
   + '  <h2>Estudiantes registrados <span class="hint">(' + filtrados.length + ' de ' + todos.length + ')</span></h2>'
@@ -2600,21 +2605,24 @@ function renderInspEstudiantesLista(){
   + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="ieFEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Todas':'No aplica') + '</select></div>'
   + '    <div class="field"><label>Curso</label><select class="cell-select" id="ieFCurso">' + optionsHtml(cursoOpts, f.curso, 'Todos') + '</select></div>'
   + '  </div>'
-  + '  <div style="display:flex; gap:10px; margin-bottom:14px;">'
+  + '  <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">'
   + '    <button class="btn btn-primary btn-sm" id="btnEstNuevo">+ Nuevo estudiante</button>'
   + '    <button class="btn btn-ghost btn-sm" id="btnEstMasivo">+ Carga masiva</button>'
+  + '    <div class="spacer"></div>'
+  + '    <button class="btn btn-danger btn-sm" id="btnEstEliminarSeleccionados" '+(nSeleccionados?'':'disabled')+'>🗑 Eliminar seleccionados (' + nSeleccionados + ')</button>'
   + '  </div>'
-  + '  <div class="table-wrap"><table><thead><tr><th>Estudiante</th><th>Nivel</th><th>Curso</th><th>Representante</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  <div class="table-wrap"><table><thead><tr><th style="text-align:center;"><input type="checkbox" id="ieSelAll" '+(todosSeleccionados?'checked':'')+' /></th><th>Estudiante</th><th>Nivel</th><th>Curso</th><th>Representante</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function bindInspEstudiantesListaEvents(){
   var f = state.inspEstFiltro;
+  var seleccion = state.estSeleccionados || (state.estSeleccionados = {});
   var nivelSel = document.getElementById('ieFNivel');
-  if(nivelSel) nivelSel.onchange = function(e){ f.nivel = e.target.value; f.especialidad=''; f.curso=''; render(); };
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel = e.target.value; f.especialidad=''; f.curso=''; state.estSeleccionados={}; render(); };
   var espSel = document.getElementById('ieFEspecialidad');
-  if(espSel) espSel.onchange = function(e){ f.especialidad = e.target.value; f.curso=''; render(); };
+  if(espSel) espSel.onchange = function(e){ f.especialidad = e.target.value; f.curso=''; state.estSeleccionados={}; render(); };
   var cursoSel = document.getElementById('ieFCurso');
-  if(cursoSel) cursoSel.onchange = function(e){ f.curso = e.target.value; render(); };
+  if(cursoSel) cursoSel.onchange = function(e){ f.curso = e.target.value; state.estSeleccionados={}; render(); };
   var newBtn = document.getElementById('btnEstNuevo');
   if(newBtn) newBtn.onclick = function(){ state.editingEstudiante = blankEstudiante(); state.inspEstView='nuevo'; render(); };
   var masBtn = document.getElementById('btnEstMasivo');
@@ -2625,6 +2633,38 @@ function bindInspEstudiantesListaEvents(){
       if(target){ state.editingEstudiante = Object.assign({}, target); state.inspEstView='editar'; render(); }
     };
   });
+  document.querySelectorAll('[data-est-sel]').forEach(function(cb){
+    cb.onchange = function(){
+      var id = cb.getAttribute('data-est-sel');
+      if(cb.checked) seleccion[id] = true; else delete seleccion[id];
+      render();
+    };
+  });
+  var selAll = document.getElementById('ieSelAll');
+  if(selAll) selAll.onchange = function(){
+    var espOpts = especialidadesFor(f.nivel);
+    var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
+    var filtrados = load(LS.ESTUDIANTES).filter(function(e){
+      if(f.nivel && e.nivel !== f.nivel) return false;
+      if(f.especialidad && (e.especialidad||'') !== f.especialidad) return false;
+      if(f.curso && e.curso !== f.curso) return false;
+      return true;
+    });
+    filtrados.forEach(function(e){ if(selAll.checked) seleccion[e.id] = true; else delete seleccion[e.id]; });
+    render();
+  };
+  var delSelBtn = document.getElementById('btnEstEliminarSeleccionados');
+  if(delSelBtn) delSelBtn.onclick = function(){
+    var ids = Object.keys(seleccion).filter(function(id){ return seleccion[id]; });
+    if(!ids.length) return;
+    var registros = load(LS.ESTUDIANTES).filter(function(e){ return ids.indexOf(e.id)!==-1; });
+    var nombres = registros.slice(0,3).map(function(e){ return e.nombres + ' ' + e.apellidos; }).join(', ') + (registros.length>3 ? ' y ' + (registros.length-3) + ' más' : '');
+    confirmDialog('¿Eliminar ' + registros.length + ' estudiante(s)? (' + nombres + ')', function(){
+      eliminarVariasConDeshacer([{key:LS.ESTUDIANTES, ids:ids, registros:registros}], registros.length + ' estudiante(s) eliminado(s).', 'Estudiantes restaurados.');
+      state.estSeleccionados = {};
+      render();
+    }, 'Eliminar');
+  };
 }
 function renderInspEstudianteForm(){
   var e = state.editingEstudiante;
@@ -3026,7 +3066,7 @@ function buildXlsxTemplateBlob(){
 
 /* --- Inspección · Asistencia --- */
 function blankAsistenciaDoc(nivel, especialidad, curso, fecha){
-  return { id: asistenciaDocId(nivel,especialidad,curso,fecha), nivel:nivel, especialidad:especialidad||'', curso:curso, fecha:fecha, periodos:{}, justificativos:{}, registradoPor:'', updatedAt:'' };
+  return { id: asistenciaDocId(nivel,especialidad,curso,fecha), nivel:nivel, especialidad:especialidad||'', curso:curso, fecha:fecha, periodos:{}, justificativos:{}, novedades:{}, registradoPor:'', updatedAt:'' };
 }
 function renderInspAsistencia(){
   var f = state.inspAsisFiltro || (state.inspAsisFiltro = {nivel:'', especialidad:'', curso:'', fecha: todayISO()});
@@ -3055,7 +3095,7 @@ function asistenciaResultHtml(){
   if(!state.editingAsistencia || state.editingAsistencia.id !== docId){
     var existing = load(LS.ASISTENCIA).find(function(x){ return x.id === docId; });
     state.editingAsistencia = existing
-      ? Object.assign({}, existing, {periodos: JSON.parse(JSON.stringify(existing.periodos||{})), justificativos: JSON.parse(JSON.stringify(existing.justificativos||{}))})
+      ? Object.assign({}, existing, {periodos: JSON.parse(JSON.stringify(existing.periodos||{})), justificativos: JSON.parse(JSON.stringify(existing.justificativos||{})), novedades: JSON.parse(JSON.stringify(existing.novedades||{}))})
       : blankAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
   }
   var a = state.editingAsistencia;
@@ -3066,13 +3106,16 @@ function asistenciaResultHtml(){
       return '<td class="tabular"><button type="button" class="asis-cell asis-'+(val||'na')+'" data-asis-cell="'+p.n+'|'+e.id+'">'+(val||'·')+'</button></td>';
     }).join('');
     var just = a.justificativos[e.id];
-    return '<tr><td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>' + cells + '<td style="text-align:center;"><input type="checkbox" class="asis-just-cb" data-asis-just="'+e.id+'" '+(just&&just.recibido?'checked':'')+' /></td></tr>';
+    var novedad = a.novedades[e.id] || '';
+    var novedadBtn = '<button type="button" class="btn btn-ghost btn-sm asis-novedad-btn'+(novedad?' has-novedad':'')+'" data-asis-novedad="'+e.id+'" title="'+escapeHtml(novedad||'Agregar novedad')+'">'+(novedad ? '📝 ' + escapeHtml(novedad.length>28?novedad.slice(0,28)+'…':novedad) : '+ Novedad')+'</button>'
+      + (novedad ? '<button type="button" class="btn btn-ghost btn-sm" data-asis-novedad-quitar="'+e.id+'" title="Quitar novedad">✕</button>' : '');
+    return '<tr><td>' + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>' + cells + '<td style="text-align:center;"><input type="checkbox" class="asis-just-cb" data-asis-just="'+e.id+'" '+(just&&just.recibido?'checked':'')+' /></td><td style="white-space:nowrap;">'+novedadBtn+'</td></tr>';
   }).join('');
   return ''
   + '<div class="card" style="margin-top:16px;">'
   + '  <h2>Asistencia · ' + escapeHtml(f.curso==='Otro…'?'':f.curso) + ' · ' + fmtDate(f.fecha) + '</h2>'
-  + '  <div class="card-sub">Haz clic en cada celda para cambiar el estado: sin marcar → P (presente) → A (atraso) → F (falta). Receso ' + RECESO.inicio + '–' + RECESO.fin + ' (entre H4 y H5).</div>'
-  + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>Justif.</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  <div class="card-sub">Haz clic en cada celda para cambiar el estado: sin marcar → P (presente) → A (atraso) → F (falta). Receso ' + RECESO.inicio + '–' + RECESO.fin + ' (entre H4 y H5). Usa "+ Novedad" para anotar algo puntual sobre la asistencia de un alumno (llegó tarde por cita médica, salió con autorización, etc.).</div>'
+  + '  <div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Estudiante</th>' + headCells + '<th>Justif.</th><th>Novedad</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
   + '    <button class="btn btn-ghost btn-sm" id="btnAsisTodosPresentes">Marcar todos Presente</button>'
   + '    <button class="btn btn-ghost btn-sm" id="btnAsisDesmarcarTodos">Desmarcar todos</button>'
@@ -3117,6 +3160,22 @@ function bindAsistenciaResultEvents(){
       var estId = cb.getAttribute('data-asis-just');
       a.justificativos[estId] = a.justificativos[estId] || {};
       a.justificativos[estId].recibido = cb.checked;
+    };
+  });
+  document.querySelectorAll('[data-asis-novedad]').forEach(function(btn){
+    btn.onclick = function(){
+      var estId = btn.getAttribute('data-asis-novedad');
+      promptDialog('Novedad sobre la asistencia de este alumno:', a.novedades[estId] || '', function(texto){
+        a.novedades[estId] = texto.trim();
+        renderAsistenciaResultOnly();
+      });
+    };
+  });
+  document.querySelectorAll('[data-asis-novedad-quitar]').forEach(function(btn){
+    btn.onclick = function(){
+      var estId = btn.getAttribute('data-asis-novedad-quitar');
+      delete a.novedades[estId];
+      renderAsistenciaResultOnly();
     };
   });
   var todosBtn = document.getElementById('btnAsisTodosPresentes');
