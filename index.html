@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260906053230">
+<meta name="app-build" content="20260906190137">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -929,9 +929,39 @@ var RECESO = {inicio:'10:15', fin:'11:00'};
 var ESTADOS_ASISTENCIA = ['P','A','F']; // Presente, Atraso, Falta
 var ESTADO_ASISTENCIA_LABEL = {P:'Presente', A:'Atraso', F:'Falta', '':'Sin marcar'};
 var TIPOS_FALTA_DISCIPLINA = ['Leve','Grave','Muy grave'];
-// Rúbrica institucional de convivencia (reemplaza la lista genérica anterior): estas son las 6
-// categorías oficiales sobre las que Inspección registra y evalúa la conducta de un estudiante.
-var CATEGORIAS_INCIDENTE = ['Uso Correcto del Uniforme (en todo momento)','Presentación Personal (Peinados, tintes, y aretes)','Respeto y cuidado al patrimonio institucional y de los compañeros','Respeto a los compañeros','Respeto a los docentes (Cumplimiento de indicaciones dadas)','Puntualidad (ingreso, cambio de hora y entrega de deberes)','Otro'];
+// Las primeras 6 son la rúbrica institucional oficial de convivencia (sobre la que Inspección
+// evalúa la conducta trimestral). Las siguientes amplían el catálogo con incidentes concretos que
+// pueden presentarse en cualquier nivel educativo, desde Inicial (3 años) hasta Bachillerato (17
+// años) — desde conflictos propios de la primera infancia (dificultad para compartir, berrinches)
+// hasta los propios de la adolescencia (ciberacoso, consumo de sustancias, fraude académico), para
+// que Inspección y DECE puedan clasificar el incidente real con precisión, no solo la rúbrica
+// general de conducta.
+var CATEGORIAS_INCIDENTE = [
+  'Uso Correcto del Uniforme (en todo momento)',
+  'Presentación Personal (Peinados, tintes, y aretes)',
+  'Respeto y cuidado al patrimonio institucional y de los compañeros',
+  'Respeto a los compañeros',
+  'Respeto a los docentes (Cumplimiento de indicaciones dadas)',
+  'Puntualidad (ingreso, cambio de hora y entrega de deberes)',
+  'Agresión física entre estudiantes (empujones, golpes, mordidas, arañazos)',
+  'Agresión verbal o insultos entre estudiantes',
+  'Acoso escolar / bullying (burlas reiteradas, exclusión, intimidación)',
+  'Ciberacoso o uso indebido de redes sociales',
+  'Uso indebido de celular u otro dispositivo electrónico en clase',
+  'Fraude académico (copiar en evaluaciones, plagio de tareas)',
+  'Falsificación de firmas, notas o justificativos',
+  'Incumplimiento reiterado de tareas o deberes',
+  'Ausentismo injustificado o fuga de clases',
+  'Salida del plantel sin autorización',
+  'Posesión o consumo de alcohol, tabaco u otras sustancias',
+  'Posesión de objetos peligrosos o prohibidos',
+  'Vandalismo o daño intencional a bienes institucionales o de compañeros',
+  'Comportamiento disruptivo en el aula (gritos, berrinches, negarse a seguir instrucciones)',
+  'Dificultad para compartir o seguir normas básicas de convivencia (Inicial/Preparatoria)',
+  'Discriminación (por género, etnia, discapacidad u otra condición)',
+  'Conducta inapropiada de connotación sexual',
+  'Otro'
+];
 var ESTADOS_INCIDENTE = ['Abierto','En seguimiento','Cerrado'];
 var PARCIALES_INCIDENTE = ['Parcial 1','Parcial 2'];
 // Escala cualitativa oficial de valoración del comportamiento del currículo ecuatoriano (Reglamento
