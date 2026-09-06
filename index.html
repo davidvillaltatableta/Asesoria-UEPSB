@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260902172535">
+<meta name="app-build" content="20260906053230">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -697,6 +697,28 @@ function parseLinesList(html){
   if(!plain) return [];
   return plain.split('\n').map(function(l){ return l.replace(/^•\s*/, '').trim(); }).filter(Boolean);
 }
+/* Los ítems que un docente marca (Nivel de Logro, Contenidos/Temas, Bloque Curricular) se guardan
+   como UNA SOLA cadena de texto por casilla ("día", "semana"...), uniendo los ítems seleccionados.
+   Antes se usaba ';' como separador y se volvía a partir por ';' al leer — pero el texto de un
+   ítem del PCA puede legítimamente traer su propio punto y coma (es puntuación normal en español:
+   "Define X; diferencia Y..."), así que al guardarse junto a otro ítem ese punto y coma interno se
+   confundía con el separador y el ítem quedaba partido en dos mitades. En el siguiente render, el
+   valor completo del ítem ya no coincidía con ninguna de las dos mitades guardadas, así que su
+   casilla aparecía DESMARCADA aunque el docente sí la había marcado (parecía que "no se dejaba
+   seleccionar"). Se usa un carácter de control invisible (imposible de escribir por accidente)
+   como separador nuevo, y splitItemsList reconoce datos antiguos guardados con ';' para no romper
+   lo que ya existe en Firestore — pero todo lo que se guarde de aquí en adelante usa el separador
+   seguro y ya no se puede corromper así. */
+var ITEMS_SEP = '';
+function joinItemsList(arr){ return (arr||[]).join(ITEMS_SEP); }
+function splitItemsList(str){
+  if(!str) return [];
+  if(str.indexOf(ITEMS_SEP)!==-1) return str.split(ITEMS_SEP).map(function(x){ return x.trim(); }).filter(Boolean);
+  return str.split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+}
+/* Para mostrar en exportaciones (Word/HTML/Markdown/Excel) un campo guardado con joinItemsList: el
+   separador real es invisible a propósito, así que aquí se reemplaza por "; " solo para lectura. */
+function itemsListParaTexto(str){ return splitItemsList(str).join('; '); }
 /* El campo Nivel de Logro del PCA (para una sola semana) puede traer, línea por línea (un ítem
    por cada Enter que dio el docente), la descripción de cada nivel: una línea de encabezado
    (p.ej. "Básico:", "Intermedio: ...", "Avanzado ...") seguida de una o varias líneas de detalle
@@ -907,8 +929,31 @@ var RECESO = {inicio:'10:15', fin:'11:00'};
 var ESTADOS_ASISTENCIA = ['P','A','F']; // Presente, Atraso, Falta
 var ESTADO_ASISTENCIA_LABEL = {P:'Presente', A:'Atraso', F:'Falta', '':'Sin marcar'};
 var TIPOS_FALTA_DISCIPLINA = ['Leve','Grave','Muy grave'];
-var CATEGORIAS_INCIDENTE = ['Impuntualidad','Uso indebido de celular','Uniforme incompleto','Incumplimiento de tareas','Agresión verbal','Agresión física','Falta de respeto','Daño a bienes institucionales','Incumplimiento de protocolos','Otro'];
+// Rúbrica institucional de convivencia (reemplaza la lista genérica anterior): estas son las 6
+// categorías oficiales sobre las que Inspección registra y evalúa la conducta de un estudiante.
+var CATEGORIAS_INCIDENTE = ['Uso Correcto del Uniforme (en todo momento)','Presentación Personal (Peinados, tintes, y aretes)','Respeto y cuidado al patrimonio institucional y de los compañeros','Respeto a los compañeros','Respeto a los docentes (Cumplimiento de indicaciones dadas)','Puntualidad (ingreso, cambio de hora y entrega de deberes)','Otro'];
 var ESTADOS_INCIDENTE = ['Abierto','En seguimiento','Cerrado'];
+var PARCIALES_INCIDENTE = ['Parcial 1','Parcial 2'];
+// Escala cualitativa oficial de valoración del comportamiento del currículo ecuatoriano (Reglamento
+// LOEI), usada en el Reporte de Conducta por Curso para sugerir una calificación a partir de los
+// incidentes registrados en un trimestre/parcial — Inspección General debe validarla o ajustarla.
+var ESCALA_CONDUCTA = [
+  {key:'A', label:'A · Muy satisfactorio'},
+  {key:'B', label:'B · Satisfactorio'},
+  {key:'C', label:'C · Poco satisfactorio'},
+  {key:'D', label:'D · Mejorable'},
+  {key:'E', label:'E · Insatisfactorio'}
+];
+function calificacionConductaSugerida(conteo){
+  var leve = conteo.Leve||0, grave = conteo.Grave||0, muyGrave = conteo['Muy grave']||0;
+  if(muyGrave >= 2) return 'E';
+  if(muyGrave >= 1) return 'D';
+  if(grave >= 2) return 'D';
+  if(grave >= 1) return 'C';
+  if(leve >= 3) return 'C';
+  if(leve >= 1) return 'B';
+  return 'A';
+}
 /* Clave determinística del documento de asistencia de un curso en un día — así se puede leer
    directo con getDoc en vez de tener que hacer una query, y nunca se duplica la hoja del día. */
 function asistenciaDocId(nivel, especialidad, curso, fecha){
@@ -1018,13 +1063,13 @@ function temasVistosDelPca(pcaId){
   var vistos = {};
   load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
     (s.dias||[]).forEach(function(dia){
-      (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+      splitItemsList(dia.contenidos).forEach(function(t){ vistos[t]=1; });
     });
   });
   load(LS.TALLER).filter(function(t){ return t.pcaId===pcaId; }).forEach(function(t){
     (t.fases||[]).forEach(function(fase){
       (fase.semanas||[]).forEach(function(sem){
-        (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+        splitItemsList(sem.contenidos).forEach(function(t){ vistos[t]=1; });
       });
     });
   });
@@ -1035,13 +1080,13 @@ function nivelLogroVistosDelPca(pcaId, tier){
   var vistos = {};
   load(LS.SEMANAL).filter(function(s){ return s.pcaId===pcaId; }).forEach(function(s){
     (s.dias||[]).forEach(function(dia){
-      (dia[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+      splitItemsList(dia[campoDia]).forEach(function(t){ vistos[t]=1; });
     });
   });
   load(LS.TALLER).filter(function(t){ return t.pcaId===pcaId; }).forEach(function(t){
     (t.fases||[]).forEach(function(fase){
       (fase.semanas||[]).forEach(function(sem){
-        (sem[campoDia]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ vistos[t]=1; });
+        splitItemsList(sem[campoDia]).forEach(function(t){ vistos[t]=1; });
       });
     });
   });
@@ -2568,8 +2613,14 @@ function resizeImageFileToDataUrl(file, maxW, maxH, quality, callback){
   reader.onerror = function(){ callback(null); };
   reader.readAsDataURL(file);
 }
+/* Solo docentes ven la pestaña Estudiantes de solo lectura (administradores, directivos, DECE e
+   Inspector conservan edición plena) — ver puedeVerInspeccion, que ya hizo visible todo el módulo
+   de Inspección para cualquier docente. */
+function puedeEditarEstudiantes(role){ return role !== 'docente'; }
 function renderInspEstudiantes(){
+  var soloLectura = !puedeEditarEstudiantes((currentDocente()||{}).role);
   var view = state.inspEstView || 'lista';
+  if(soloLectura && view === 'masivo'){ view = state.inspEstView = 'lista'; }
   if(view === 'nuevo' || view === 'editar') return renderInspEstudianteForm();
   if(view === 'masivo') return renderInspEstudiantesMasivo();
   return renderInspEstudiantesLista();
@@ -2581,6 +2632,7 @@ function bindInspEstudiantesEvents(){
   else bindInspEstudiantesListaEvents();
 }
 function renderInspEstudiantesLista(){
+  var soloLectura = !puedeEditarEstudiantes((currentDocente()||{}).role);
   var f = state.inspEstFiltro || (state.inspEstFiltro = {nivel:'', especialidad:'', curso:''});
   var espOpts = especialidadesFor(f.nivel);
   var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
@@ -2596,33 +2648,36 @@ function renderInspEstudiantesLista(){
   var todosSeleccionados = filtrados.length>0 && nSeleccionados===filtrados.length;
   var rows = filtrados.map(function(e){
     return '<tr>'
-    + '<td style="text-align:center;"><input type="checkbox" class="est-sel-cb" data-est-sel="'+e.id+'" '+(seleccion[e.id]?'checked':'')+' /></td>'
+    + (soloLectura ? '' : '<td style="text-align:center;"><input type="checkbox" class="est-sel-cb" data-est-sel="'+e.id+'" '+(seleccion[e.id]?'checked':'')+' /></td>')
     + '<td>' + (e.foto ? '<img src="'+e.foto+'" alt="" style="width:32px; height:40px; object-fit:cover; border-radius:4px; border:1px solid var(--line); vertical-align:middle; margin-right:8px;" />' : '<span style="display:inline-block; width:32px; height:40px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); vertical-align:middle; margin-right:8px;"></span>') + escapeHtml(e.apellidos) + ' ' + escapeHtml(e.nombres) + '</td>'
     + '<td>' + escapeHtml(e.nivel) + (e.especialidad?' · '+escapeHtml(e.especialidad):'') + '</td>'
     + '<td>' + escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso) + '</td>'
     + '<td>' + escapeHtml(e.nombreRepresentante||'—') + '</td>'
     + '<td>' + (e.estado==='Inactivo' ? '<span class="pill pill-muted">Inactivo</span>' : '<span class="pill pill-gold">Activo</span>') + '</td>'
-    + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-est-edit="'+e.id+'">Editar</button></td>'
+    + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-est-edit="'+e.id+'">' + (soloLectura?'Ver':'Editar') + '</button></td>'
     + '</tr>';
-  }).join('') || '<tr><td colspan="7" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
+  }).join('') || '<tr><td colspan="' + (soloLectura?6:7) + '" class="hint">No hay estudiantes registrados con este filtro.</td></tr>';
   return ''
   + '<div class="card"'+pastelBorde('estudiantes', INSP_TAB_PASTEL)+'>'
   + '  <h2>Estudiantes registrados <span class="hint">(' + filtrados.length + ' de ' + todos.length + ')</span></h2>'
+  + (soloLectura ? '  <div class="hint" style="margin-bottom:10px;">Esta pestaña es de solo lectura para el rol de docente.</div>' : '')
   + '  <div class="field-row" style="margin:10px 0;">'
   + '    <div class="field"><label>Nivel</label><select class="cell-select" id="ieFNivel">' + optionsHtml(NIVELES, f.nivel, 'Todos') + '</select></div>'
   + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="ieFEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Todas':'No aplica') + '</select></div>'
   + '    <div class="field"><label>Curso</label><select class="cell-select" id="ieFCurso">' + optionsHtml(cursoOpts, f.curso, 'Todos') + '</select></div>'
   + '  </div>'
-  + '  <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">'
-  + '    <button class="btn btn-primary btn-sm" id="btnEstNuevo">+ Nuevo estudiante</button>'
-  + '    <button class="btn btn-ghost btn-sm" id="btnEstMasivo">+ Carga masiva</button>'
-  + '    <div class="spacer"></div>'
-  + '    <button class="btn btn-danger btn-sm" id="btnEstEliminarSeleccionados" '+(nSeleccionados?'':'disabled')+'>🗑 Eliminar seleccionados (' + nSeleccionados + ')</button>'
-  + '  </div>'
-  + '  <div class="table-wrap"><table><thead><tr><th style="text-align:center;"><input type="checkbox" id="ieSelAll" '+(todosSeleccionados?'checked':'')+' /></th><th>Estudiante</th><th>Nivel</th><th>Curso</th><th>Representante</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + (soloLectura ? '' : ''
+    + '  <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">'
+    + '    <button class="btn btn-primary btn-sm" id="btnEstNuevo">+ Nuevo estudiante</button>'
+    + '    <button class="btn btn-ghost btn-sm" id="btnEstMasivo">+ Carga masiva</button>'
+    + '    <div class="spacer"></div>'
+    + '    <button class="btn btn-danger btn-sm" id="btnEstEliminarSeleccionados" '+(nSeleccionados?'':'disabled')+'>🗑 Eliminar seleccionados (' + nSeleccionados + ')</button>'
+    + '  </div>')
+  + '  <div class="table-wrap"><table><thead><tr>' + (soloLectura?'':'<th style="text-align:center;"><input type="checkbox" id="ieSelAll" '+(todosSeleccionados?'checked':'')+' /></th>') + '<th>Estudiante</th><th>Nivel</th><th>Curso</th><th>Representante</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function bindInspEstudiantesListaEvents(){
+  var soloLectura = !puedeEditarEstudiantes((currentDocente()||{}).role);
   var f = state.inspEstFiltro;
   var seleccion = state.estSeleccionados || (state.estSeleccionados = {});
   var nivelSel = document.getElementById('ieFNivel');
@@ -2677,43 +2732,50 @@ function bindInspEstudiantesListaEvents(){
 function renderInspEstudianteForm(){
   var e = state.editingEstudiante;
   var isEdit = (state.inspEstView === 'editar');
+  var soloLectura = !puedeEditarEstudiantes((currentDocente()||{}).role);
+  var ro = soloLectura ? 'disabled' : '';
   var espOpts = especialidadesFor(e.nivel);
   var cursoOpts = cursosFor(e.nivel, e.especialidad);
   return ''
   + '<div class="card">'
-  + '  <h2>' + (isEdit ? 'Editar estudiante' : 'Nuevo estudiante') + '</h2>'
+  + '  <h2>' + (soloLectura ? 'Ver estudiante' : (isEdit ? 'Editar estudiante' : 'Nuevo estudiante')) + '</h2>'
+  + (soloLectura ? '  <div class="hint" style="margin-bottom:10px;">Esta pestaña es de solo lectura para el rol de docente.</div>' : '')
   + '  <div class="form-error" id="estError"></div>'
   + '  <div class="field-row">'
   + '    <div class="field"><label>Foto tipo carnet</label>'
   + '      <div style="display:flex; align-items:center; gap:12px;">'
   + (e.foto ? '<img id="estFotoPreview" src="'+e.foto+'" alt="" style="width:70px; height:90px; object-fit:cover; border-radius:6px; border:1px solid var(--line-strong);" />' : '<div id="estFotoPreview" style="width:70px; height:90px; border-radius:6px; border:1px dashed var(--line-strong); background:var(--surface-2); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:22px;">👤</div>')
-  + '        <div style="display:flex; flex-direction:column; gap:6px;">'
-  + '          <input type="file" accept="image/*" id="estFotoInput" class="no-print" />'
-  + (e.foto ? '<button type="button" class="btn btn-ghost btn-sm" id="btnEstFotoQuitar" style="width:fit-content;">Quitar foto</button>' : '')
-  + '        </div>'
+  + (soloLectura ? '' : ''
+    + '        <div style="display:flex; flex-direction:column; gap:6px;">'
+    + '          <input type="file" accept="image/*" id="estFotoInput" class="no-print" />'
+    + (e.foto ? '<button type="button" class="btn btn-ghost btn-sm" id="btnEstFotoQuitar" style="width:fit-content;">Quitar foto</button>' : '')
+    + '        </div>')
   + '      </div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input class="cell-input" id="estNombres" value="'+escapeHtml(e.nombres)+'" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input class="cell-input" id="estApellidos" value="'+escapeHtml(e.apellidos)+'" /></div></div>'
-  + '  <div class="field-row"><div class="field"><label>Cédula</label><input class="cell-input" id="estCI" maxlength="10" value="'+escapeHtml(e.ci||'')+'" /></div><div class="field"><label>Estado</label><select class="cell-select" id="estEstado">' + optionsHtml(['Activo','Inactivo'], e.estado||'Activo', null) + '</select></div></div>'
+  + '  <div class="field-row"><div class="field"><label>Nombres <span class="required">*</span></label><input class="cell-input" id="estNombres" '+ro+' value="'+escapeHtml(e.nombres)+'" /></div><div class="field"><label>Apellidos <span class="required">*</span></label><input class="cell-input" id="estApellidos" '+ro+' value="'+escapeHtml(e.apellidos)+'" /></div></div>'
+  + '  <div class="field-row"><div class="field"><label>Cédula</label><input class="cell-input" id="estCI" maxlength="10" '+ro+' value="'+escapeHtml(e.ci||'')+'" /></div><div class="field"><label>Estado</label><select class="cell-select" id="estEstado" '+ro+'>' + optionsHtml(['Activo','Inactivo'], e.estado||'Activo', null) + '</select></div></div>'
   + '  <div class="field-row">'
-  + '    <div class="field"><label>Nivel <span class="required">*</span></label><select class="cell-select" id="estNivel">' + optionsHtml(NIVELES, e.nivel, 'Elija un elemento…') + '</select></div>'
-  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="estEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, e.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '    <div class="field"><label>Nivel <span class="required">*</span></label><select class="cell-select" id="estNivel" '+ro+'>' + optionsHtml(NIVELES, e.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="estEspecialidad" '+(espOpts.length?'':'disabled')+' '+ro+'>' + optionsHtml(espOpts, e.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
   + '  </div>'
-  + '  <div class="field"><label>Curso <span class="required">*</span></label><select class="cell-select" id="estCurso">' + optionsHtml(cursoOpts.concat(['Otro…']), e.curso, 'Elija un elemento…') + '</select>' + (e.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="estCursoManual" value="'+escapeHtml(e.cursoManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
+  + '  <div class="field"><label>Curso <span class="required">*</span></label><select class="cell-select" id="estCurso" '+ro+'>' + optionsHtml(cursoOpts.concat(['Otro…']), e.curso, 'Elija un elemento…') + '</select>' + (e.curso==='Otro…' ? '<input class="cell-input" style="margin-top:6px;" id="estCursoManual" '+ro+' value="'+escapeHtml(e.cursoManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
   + '  <div class="pca-band band-section" style="margin:16px -22px 0;">Representante</div>'
-  + '  <div class="field-row" style="margin-top:14px;"><div class="field"><label>Nombre del representante</label><input class="cell-input" id="estRepNombre" value="'+escapeHtml(e.nombreRepresentante||'')+'" /></div><div class="field"><label>Teléfono</label><input class="cell-input" id="estRepTelefono" value="'+escapeHtml(e.telefonoRepresentante||'')+'" /></div></div>'
-  + '  <div class="field"><label>E-mail del representante</label><input class="cell-input" type="email" id="estRepEmail" value="'+escapeHtml(e.emailRepresentante||'')+'" /></div>'
-  + '  <div class="field"><label>Observaciones</label><textarea class="cell-input" id="estObs" rows="2">'+escapeHtml(e.observaciones||'')+'</textarea></div>'
+  + '  <div class="field-row" style="margin-top:14px;"><div class="field"><label>Nombre del representante</label><input class="cell-input" id="estRepNombre" '+ro+' value="'+escapeHtml(e.nombreRepresentante||'')+'" /></div><div class="field"><label>Teléfono</label><input class="cell-input" id="estRepTelefono" '+ro+' value="'+escapeHtml(e.telefonoRepresentante||'')+'" /></div></div>'
+  + '  <div class="field"><label>E-mail del representante</label><input class="cell-input" type="email" id="estRepEmail" '+ro+' value="'+escapeHtml(e.emailRepresentante||'')+'" /></div>'
+  + '  <div class="field"><label>Observaciones</label><textarea class="cell-input" id="estObs" rows="2" '+ro+'>'+escapeHtml(e.observaciones||'')+'</textarea></div>'
   + '  <div style="display:flex; gap:10px; margin-top:14px; align-items:center;">'
-  + '    <button class="btn btn-primary" id="btnGuardarEstudiante">Guardar</button>'
-  + '    <button class="btn btn-ghost" id="btnCancelarEstudiante">Cancelar</button>'
-  + (isEdit ? '<div class="spacer"></div><button class="btn btn-danger btn-sm" id="btnEliminarEstudiante">Eliminar estudiante</button>' : '')
+  + (soloLectura ? '' : '<button class="btn btn-primary" id="btnGuardarEstudiante">Guardar</button>')
+  + '    <button class="btn btn-ghost" id="btnCancelarEstudiante">' + (soloLectura?'Volver':'Cancelar') + '</button>'
+  + (isEdit && !soloLectura ? '<div class="spacer"></div><button class="btn btn-danger btn-sm" id="btnEliminarEstudiante">Eliminar estudiante</button>' : '')
   + '  </div>'
   + '</div>';
 }
 function bindInspEstudianteFormEvents(){
   var e = state.editingEstudiante;
+  var soloLectura = !puedeEditarEstudiantes((currentDocente()||{}).role);
+  document.getElementById('btnCancelarEstudiante').onclick = function(){ state.editingEstudiante=null; state.inspEstView='lista'; render(); };
+  if(soloLectura) return;
   document.getElementById('estFotoInput').onchange = function(ev){
     var file = ev.target.files && ev.target.files[0];
     if(!file) return;
@@ -3130,6 +3192,38 @@ function asistenciaResultHtml(){
   + '    <div class="spacer"></div>'
   + '    <button class="btn btn-primary" id="btnGuardarAsistencia">Guardar asistencia</button>'
   + '  </div>'
+  + '</div>'
+  + resumenAsistenciaDiaHtml(a, estudiantes);
+}
+/* Resumen del día completo debajo de la planilla: para cada estudiante se toma el peor estado
+   marcado entre las 11 horas (Falta > Atraso > Presente), así un alumno con al menos una falta
+   sin marcar en otra hora como presente cuenta como ausente del día, no como presente. Los que no
+   tienen ninguna hora marcada aparecen aparte, en "Sin marcar", para que no se pierdan del conteo. */
+function resumenAsistenciaDiaHtml(a, estudiantes){
+  var grupos = {F:[], A:[], P:[], sinMarcar:[]};
+  estudiantes.forEach(function(e){
+    var peor = null;
+    PERIODOS.forEach(function(p){
+      var val = (a.periodos[p.n] && a.periodos[p.n][e.id]) || '';
+      if(val==='F') peor = 'F';
+      else if(val==='A' && peor!=='F') peor = 'A';
+      else if(val==='P' && !peor) peor = 'P';
+    });
+    (peor ? grupos[peor] : grupos.sinMarcar).push(e);
+  });
+  function listaNombres(arr){
+    return arr.length ? escapeHtml(arr.map(function(e){ return e.apellidos + ' ' + e.nombres; }).join(', ')) : '<span class="hint">Ninguno</span>';
+  }
+  return ''
+  + '<div class="card" style="margin-top:16px;">'
+  + '  <h2>Resumen del día <span class="hint">(' + estudiantes.length + ' estudiantes)</span></h2>'
+  + '  <div class="card-sub">Cuenta el peor estado del día por estudiante: si tuvo al menos una falta cuenta como ausente, si no tuvo faltas pero sí un atraso cuenta como atrasado.</div>'
+  + '  <div class="grid-3" style="margin-top:12px;">'
+  + '    <div class="field"><label>Presentes (' + grupos.P.length + ')</label><div class="hint">' + listaNombres(grupos.P) + '</div></div>'
+  + '    <div class="field"><label>Atrasados (' + grupos.A.length + ')</label><div class="hint">' + listaNombres(grupos.A) + '</div></div>'
+  + '    <div class="field"><label>Ausentes (' + grupos.F.length + ')</label><div class="hint">' + listaNombres(grupos.F) + '</div></div>'
+  + '  </div>'
+  + (grupos.sinMarcar.length ? '  <div class="field" style="margin-top:12px;"><label>Sin marcar (' + grupos.sinMarcar.length + ')</label><div class="hint">' + listaNombres(grupos.sinMarcar) + '</div></div>' : '')
   + '</div>';
 }
 function renderAsistenciaResultOnly(){
@@ -3380,10 +3474,12 @@ function nombreEstudiante(id){
   return e ? (e.apellidos + ' ' + e.nombres) : '(estudiante eliminado)';
 }
 function blankIncidente(tipoInvolucrado){
+  var fecha = todayISO();
   return {
-    id: uid('inc'), fecha: todayISO(), hora:'', tipoInvolucrado: tipoInvolucrado || 'Estudiante',
+    id: uid('inc'), fecha: fecha, hora:'', tipoInvolucrado: tipoInvolucrado || 'Estudiante',
     estudianteId:'', personalNombre:'', personalCargo:'',
     tipoFalta:'Leve', categoria: CATEGORIAS_INCIDENTE[0], categoriaManual:'',
+    trimestre: TRIMESTRE_LABELS[trimestreYMesDe(fecha).trimestre], parcial: PARCIALES_INCIDENTE[0],
     descripcion:'', accionTomada:'', citacionRepresentante:false, derivadoDece:false,
     estado:'Abierto', bitacora:[], registradoPor:'', createdAt:'', updatedAt:''
   };
@@ -3419,15 +3515,16 @@ function renderInspIncidentesLista(sub){
       + '<td>' + escapeHtml(nombre) + '</td>'
       + '<td><span class="pill '+badgeClass+'">' + escapeHtml(i.tipoFalta) + '</span></td>'
       + '<td>' + escapeHtml(i.categoria==='Otro'?(i.categoriaManual||'Otro'):i.categoria) + '</td>'
+      + '<td>' + escapeHtml((i.trimestre||'—') + (i.parcial?' · '+i.parcial:'')) + '</td>'
       + '<td>' + escapeHtml(i.estado) + '</td>'
       + '<td><button class="btn btn-ghost btn-sm" data-inc-edit="'+i.id+'">Ver / Editar</button></td>'
       + '</tr>';
-  }).join('') || '<tr><td colspan="6" class="hint">No hay incidentes registrados.</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="hint">No hay incidentes registrados.</td></tr>';
   return ''
   + '<div class="card"'+pastelBorde('disciplina', INSP_TAB_PASTEL)+'>'
   + '  <h2>Incidentes de ' + (sub==='personal'?'personal':'estudiantes') + '</h2>'
   + '  <button class="btn btn-primary btn-sm" id="btnNuevoIncidente" style="margin-bottom:14px;">+ Registrar incidente</button>'
-  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>' + (sub==='personal'?'Persona':'Estudiante') + '</th><th>Gravedad</th><th>Categoría</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>' + (sub==='personal'?'Persona':'Estudiante') + '</th><th>Gravedad</th><th>Categoría</th><th>Periodo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function renderInspIncidenteForm(){
@@ -3486,6 +3583,10 @@ function renderInspIncidenteForm(){
   + '    <div class="field"><label>Tipo de falta</label><select class="cell-select" id="incTipoFalta">' + optionsHtml(TIPOS_FALTA_DISCIPLINA, i.tipoFalta, null) + '</select></div>'
   + '    <div class="field"><label>Categoría</label><select class="cell-select" id="incCategoria">' + optionsHtml(CATEGORIAS_INCIDENTE, i.categoria, null) + '</select>' + (i.categoria==='Otro' ? '<input class="cell-input" style="margin-top:6px;" id="incCategoriaManual" value="'+escapeHtml(i.categoriaManual||'')+'" placeholder="Especifica" />' : '') + '</div>'
   + '  </div>'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Trimestre</label><select class="cell-select" id="incTrimestre">' + optionsHtml([TRIMESTRE_LABELS[1],TRIMESTRE_LABELS[2],TRIMESTRE_LABELS[3]], i.trimestre, null) + '</select></div>'
+  + '    <div class="field"><label>Parcial</label><select class="cell-select" id="incParcial">' + optionsHtml(PARCIALES_INCIDENTE, i.parcial, null) + '</select></div>'
+  + '  </div>'
   + '  <div class="field"><label>Descripción de lo ocurrido</label>' + richEditorHtml('descripcion', i.id, i.descripcion, 'Describe lo sucedido…') + '</div>'
   + '  <div class="field" style="margin-top:10px;"><label>Acción tomada</label>' + richEditorHtml('accionTomada', i.id, i.accionTomada, 'Llamado de atención, citación, suspensión…') + '</div>'
   + '  <div class="field-row" style="margin-top:10px;">'
@@ -3524,7 +3625,14 @@ function bindInspIncidentesListaEvents(){
     btn.onclick = function(){
       var target = load(LS.INCIDENTES).find(function(x){ return x.id===btn.getAttribute('data-inc-edit'); });
       if(target){
-        state.editingIncidente = Object.assign({}, target, {bitacora: (target.bitacora||[]).slice()});
+        // Incidentes registrados antes de agregar Trimestre/Parcial no tienen esos campos: se
+        // completan aquí con un valor por defecto (calculado desde la fecha) para que el select
+        // del formulario siempre tenga algo seleccionado, en vez de guardar undefined si el
+        // usuario no llega a tocarlos.
+        state.editingIncidente = Object.assign({
+          trimestre: TRIMESTRE_LABELS[trimestreYMesDe(target.fecha).trimestre],
+          parcial: PARCIALES_INCIDENTE[0]
+        }, target, {bitacora: (target.bitacora||[]).slice()});
         var est = target.estudianteId ? load(LS.ESTUDIANTES).find(function(e){ return e.id===target.estudianteId; }) : null;
         state.incFormFiltro = est ? {nivel: est.nivel||'', curso: (est.curso==='Otro…'?est.cursoManual:est.curso)||''} : {nivel:'', curso:''};
         state.incPersonalManualMode = false;
@@ -3551,6 +3659,8 @@ function bindInspIncidenteFormEvents(){
   var es = document.getElementById('incEstudiante'); if(es) es.onchange = function(e){ i.estudianteId = e.target.value; };
   document.getElementById('incTipoFalta').onchange = function(e){ i.tipoFalta = e.target.value; };
   document.getElementById('incCategoria').onchange = function(e){ i.categoria = e.target.value; render(); };
+  document.getElementById('incTrimestre').onchange = function(e){ i.trimestre = e.target.value; };
+  document.getElementById('incParcial').onchange = function(e){ i.parcial = e.target.value; };
   var cm = document.getElementById('incCategoriaManual'); if(cm) cm.oninput = function(e){ i.categoriaManual = e.target.value; };
   document.getElementById('incCitacion').onchange = function(e){ i.citacionRepresentante = e.target.checked; };
   var dece = document.getElementById('incDece'); if(dece) dece.onchange = function(e){ i.derivadoDece = e.target.checked; };
@@ -3605,6 +3715,7 @@ var INSP_REPORT_TIPOS = [
   {key:'individual', label:'Historial de un estudiante'},
   {key:'mensual', label:'Consolidado mensual por curso'},
   {key:'incidentes', label:'Incidentes de disciplina'},
+  {key:'conducta', label:'Conducta por curso (por parcial)'},
   {key:'fotografico', label:'Reporte fotográfico (por curso)'}
 ];
 function repInstitucionalHead(titulo){
@@ -3628,6 +3739,7 @@ function renderInspReportes(){
   else if(tipo==='individual') body = renderRepIndividual();
   else if(tipo==='mensual') body = renderRepMensual();
   else if(tipo==='incidentes') body = renderRepIncidentes();
+  else if(tipo==='conducta') body = renderRepConducta();
   else if(tipo==='fotografico') body = renderRepFotografico();
   else body = renderRepDiaria();
   return selectorHtml + body;
@@ -3639,6 +3751,7 @@ function bindInspReportesEvents(){
   else if(tipo==='individual') bindRepIndividualEvents();
   else if(tipo==='mensual') bindRepMensualEvents();
   else if(tipo==='incidentes') bindRepIncidentesEvents();
+  else if(tipo==='conducta') bindRepConductaEvents();
   else if(tipo==='fotografico') bindRepFotograficoEvents();
   else bindRepDiariaEvents();
 }
@@ -3937,6 +4050,69 @@ function bindRepIncidentesEvents(){
   document.getElementById('rcInicio').onchange = function(e){ f.fechaInicio = e.target.value; render(); };
   document.getElementById('rcFin').onchange = function(e){ f.fechaFin = e.target.value; render(); };
   var printBtn = document.getElementById('btnPrintRepIncidentes'); if(printBtn) printBtn.onclick = printAsPdf;
+}
+/* Reporte de Conducta por Curso (por Parcial): para cada estudiante del curso, cuenta sus
+   incidentes de disciplina (Estudiante) registrados en el trimestre/parcial elegido, agrupados por
+   gravedad, y sugiere una calificación según la escala cualitativa oficial de comportamiento del
+   currículo ecuatoriano (A–E, ver ESCALA_CONDUCTA/calificacionConductaSugerida). Un incidente
+   guardado antes de que existiera el campo Parcial no tiene ese dato: en ese caso se cuenta igual
+   para cualquier parcial de su trimestre, para no perderlo del reporte. */
+function renderRepConducta(){
+  var f = state.repConductaFiltro || (state.repConductaFiltro = {nivel:'', especialidad:'', curso:'', trimestre: TRIMESTRE_LABELS[1], parcial: PARCIALES_INCIDENTE[0]});
+  var espOpts = especialidadesFor(f.nivel);
+  var cursoOpts = cursosDeEstudiantesRegistrados(f.nivel, f.especialidad);
+  var trimestreOpts = [TRIMESTRE_LABELS[1], TRIMESTRE_LABELS[2], TRIMESTRE_LABELS[3]];
+  var selHtml = ''
+    + '<div class="card no-print">'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Nivel</label><select class="cell-select" id="rcoNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="rcoEspecialidad" '+(espOpts.length?'':'disabled')+'>' + optionsHtml(espOpts, f.especialidad, espOpts.length?'Elija un elemento…':'No aplica') + '</select></div>'
+    + '  </div>'
+    + '  <div class="field-row">'
+    + '    <div class="field"><label>Curso</label><select class="cell-select" id="rcoCurso" '+(cursoOpts.length?'':'disabled')+'>' + optionsHtml(cursoOpts, f.curso, 'Elija un elemento…') + '</select></div>'
+    + '    <div class="field"><label>Trimestre</label><select class="cell-select" id="rcoTrimestre">' + optionsHtml(trimestreOpts, f.trimestre, null) + '</select></div>'
+    + '    <div class="field"><label>Parcial</label><select class="cell-select" id="rcoParcial">' + optionsHtml(PARCIALES_INCIDENTE, f.parcial, null) + '</select></div>'
+    + '  </div>'
+    + '</div>';
+  if(!f.nivel || !f.curso) return selHtml;
+  var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
+  if(!estudiantes.length) return selHtml + '<div class="card"><div class="hint">No hay estudiantes registrados en este curso.</div></div>';
+  var incidentes = load(LS.INCIDENTES).filter(function(i){
+    if(i.tipoInvolucrado!=='Estudiante') return false;
+    var trimDe = i.trimestre || TRIMESTRE_LABELS[trimestreYMesDe(i.fecha).trimestre];
+    if(trimDe !== f.trimestre) return false;
+    if(i.parcial && i.parcial !== f.parcial) return false;
+    return true;
+  });
+  var rows = estudiantes.slice().sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); }).map(function(e){
+    var deEste = incidentes.filter(function(i){ return i.estudianteId===e.id; });
+    var conteo = {Leve:0, Grave:0, 'Muy grave':0};
+    deEste.forEach(function(i){ conteo[i.tipoFalta] = (conteo[i.tipoFalta]||0)+1; });
+    var total = deEste.length;
+    var calif = calificacionConductaSugerida(conteo);
+    return '<tr><td>'+escapeHtml(e.apellidos+' '+e.nombres)+'</td><td class="tabular">'+conteo.Leve+'</td><td class="tabular">'+conteo.Grave+'</td><td class="tabular">'+conteo['Muy grave']+'</td><td class="tabular">'+total+'</td><td style="text-align:center; font-weight:700;">'+calif+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">No hay estudiantes en este curso.</td></tr>';
+  var escalaLeyenda = ESCALA_CONDUCTA.map(function(x){ return x.label; }).join(' · ');
+  return selHtml
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintRepConducta">Imprimir / PDF (A4)</button></div>'
+  + '<div class="pca-doc insp-report-doc" id="repConductaDoc">'
+  + repInstitucionalHead('Reporte de Conducta por Curso')
+  + '  <div class="pca-section">'
+  + '    <div class="grid-2"><div class="field"><label>Curso</label><input class="cell-input" readonly value="'+escapeHtml(f.nivel+(f.especialidad?' · '+f.especialidad:'')+' · '+f.curso)+'" /></div><div class="field"><label>Periodo</label><input class="cell-input" readonly value="'+escapeHtml(f.trimestre+' · '+f.parcial)+'" /></div></div>'
+  + '    <div class="hint" style="margin:8px 0;">La calificación se sugiere automáticamente según la escala cualitativa de comportamiento del currículo ecuatoriano (' + escapeHtml(escalaLeyenda) + '), a partir de la cantidad y gravedad de los incidentes registrados en este trimestre y parcial. Inspección General debe validarla o ajustarla según su criterio.</div>'
+  + '    <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Estudiante</th><th>Leves</th><th>Graves</th><th>Muy graves</th><th>Total</th><th>Calificación</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+  + '  </div>'
+  + repFirmaInspeccion()
+  + '</div>';
+}
+function bindRepConductaEvents(){
+  var f = state.repConductaFiltro;
+  var nivelSel = document.getElementById('rcoNivel'); if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.curso=''; render(); };
+  var espSel = document.getElementById('rcoEspecialidad'); if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.curso=''; render(); };
+  var cursoSel = document.getElementById('rcoCurso'); if(cursoSel) cursoSel.onchange = function(e){ f.curso=e.target.value; render(); };
+  var trimSel = document.getElementById('rcoTrimestre'); if(trimSel) trimSel.onchange = function(e){ f.trimestre=e.target.value; render(); };
+  var parSel = document.getElementById('rcoParcial'); if(parSel) parSel.onchange = function(e){ f.parcial=e.target.value; render(); };
+  var printBtn = document.getElementById('btnPrintRepConducta'); if(printBtn) printBtn.onclick = printAsPdf;
 }
 
 /* ============================= OBSERVACIÓN DE CLASES (Admin) ============================= */
@@ -7253,9 +7429,9 @@ function semanalEstaCompleto(s){
    en las exportaciones (Word/HTML/Markdown/CSV), que muestran una sola línea/columna por día. */
 function nivelLogroDiaTexto(dia){
   var partes = [];
-  if(dia.nivelLogroBasico) partes.push('Básico: ' + dia.nivelLogroBasico);
-  if(dia.nivelLogroIntermedio) partes.push('Intermedio: ' + dia.nivelLogroIntermedio);
-  if(dia.nivelLogroAvanzado) partes.push('Avanzado: ' + dia.nivelLogroAvanzado);
+  if(dia.nivelLogroBasico) partes.push('Básico: ' + itemsListParaTexto(dia.nivelLogroBasico));
+  if(dia.nivelLogroIntermedio) partes.push('Intermedio: ' + itemsListParaTexto(dia.nivelLogroIntermedio));
+  if(dia.nivelLogroAvanzado) partes.push('Avanzado: ' + itemsListParaTexto(dia.nivelLogroAvanzado));
   return partes.join('\n');
 }
 function blankSemanal(d){
@@ -7384,15 +7560,21 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
     var itemsEstaSemana = (nivelLogroItems[tier] && nivelLogroItems[tier].estaSemana) || [];
     var itemsPendientes = (nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || [];
     var itemsReforzar = (nivelLogroItems[tier] && nivelLogroItems[tier].reforzar) || [];
-    var seleccion = (dia[NIVEL_LOGRO_DIA_FIELD[tier]]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+    var seleccion = splitItemsList(dia[NIVEL_LOGRO_DIA_FIELD[tier]]);
     var etiqueta = te(NIVEL_LOGRO_DIA_LABEL[tier], isIngles);
     var body;
     if(nivelLogroMotivo){
       body = '<div class="hint">' + escapeHtml(nivelLogroMotivo) + '</div>';
     } else if(!itemsEstaSemana.length && !itemsPendientes.length && !itemsReforzar.length){
+      // Mismo mensaje "o" que ya usan los Temas: esta lista ya viene filtrada por día (ver
+      // nivelLogroParaDia), así que llegar aquí vacía puede deberse a dos causas MUY distintas —
+      // que el PCA de verdad no tenga ítems para esta semana, o que los únicos que tiene ya se
+      // hayan marcado en OTRO día de este mismo plan (para no repetirlos dos veces) — y antes el
+      // mensaje afirmaba sin más "el PCA no tiene ítems", lo cual es engañoso en el segundo caso
+      // (el ítem existe, solo que ya quedó marcado en otro día con una fecha distinta).
       body = isIngles
-        ? '<div class="hint">The PCA has no ' + etiqueta + ' items for this week.</div>'
-        : '<div class="hint">El PCA no tiene ítems de Nivel de Logro ' + etiqueta + ' para esta semana.</div>';
+        ? '<div class="hint">No ' + etiqueta + ' items available: they were already marked on another day of this plan, or the PCA has none for this week.</div>'
+        : '<div class="hint">No hay ítems de Nivel de Logro ' + etiqueta + ' disponibles: ya se marcaron en otro día de este plan, o el PCA no tiene ítems para esta semana.</div>';
     } else {
       body = ''
         + (itemsEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">' + te('De esta semana', isIngles) + '</div>' + grupoHtml(tier, itemsEstaSemana, seleccion) : '')
@@ -7404,7 +7586,7 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
   return '<div class="field"><label class="semanal-section-title">' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
 }
 function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles){
-  var seleccionados = (dia.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var seleccionados = splitItemsList(dia.contenidos);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
   // (para que no desaparezcan de su propia lista al marcarlos).
   var opcionesEstaSemana = temasEstaSemana.slice();
@@ -7508,7 +7690,7 @@ function renderSemanalForm(d){
     : (!semanaCoincide ? te('No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.', isIngles) : null);
 
   var bloqueOpts = bloquesFor(s.nivel, s.asignatura);
-  var bloqueSeleccion = (s.bloqueCurricular||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var bloqueSeleccion = splitItemsList(s.bloqueCurricular);
   var bloqueHtml = bloqueOpts
     ? '<div class="checkbox-grid" id="sfBloqueBox">' + bloqueOpts.map(function(b){
         return '<label class="checkbox-pill"><input type="checkbox" class="bloque-cb" value="' + escapeHtml(b) + '" ' + (bloqueSeleccion.indexOf(b)!==-1?'checked':'') + ' />' + escapeHtml(b) + '</label>';
@@ -7530,7 +7712,7 @@ function renderSemanalForm(d){
       var usadosEnOtrosDias = {};
       (s.dias||[]).forEach(function(d2){
         if(d2.id===dia.id) return;
-        (d2[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ usadosEnOtrosDias[t]=1; });
+        splitItemsList(d2[campo]).forEach(function(t){ usadosEnOtrosDias[t]=1; });
       });
       var base = nivelLogroItems[tier] || {estaSemana:[], pendientes:[], reforzar:[]};
       resultado[tier] = {
@@ -7545,7 +7727,7 @@ function renderSemanalForm(d){
     var usadosEnOtrosDias = {};
     (s.dias||[]).forEach(function(d2){
       if(d2.id===dia.id) return;
-      (d2.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){ usadosEnOtrosDias[t]=1; });
+      splitItemsList(d2.contenidos).forEach(function(t){ usadosEnOtrosDias[t]=1; });
     });
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
@@ -7633,7 +7815,7 @@ function bindSemanalFormEvents(){
   document.querySelectorAll('.bloque-cb').forEach(function(cb){
     cb.addEventListener('change', function(){
       var seleccion = Array.from(document.querySelectorAll('.bloque-cb:checked')).map(function(x){ return x.value; });
-      s.bloqueCurricular = seleccion.join('; ');
+      s.bloqueCurricular = joinItemsList(seleccion);
     });
   });
   document.getElementById('sfRevisado').addEventListener('input', function(e){ s.revisadoPor = e.target.value; });
@@ -7648,7 +7830,7 @@ function bindSemanalFormEvents(){
     box.querySelectorAll('.contenidos-cb').forEach(function(cb){
       cb.addEventListener('change', function(){
         var seleccion = Array.from(box.querySelectorAll('.contenidos-cb:checked')).map(function(x){ return x.value; });
-        dia.contenidos = seleccion.join('; ');
+        dia.contenidos = joinItemsList(seleccion);
         renderSemanalFormAgain();
       });
     });
@@ -7657,7 +7839,7 @@ function bindSemanalFormEvents(){
       box.querySelectorAll('.nivellogro-dia-cb[data-tier="'+tier+'"]').forEach(function(cb){
         cb.addEventListener('change', function(){
           var seleccion = Array.from(box.querySelectorAll('.nivellogro-dia-cb[data-tier="'+tier+'"]:checked')).map(function(x){ return x.value; });
-          dia[field] = seleccion.join('; ');
+          dia[field] = joinItemsList(seleccion);
           renderSemanalFormAgain();
         });
       });
@@ -7701,10 +7883,10 @@ function renderSemanalFormAgain(){
    los que ya tenía el plan original. Numera el nuevo plan como el original + ".1" (p.ej. "3.1"),
    o ".2"/".3"... si ya existe ese número (por si se replanifica más de una vez). */
 function mergeSemicolonLista(actual, nuevos){
-  var items = (actual||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var items = splitItemsList(actual);
   var set = {}; items.forEach(function(t){ set[t]=1; });
   (nuevos||[]).forEach(function(t){ if(!set[t]){ items.push(t); set[t]=1; } });
-  return items.join(';');
+  return joinItemsList(items);
 }
 function numeroReplanificado(docenteId, base){
   var existentes = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).map(function(s){ return String(s.numero); });
@@ -7915,10 +8097,10 @@ function tallerVistosEnVivo(t){
   var temas = {}, niveles = {basico:{}, intermedio:{}, avanzado:{}};
   (t.fases||[]).forEach(function(fase){
     (fase.semanas||[]).forEach(function(s){
-      (s.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(x){ temas[x]=1; });
+      splitItemsList(s.contenidos).forEach(function(x){ temas[x]=1; });
       ['basico','intermedio','avanzado'].forEach(function(tier){
         var campo = NIVEL_LOGRO_DIA_FIELD[tier];
-        (s[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(x){ niveles[tier][x]=1; });
+        splitItemsList(s[campo]).forEach(function(x){ niveles[tier][x]=1; });
       });
     });
   });
@@ -7939,7 +8121,7 @@ function tallerSemanaRowHtml(t, fase, sem){
 
   var temasEstaSemana = semanaActual ? parseLinesList(semanaActual.temas) : [];
   var temasPendientes = semanaActual ? temasPendientesAnteriores(t.pcaId, semanaActual.id).filter(function(x){ return temasEstaSemana.indexOf(x)===-1 && !vivos.temas[x]; }) : [];
-  var seleccionTemas = (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  var seleccionTemas = splitItemsList(sem.contenidos);
   seleccionTemas.forEach(function(x){
     if(temasEstaSemana.indexOf(x)===-1 && temasPendientes.indexOf(x)===-1) temasEstaSemana.push(x);
   });
@@ -7957,7 +8139,7 @@ function tallerSemanaRowHtml(t, fase, sem){
     var campoSem = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
     var itemsEstaSemana = semanaActual ? parseLinesList(semanaActual[campoPca]) : [];
     var itemsPendientes = semanaActual ? nivelLogroPendientesAnteriores(t.pcaId, semanaActual.id, tier).filter(function(x){ return itemsEstaSemana.indexOf(x)===-1 && !vivos.niveles[tier][x]; }) : [];
-    var seleccion = (sem[campoSem]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+    var seleccion = splitItemsList(sem[campoSem]);
     seleccion.forEach(function(x){
       if(itemsEstaSemana.indexOf(x)===-1 && itemsPendientes.indexOf(x)===-1) itemsEstaSemana.push(x);
     });
@@ -8130,10 +8312,10 @@ function bindTallerFormEvents(){
     });
     tr.querySelectorAll('.taller-sem-tema-cb').forEach(function(cb){
       cb.onchange = function(){
-        var seleccion = (sem.contenidos||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+        var seleccion = splitItemsList(sem.contenidos);
         var idx = seleccion.indexOf(cb.value);
         if(cb.checked){ if(idx===-1) seleccion.push(cb.value); } else if(idx!==-1) seleccion.splice(idx,1);
-        sem.contenidos = seleccion.join(';');
+        sem.contenidos = joinItemsList(seleccion);
         marcarAutoguardadoPendiente('taller');
       };
     });
@@ -8141,10 +8323,10 @@ function bindTallerFormEvents(){
       cb.onchange = function(){
         var tier = cb.getAttribute('data-tier');
         var campo = 'nivelLogro' + tier.charAt(0).toUpperCase() + tier.slice(1);
-        var seleccion = (sem[campo]||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+        var seleccion = splitItemsList(sem[campo]);
         var idx = seleccion.indexOf(cb.value);
         if(cb.checked){ if(idx===-1) seleccion.push(cb.value); } else if(idx!==-1) seleccion.splice(idx,1);
-        sem[campo] = seleccion.join(';');
+        sem[campo] = joinItemsList(seleccion);
         marcarAutoguardadoPendiente('taller');
       };
     });
@@ -8827,7 +9009,7 @@ function buildSemanalDocxXml(s, d){
   body += docxPara('DATOS CURRICULARES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   body += docxTable([docxRow([
     docxCell('Unidad Didáctica: ' + (s.unidadDidactica||'—'), {pct:5000/2}),
-    docxCell('Bloque Curricular: ' + (s.bloqueCurricular||'—'), {pct:5000/2})
+    docxCell('Bloque Curricular: ' + (itemsListParaTexto(s.bloqueCurricular) || '—'), {pct:5000/2})
   ])], [5000/2,5000/2]);
   body += docxPara('DESARROLLO DE LAS CLASES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
   (s.dias||[]).forEach(function(dia, i){
@@ -8835,7 +9017,7 @@ function buildSemanalDocxXml(s, d){
     body += docxPara('Niveles de Logro', {bold:true, size:10.5});
     body += docxPara(nivelLogroDiaTexto(dia) || '—');
     body += docxPara('Contenidos Esenciales', {bold:true, size:10.5});
-    body += docxPara(dia.contenidos||'—');
+    body += docxPara(itemsListParaTexto(dia.contenidos) || '—');
     body += docxPara('Actividades de Aprendizaje', {bold:true, size:10.5});
     body += richTextToDocxParas(dia.actividades).join('');
     body += docxPara('Recursos', {bold:true, size:10.5});
@@ -8880,7 +9062,7 @@ function buildSemanalWordHtml(s, d){
   function diaSection(dia, i){
     return '<h3 style="background:#1848A0; color:#fff; padding:8px 10px; margin:18px 0 0;">Día ' + (i+1) + ' — ' + fmtDate(dia.fecha) + '</h3>'
       + '<p><strong>Niveles de Logro:</strong><br/>' + escapeHtml(nivelLogroDiaTexto(dia) || '—').replace(/\n/g,'<br/>') + '</p>'
-      + '<p><strong>Contenidos Esenciales:</strong><br/>' + escapeHtml(dia.contenidos||'').replace(/\n/g,'<br/>') + '</p>'
+      + '<p><strong>Contenidos Esenciales:</strong><br/>' + escapeHtml(itemsListParaTexto(dia.contenidos)).replace(/\n/g,'<br/>') + '</p>'
       + '<p><strong>Actividades de Aprendizaje:</strong></p>' + (dia.actividades || '<p>—</p>')
       + '<p><strong>Recursos:</strong></p>' + (dia.recursos || '<p>—</p>')
       + '<p><strong>Evaluación:</strong></p>' + (dia.evaluacion || '<p>—</p>');
@@ -8896,7 +9078,7 @@ function buildSemanalWordHtml(s, d){
   + '<p><strong>Nivel Educativo:</strong> ' + escapeHtml(s.nivel) + ' &nbsp; <strong>Especialidad:</strong> ' + escapeHtml(s.especialidad||'No aplica') + ' &nbsp; <strong>Curso/Grado:</strong> ' + escapeHtml(s.curso) + '</p>'
   + '<p><strong>Asignatura:</strong> ' + escapeHtml(s.asignatura) + ' &nbsp; <strong>Docente:</strong> ' + escapeHtml(nombreFormal(d)) + ' &nbsp; <strong>Fecha:</strong> ' + fmtDate(s.fechaInicio) + ' al ' + fmtDate(s.fechaFin) + '</p>'
   + '<h2 style="background:#F2B705; padding:8px;">Datos Curriculares</h2>'
-  + '<p><strong>Unidad Didáctica:</strong> ' + escapeHtml(s.unidadDidactica||'—') + ' &nbsp; <strong>Bloque Curricular:</strong> ' + escapeHtml(s.bloqueCurricular||'—') + '</p>'
+  + '<p><strong>Unidad Didáctica:</strong> ' + escapeHtml(s.unidadDidactica||'—') + ' &nbsp; <strong>Bloque Curricular:</strong> ' + escapeHtml(itemsListParaTexto(s.bloqueCurricular) || '—') + '</p>'
   + '<h2 style="background:#F2B705; padding:8px;">Desarrollo de las Clases</h2>'
   + (s.dias||[]).map(diaSection).join('')
   + '<h2 style="background:#F2B705; padding:8px; margin-top:20px;">Firmas de Responsabilidad</h2>'
@@ -8920,14 +9102,14 @@ function buildSemanalMarkdown(s, d){
   lines.push('');
   lines.push('### Datos Curriculares');
   lines.push('- **Unidad Didáctica:** ' + (s.unidadDidactica||'—'));
-  lines.push('- **Bloque Curricular:** ' + (s.bloqueCurricular||'—'));
+  lines.push('- **Bloque Curricular:** ' + (itemsListParaTexto(s.bloqueCurricular) || '—'));
   lines.push('');
   lines.push('### Desarrollo de las Clases');
   (s.dias||[]).forEach(function(dia, i){
     lines.push('');
     lines.push('#### Día ' + (i+1) + ' — ' + fmtDate(dia.fecha));
     lines.push('**Niveles de Logro:** ' + (nivelLogroDiaTexto(dia) || '—'));
-    lines.push('**Contenidos Esenciales:** ' + (dia.contenidos||'—'));
+    lines.push('**Contenidos Esenciales:** ' + (itemsListParaTexto(dia.contenidos) || '—'));
     lines.push('');
     lines.push('**Actividades de Aprendizaje:**');
     lines.push(richTextToPlain(dia.actividades) || '—');
@@ -8966,14 +9148,14 @@ function exportSemanalExcel(semId){
   (s.dias||[]).forEach(function(dia){
     lines.push([
       s.nivel, s.especialidad, s.curso, s.asignatura, nombreFormal(d), s.fechaInicio, s.fechaFin,
-      s.unidadDidactica, s.bloqueCurricular, nivelLogroDiaTexto(dia),
-      dia.fecha, dia.contenidos, richTextToPlain(dia.actividades), richTextToPlain(dia.recursos), richTextToPlain(dia.evaluacion)
+      s.unidadDidactica, itemsListParaTexto(s.bloqueCurricular), nivelLogroDiaTexto(dia),
+      dia.fecha, itemsListParaTexto(dia.contenidos), richTextToPlain(dia.actividades), richTextToPlain(dia.recursos), richTextToPlain(dia.evaluacion)
     ].map(csvEsc).join(','));
   });
   var csv = '﻿' + lines.join('\r\n');
   var txt = '﻿' + headCols.join('\t') + '\n'
     + (s.dias||[]).map(function(dia){
-        return [s.nivel,s.especialidad,s.curso,s.asignatura,nombreFormal(d),s.fechaInicio,s.fechaFin,s.unidadDidactica,s.bloqueCurricular,nivelLogroDiaTexto(dia),dia.fecha,dia.contenidos,richTextToPlain(dia.actividades),richTextToPlain(dia.recursos),richTextToPlain(dia.evaluacion)].join('\t');
+        return [s.nivel,s.especialidad,s.curso,s.asignatura,nombreFormal(d),s.fechaInicio,s.fechaFin,s.unidadDidactica,itemsListParaTexto(s.bloqueCurricular),nivelLogroDiaTexto(dia),dia.fecha,itemsListParaTexto(dia.contenidos),richTextToPlain(dia.actividades),richTextToPlain(dia.recursos),richTextToPlain(dia.evaluacion)].join('\t');
       }).join('\n');
   saveAttempts('PLAN_SEMANAL_' + semanalDisplayName(s), [
     {ext:'csv', data:csv},
