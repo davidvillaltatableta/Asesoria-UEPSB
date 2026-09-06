@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260906190137">
+<meta name="app-build" content="20260906191404">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -3757,6 +3757,35 @@ function repFirmaInspeccion(){
        + '  <div class="signature-box"><div class="role">Elaborado por</div><div style="font-weight:700; font-size:14px;">Inspección General</div></div>'
        + '</div>';
 }
+/* Firmas de responsabilidad y validez de TODOS los docentes que dictan clase a un curso específico
+   (según su Carga Horaria) — para reportes que van "por curso", donde la validez del contenido
+   depende de que cada docente que trabaja con esos estudiantes lo respalde con su firma, no solo
+   Inspección General. Si un docente dicta más de una asignatura en el curso, se listan todas bajo
+   su nombre en la misma casilla (no se repite la firma). */
+/* Algunos cursos ("Diseño") quedaron guardados con el símbolo de grado "°" en Estudiantes pero con
+   el ordinal "º" en Carga Horaria (error de tipeo antiguo, no de esta función) — se normalizan
+   ambos antes de comparar para que la lista de firmas no salga vacía por esa sola diferencia. */
+function normCursoCmp(c){ return (c||'').replace(/[°º]/g, 'º'); }
+function firmasDocentesCursoHtml(nivel, especialidad, curso){
+  var porDocente = {};
+  load(LS.CARGA).filter(function(c){
+    return c.nivel===nivel && (c.especialidad||'')===(especialidad||'') && normCursoCmp(c.curso)===normCursoCmp(curso);
+  }).forEach(function(c){
+    if(!porDocente[c.docenteId]) porDocente[c.docenteId] = [];
+    if(c.asignatura && porDocente[c.docenteId].indexOf(c.asignatura)===-1) porDocente[c.docenteId].push(c.asignatura);
+  });
+  var docentes = Object.keys(porDocente).map(function(id){
+    var d = allDocentes().find(function(x){ return x.id===id; });
+    return { nombre: d ? nombreFormal(d) : 'Docente no encontrado', asignaturas: porDocente[id] };
+  }).sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+  if(!docentes.length) return '';
+  var boxes = docentes.map(function(x){
+    return '<div class="signature-box"><div class="role">' + escapeHtml(x.asignaturas.join(' · ')) + '</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(x.nombre) + '</div></div>';
+  }).join('');
+  return '<div class="pca-band band-section" style="margin-top:20px;">Firmas de Responsabilidad y Validez</div>'
+       + '<div class="hint" style="padding:10px 20px 0;">Docentes que imparten clase a este curso.</div>'
+       + '<div class="signature-grid">' + boxes + '</div>';
+}
 function renderInspReportes(){
   var tipo = state.inspReportTipo || 'diaria';
   var selectorHtml = ''
@@ -4132,6 +4161,7 @@ function renderRepConducta(){
   + '    <div class="hint" style="margin:8px 0;">La calificación se sugiere automáticamente según la escala cualitativa de comportamiento del currículo ecuatoriano (' + escapeHtml(escalaLeyenda) + '), a partir de la cantidad y gravedad de los incidentes registrados en este trimestre y parcial. Inspección General debe validarla o ajustarla según su criterio.</div>'
   + '    <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Estudiante</th><th>Leves</th><th>Graves</th><th>Muy graves</th><th>Total</th><th>Calificación</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '  </div>'
+  + firmasDocentesCursoHtml(f.nivel, f.especialidad, f.curso)
   + repFirmaInspeccion()
   + '</div>';
 }
