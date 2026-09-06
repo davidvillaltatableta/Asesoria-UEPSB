@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260906202324">
+<meta name="app-build" content="20260906203949">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1454,11 +1454,13 @@ function promptDialog(message, defaultValue, onSubmit){
    real de Chrome poco fiable para además ajustar el ANCHO del contenido, no solo el tamaño de
    papel — eso era la causa de las tablas angostas con espacio en blanco a la derecha), se
    reescribe la única regla @page justo antes de imprimir, según el tipo de documento visible en
-   pantalla: los formularios del DECE, Observación de Clases, reportes y manuales van en A4
-   vertical; PCA y Plan Semanal (documentos anchos de varias columnas) siguen en A4 horizontal. */
+   pantalla: los formularios del DECE, Observación de Clases y manuales van en A4 vertical; PCA,
+   Plan Semanal y TODOS los reportes/formularios de Inspección (asistencia, conducta, incidentes —
+   tablas anchas de varios estudiantes) van en A4 horizontal para que la tabla completa entre en el
+   ancho de la hoja. */
 var PRINT_STYLE_EL = null;
 function aplicarOrientacionImpresion(){
-  var esVertical = !!document.querySelector('.dece-doc, .obs-doc, .manual-doc, .insp-report-doc');
+  var esVertical = !!document.querySelector('.dece-doc, .obs-doc, .manual-doc');
   if(!PRINT_STYLE_EL){
     PRINT_STYLE_EL = document.createElement('style');
     document.head.appendChild(PRINT_STYLE_EL);
@@ -3613,7 +3615,7 @@ function renderInspIncidenteForm(){
       return '<option value="'+e.id+'" '+(i.estudianteId===e.id?'selected':'')+'>'+escapeHtml(e.apellidos+' '+e.nombres)+' — '+escapeHtml(e.curso==='Otro…'?e.cursoManual:e.curso)+'</option>';
     }).join('');
     estudianteCampoHtml = ''
-      + '  <div class="field-row">'
+      + '  <div class="field-row no-print">'
       + '    <div class="field"><label>Nivel Educativo</label><select class="cell-select" id="incFiltroNivel">' + optionsHtml(NIVELES, filtro.nivel, 'Todos') + '</select></div>'
       + '    <div class="field"><label>Curso</label><select class="cell-select" id="incFiltroCurso" '+(cursoOptsFiltro.length?'':'disabled')+'>' + optionsHtml(cursoOptsFiltro, filtro.curso, filtro.nivel?'Todos':'Elija primero el nivel') + '</select></div>'
       + '  </div>'
@@ -3631,9 +3633,10 @@ function renderInspIncidenteForm(){
     return '<div style="padding:8px 0; border-bottom:1px solid var(--line);"><div class="hint">' + fmtDate(n.fecha) + '</div><div>' + escapeHtml(n.nota) + '</div></div>';
   }).join('') || '<div class="hint">Sin notas de seguimiento todavía.</div>';
   return ''
-  + '<div class="card">'
+  + '<div class="pca-toolbar no-print"><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnPrintIncidente">Imprimir / PDF (A4)</button></div>'
+  + '<div class="card" id="incidenteDoc">'
   + '  <h2>' + (isPersonal ? 'Incidente de personal' : 'Incidente de estudiante') + '</h2>'
-  + '  <div class="form-error" id="incError"></div>'
+  + '  <div class="form-error no-print" id="incError"></div>'
   + '  <div class="field-row"><div class="field"><label>Fecha <span class="required">*</span></label><input class="cell-input" type="date" id="incFecha" value="'+escapeHtml(i.fecha)+'" /></div><div class="field"><label>Hora</label><input class="cell-input" type="time" id="incHora" value="'+escapeHtml(i.hora||'')+'" /></div></div>'
   + (isPersonal
       ? '  <div class="field-row"><div class="field"><label>Nombre <span class="required">*</span></label><select class="cell-select" id="incPersonalNombreSel">' + personalSelectHtml + '</select>' + (personalEsOtro ? '<input class="cell-input" style="margin-top:6px;" id="incPersonalNombreManual" value="'+escapeHtml(i.personalNombre||'')+'" placeholder="Escribe el nombre completo" />' : '') + '</div><div class="field"><label>Cargo</label><input class="cell-input" id="incPersonalCargo" value="'+escapeHtml(i.personalCargo||'')+'" placeholder="Docente, Secretaría, Auxiliar de Servicios…" /></div></div>'
@@ -3656,9 +3659,9 @@ function renderInspIncidenteForm(){
   + '  <div class="field" style="margin-top:10px;"><label>Estado del caso</label><select class="cell-select" id="incEstado" style="max-width:220px;">' + optionsHtml(ESTADOS_INCIDENTE, i.estado, null) + '</select></div>'
   + '  <div class="pca-band band-section" style="margin:16px -22px 0;">Bitácora de seguimiento</div>'
   + '  <div style="margin-top:12px;">' + bitacoraHtml + '</div>'
-  + '  <div class="field-row" style="margin-top:10px;"><div class="field" style="flex:1;"><input class="cell-input" id="incNuevaNota" placeholder="Agregar nota de seguimiento…" /></div><button class="btn btn-ghost btn-sm" id="btnAddNota" style="align-self:flex-end;">+ Agregar nota</button></div>'
+  + '  <div class="field-row no-print" style="margin-top:10px;"><div class="field" style="flex:1;"><input class="cell-input" id="incNuevaNota" placeholder="Agregar nota de seguimiento…" /></div><button class="btn btn-ghost btn-sm" id="btnAddNota" style="align-self:flex-end;">+ Agregar nota</button></div>'
   + firmasIncidenteHtml(i)
-  + '  <div style="display:flex; gap:10px; margin-top:18px; align-items:center;">'
+  + '  <div class="no-print" style="display:flex; gap:10px; margin-top:18px; align-items:center;">'
   + '    <button class="btn btn-primary" id="btnGuardarIncidente">Guardar</button>'
   + '    <button class="btn btn-ghost" id="btnCancelarIncidente">Cancelar</button>'
   + (load(LS.INCIDENTES).some(function(x){return x.id===i.id;}) ? '<div class="spacer"></div><button class="btn btn-danger btn-sm" id="btnEliminarIncidente">Eliminar incidente</button>' : '')
@@ -3705,6 +3708,7 @@ function bindInspIncidentesListaEvents(){
 function bindInspIncidenteFormEvents(){
   var i = state.editingIncidente;
   var filtro = state.incFormFiltro || (state.incFormFiltro = {nivel:'', curso:''});
+  var printBtn = document.getElementById('btnPrintIncidente'); if(printBtn) printBtn.onclick = printAsPdf;
   document.getElementById('incFecha').oninput = function(e){ i.fecha = e.target.value; };
   document.getElementById('incHora').oninput = function(e){ i.hora = e.target.value; };
   var pnSel = document.getElementById('incPersonalNombreSel');
