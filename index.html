@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260907025234">
+<meta name="app-build" content="20260907184911">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -315,6 +315,7 @@
   .pill-gold{background:var(--gold-100); color:var(--gold-600);}
   .pill-green{background:var(--green-100); color:var(--green-600);}
   .pill-muted{background:var(--surface-2); color:var(--muted); border:1px solid var(--line);}
+  .pill-red{background:var(--red-100); color:var(--red-600);}
   .asis-cell{width:32px; height:28px; border:1px solid var(--line); border-radius:6px; background:var(--surface-2); color:var(--muted); font-weight:700; font-size:12px; cursor:pointer;}
   .asis-cell.asis-P{background:var(--green-100); color:var(--green-600); border-color:var(--green-100);}
   .asis-cell.asis-A{background:var(--gold-100); color:var(--gold-600); border-color:var(--gold-100);}
@@ -439,6 +440,25 @@
   :root[data-theme="dark"] .db-warning, @media (prefers-color-scheme:dark){ .db-warning{color:#F2D98A;} }
   .lock-banner{background:var(--gold-100); border:1px solid var(--gold-500); color:#5a4300; padding:12px 20px; font-size:13px; font-weight:600;}
   :root[data-theme="dark"] .lock-banner, @media (prefers-color-scheme:dark){ .lock-banner{color:#F2D98A;} }
+  /* Historial de edición: panel lateral deslizante (drawer) en vez de una ventana emergente, para
+     que el plan siga visible a la izquierda mientras se lee cuándo se editó. En pantallas chicas
+     ocupa todo el ancho. Nunca se imprime. */
+  .drawer-backdrop{position:fixed; inset:0; background:rgba(10,20,40,.35); z-index:80; opacity:0; transition:opacity .18s ease;}
+  .drawer-backdrop.open{opacity:1;}
+  .drawer{position:fixed; top:0; right:0; height:100%; width:380px; max-width:92vw; background:var(--surface); border-left:1px solid var(--line-strong); box-shadow:var(--shadow-2); z-index:81; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .22s ease;}
+  .drawer.open{transform:translateX(0);}
+  .drawer-head{display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); background:var(--surface-2);}
+  .drawer-head h3{margin:0; font-size:15px; font-weight:800; color:var(--blue-900);}
+  .drawer-close{margin-left:auto; background:none; border:none; font-size:20px; line-height:1; cursor:pointer; color:var(--muted); padding:2px 6px;}
+  .drawer-body{padding:14px 16px; overflow-y:auto; flex:1;}
+  .drawer-body ol{list-style:none; margin:0; padding:0 0 0 20px; border-left:2px solid var(--line-strong);}
+  .drawer-body ol li{position:relative; padding:0 0 16px 0; font-size:13px;}
+  .drawer-body ol li::before{content:''; position:absolute; left:-27px; top:4px; width:10px; height:10px; border-radius:50%; background:var(--blue-600); border:2px solid var(--surface);}
+  .drawer-body ol li.hito-primero::before{background:var(--green-600);}
+  .drawer-body ol li.hito-ultimo::before{background:var(--gold-600);}
+  .drawer-body .ed-fecha{font-weight:700; color:var(--ink);}
+  .drawer-body .ed-meta{color:var(--muted); font-size:12px;}
+  @media print{ .drawer, .drawer-backdrop{display:none !important;} }
   .admin-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; border-bottom:1px solid var(--line);}
   .admin-tabs button{background:none; border:none; border-bottom:2px solid transparent; padding:10px 14px; font-size:13.5px; font-weight:600; color:var(--muted); cursor:pointer;}
   .admin-tabs button:hover{color:var(--blue-700);}
@@ -7774,9 +7794,11 @@ function renderSemanalListInner(d, scopeAll, banda){
     + '  <td>' + escapeHtml(s.curso||'—') + '</td>'
     + '  <td>' + fmtDate(s.fechaInicio) + ' al ' + fmtDate(s.fechaFin) + '</td>'
     + '  <td class="tabular">' + (s.dias||[]).length + '</td>'
+    + '  <td>' + observacionSemanalHtml(s) + '</td>'
     + '  <td>' + fmtDateTime(s.updatedAt) + '</td>'
     + '  <td style="white-space:nowrap;">'
     + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">Ver / Editar</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-historial-semanal="' + s.id + '" title="Ver el historial de edición de este plan">🕓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-replanificar-semanal="' + s.id + '" title="Crea un nuevo plan duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA para reforzar">Replanificar</button> '
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
@@ -7787,7 +7809,7 @@ function renderSemanalListInner(d, scopeAll, banda){
   }
 
   var theadDocente = scopeAll ? '<th>Docente</th>' : '';
-  var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Días</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
+  var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Días</th><th>Observación</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
 
   var head = scopeAll
     ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.</p>'
@@ -7944,6 +7966,9 @@ function importarSemanal(semId){
 }
 function bindSemanalListSharedEvents(){
   if(document.getElementById('asfDocente')) bindAdminFiltroBarraEvents(state.adminSemanalFilter, 'asf');
+  document.querySelectorAll('[data-historial-semanal]').forEach(function(btn){
+    btn.onclick = function(){ abrirHistorialSemanal(btn.getAttribute('data-historial-semanal')); };
+  });
   document.querySelectorAll('[data-edit-semanal]').forEach(function(btn){
     btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-edit-semanal'), state.subview==='admin' ? 'admin' : 'semanallist'); };
   });
@@ -7973,18 +7998,8 @@ function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroB
 /* Para "Presentación de Planes": un Plan Semanal cuenta como lleno si tiene al menos un día
    creado y CADA día tiene Contenidos, Actividades y al menos un Nivel de Logro marcado — un plan
    con días en blanco (creado pero sin llenar) no cuenta como presentado, aunque exista. */
-function semanalEstaCompleto(s){
-  var dias = s.dias||[];
-  if(!dias.length) return false;
-  return dias.every(function(dia){
-    var contenidos = richTextToPlain(dia.contenidos||'').trim();
-    var actividades = richTextToPlain(dia.actividades||'').trim();
-    var nivelLogro = richTextToPlain(dia.nivelLogroBasico||'').trim()
-      || richTextToPlain(dia.nivelLogroIntermedio||'').trim()
-      || richTextToPlain(dia.nivelLogroAvanzado||'').trim();
-    return contenidos && actividades && nivelLogro;
-  });
-}
+/* (La antigua semanalEstaCompleto — Contenidos + Actividades + Nivel de Logro — se retiró: ahora
+   existe un solo criterio de completitud, validarPlanSemanal(), definido más abajo.) */
 /* Texto plano de los 3 niveles de logro seleccionados para un día del Plan Semanal, para usarlo
    en las exportaciones (Word/HTML/Markdown/CSV), que muestran una sola línea/columna por día. */
 function nivelLogroDiaTexto(dia){
@@ -7994,6 +8009,353 @@ function nivelLogroDiaTexto(dia){
   if(dia.nivelLogroAvanzado) partes.push('Avanzado: ' + itemsListParaTexto(dia.nivelLogroAvanzado));
   return partes.join('\n');
 }
+/* ===================== PLAN SEMANAL · CONTROL DE CUMPLIMIENTO =====================
+   Reglas institucionales que decide la Observación del plan:
+     1. Cada día debe tener llenos sus tres casilleros: Actividades de aprendizaje, Recursos e
+        Instrumentos de evaluación. Eso, y solo eso, define si el plan está COMPLETO.
+     2. Dentro de Actividades deben aparecer y estar desarrollados los momentos del método elegido
+        (ACC o ERCA) y un enlace a las diapositivas. Esto NO define "completo": define si el plan
+        necesita "Corregir" — así un plan entregado a tiempo no se convierte en atrasado por un
+        detalle de forma, pero el administrador igual lo ve señalado.
+     3. "A tiempo" = quedó completo antes de la fecha y hora límite del propio plan.
+     4. La marca de tiempo que se compara es completadoEn (el instante en que quedó completo por
+        primera vez), NO updatedAt — por eso abrir el plan más tarde solo para mirarlo, o guardarlo
+        sin cambiar nada, nunca lo vuelve atrasado (ver saveSemanal: si no hubo cambios reales, ni
+        siquiera se escribe). Es el mismo criterio que ya usa el PCA. */
+var METODOS_CLASE = [
+  { key:'ACC', label:'ACC — Anticipación, Construcción, Consolidación',
+    momentos:[
+      {label:'Anticipación',  alias:['anticipacion']},
+      {label:'Construcción',  alias:['construccion']},
+      {label:'Consolidación', alias:['consolidacion']}
+    ]},
+  { key:'ERCA', label:'ERCA — Experiencia, Reflexión, Conceptualización, Aplicación',
+    momentos:[
+      {label:'Experiencia',       alias:['experiencia']},
+      {label:'Reflexión',         alias:['reflexion']},
+      {label:'Conceptualización', alias:['conceptualizacion']},
+      {label:'Aplicación',        alias:['aplicacion']}
+    ]}
+];
+var METODO_POR_DEFECTO = 'ACC';
+/* Texto mínimo bajo cada momento para considerarlo "desarrollado" y no un simple titular. */
+var MIN_CARACTERES_MOMENTO = 25;
+/* Minutos dentro de los cuales varios guardados del mismo docente cuentan como UNA sola sesión de
+   edición en el historial (si no, el autoguardado cada 5 minutos llenaría el historial de ruido). */
+var HISTORIAL_VENTANA_MIN = 30;
+
+function metodoDeClase(key){
+  return METODOS_CLASE.find(function(m){ return m.key === key; }) || METODOS_CLASE[0];
+}
+/* Minúsculas y sin tildes, PERO conservando la longitud (1 carácter por carácter): las posiciones
+   que se calculan sobre este texto se usan luego para cortar el texto original. Por eso no se usa
+   normalize('NFD'), que descompone las tildes y desplaza todos los índices. */
+function normalizarTextoPlan(t){
+  return (t||'').toLowerCase()
+    .replace(/[áàäâ]/g,'a').replace(/[éèëê]/g,'e').replace(/[íìïî]/g,'i')
+    .replace(/[óòöô]/g,'o').replace(/[úùüû]/g,'u').replace(/ñ/g,'n');
+}
+function analizarMomentosMetodo(htmlActividades, metodoKey){
+  var metodo = metodoDeClase(metodoKey);
+  var plano = richTextToPlain(htmlActividades || '');
+  var norm = normalizarTextoPlan(plano);
+  var ubicados = metodo.momentos.map(function(mom){
+    var pos = -1;
+    mom.alias.forEach(function(a){
+      var p = norm.indexOf(a);
+      if(p !== -1 && (pos === -1 || p < pos)) pos = p;
+    });
+    return { label: mom.label, pos: pos };
+  });
+  var faltantes = ubicados.filter(function(x){ return x.pos === -1; }).map(function(x){ return x.label; });
+  var presentes = ubicados.filter(function(x){ return x.pos !== -1; }).sort(function(a,b){ return a.pos - b.pos; });
+  var sinDesarrollar = [];
+  presentes.forEach(function(x, i){
+    var fin = (i + 1 < presentes.length) ? presentes[i+1].pos : plano.length;
+    /* Se descarta el propio titular del momento (hasta el primer ":" o salto de línea) para medir
+       solo el contenido que viene debajo. */
+    var cuerpo = plano.slice(x.pos, fin).replace(/^[^\n:]{0,40}[:\n]/, '').trim();
+    if(cuerpo.length < MIN_CARACTERES_MOMENTO) sinDesarrollar.push(x.label);
+  });
+  return { metodo: metodo, faltantes: faltantes, sinDesarrollar: sinDesarrollar, ok: !faltantes.length && !sinDesarrollar.length };
+}
+function tieneEnlaceDiapositivas(actividades, recursos){
+  return /https?:\/\/[^\s"'<>]+/i.test((actividades || '') + ' ' + (recursos || ''));
+}
+/* Núcleo compartido por el Plan Semanal (un bloque = un día) y el Taller Práctico (un bloque = una
+   semana de una fase). Cada bloque llega ya normalizado como
+   {etiqueta, actividades, recursos, evaluacion, etiquetaEvaluacion}. */
+function validarBloquesPlan(bloques, metodoKey){
+  var faltanCasilleros = [], problemasMetodo = [], faltanEnlaces = [];
+  bloques.forEach(function(b){
+    var faltan = [];
+    if(!richTextToPlain(b.actividades || '').trim()) faltan.push('Actividades de aprendizaje');
+    if(!richTextToPlain(b.recursos || '').trim()) faltan.push('Recursos');
+    if(!richTextToPlain(b.evaluacion || '').trim()) faltan.push(b.etiquetaEvaluacion || 'Instrumentos de evaluación');
+    if(faltan.length){ faltanCasilleros.push(b.etiqueta + ': falta ' + faltan.join(', ')); return; }
+    var an = analizarMomentosMetodo(b.actividades, metodoKey);
+    if(an.faltantes.length) problemasMetodo.push(b.etiqueta + ': no aparece ' + an.faltantes.join(', '));
+    else if(an.sinDesarrollar.length) problemasMetodo.push(b.etiqueta + ': ' + an.sinDesarrollar.join(', ') + ' sin desarrollar');
+    if(!tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
+  });
+  return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
+}
+/* Devuelve el diagnóstico completo de un plan: qué casilleros faltan, si el método está bien
+   desarrollado y si hay enlace de diapositivas. */
+function validarPlanSemanal(s){
+  var dias = s.dias || [];
+  var metodoKey = s.metodo || METODO_POR_DEFECTO;
+  var r = validarBloquesPlan(dias.map(function(dia, i){
+    return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion };
+  }), metodoKey);
+  var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
+  var completo = dias.length > 0 && !faltanCasilleros.length;
+  var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length;
+  return {
+    completo: completo,
+    metodoOk: metodoOk,
+    requiereCorreccion: completo && !metodoOk,
+    sinDias: dias.length === 0,
+    faltanCasilleros: faltanCasilleros,
+    problemasMetodo: problemasMetodo,
+    faltanEnlaces: faltanEnlaces,
+    metodo: metodoDeClase(metodoKey)
+  };
+}
+/* Mismo control para el Taller Práctico. Aquí el bloque a revisar no es un "día" sino cada SEMANA
+   dentro de cada FASE, y el casillero de evaluación es el "Instrumento" de esa semana (la columna
+   "Instrumentos de evaluación" de la tabla de fases). La Técnica queda como campo opcional. */
+function validarTallerPractico(t){
+  var metodoKey = t.metodo || METODO_POR_DEFECTO;
+  var bloques = [];
+  (t.fases || []).forEach(function(fase, fi){
+    (fase.semanas || []).forEach(function(sem, si){
+      bloques.push({
+        etiqueta: (fase.nombre || ('Fase ' + (fi + 1))) + ' · Semana ' + (si + 1),
+        actividades: sem.actividades, recursos: sem.recursos,
+        evaluacion: sem.instrumento, etiquetaEvaluacion: 'Instrumento de evaluación'
+      });
+    });
+  });
+  var r = validarBloquesPlan(bloques, metodoKey);
+  var completo = bloques.length > 0 && !r.faltanCasilleros.length;
+  var metodoOk = completo && !r.problemasMetodo.length && !r.faltanEnlaces.length;
+  return {
+    completo: completo,
+    metodoOk: metodoOk,
+    requiereCorreccion: completo && !metodoOk,
+    sinDias: bloques.length === 0,
+    faltanCasilleros: r.faltanCasilleros,
+    problemasMetodo: r.problemasMetodo,
+    faltanEnlaces: r.faltanEnlaces,
+    metodo: metodoDeClase(metodoKey)
+  };
+}
+function estadoPresentacionTaller(t){
+  return calcularEstadoPresentacion(validarTallerPractico(t).completo, t.completadoEn || t.createdAt || t.updatedAt, t.fechaHoraLimite || '');
+}
+function mensajeGuardadoTaller(t){
+  return mensajePorEstado(estadoPresentacionTaller(t));
+}
+/* Estado final para la Observación: incompleto / a_tiempo / con_retraso / sin_limite. */
+function estadoPresentacionSemanal(s){
+  var v = validarPlanSemanal(s);
+  /* Planes anteriores a esta función no tienen completadoEn; para ellos se sigue usando createdAt,
+     que es exactamente lo que comparaba el reporte de Presentación antes, para que ningún plan ya
+     evaluado cambie de veredicto de forma retroactiva. */
+  return calcularEstadoPresentacion(v.completo, s.completadoEn || s.createdAt || s.updatedAt, s.fechaHoraLimite || '');
+}
+/* Celda "Observación" de la lista de planes. Puede mostrar DOS distintivos a la vez: el estado de
+   presentación (Completo / Atrasado / Incompleto) y, si además el método o el enlace de
+   diapositivas no cumplen, un segundo distintivo "Corregir" — que desaparece solo en cuanto el
+   docente hace las correcciones, porque el estado se recalcula del contenido, no se guarda a mano. */
+function observacionSemanalHtml(s){
+  return observacionPlanHtml(validarPlanSemanal(s), estadoPresentacionSemanal(s), s.completadoEn);
+}
+function observacionTallerHtml(t){
+  return observacionPlanHtml(validarTallerPractico(t), estadoPresentacionTaller(t), t.completadoEn);
+}
+function observacionPlanHtml(v, estado, completadoEn){
+  var pills = [];
+  if(estado === 'incompleto'){
+    pills.push('<span class="pill pill-red">Incompleto</span>');
+  } else if(estado === 'con_retraso'){
+    pills.push('<span class="pill pill-gold">Completado (atrasado)</span>');
+  } else if(estado === 'sin_limite'){
+    pills.push('<span class="pill pill-blue">Completado (sin fecha límite)</span>');
+  } else {
+    pills.push('<span class="pill pill-green">Completado a tiempo</span>');
+  }
+  var motivos = v.faltanCasilleros.concat(v.problemasMetodo);
+  if(v.faltanEnlaces.length) motivos.push('Sin enlace de diapositivas: ' + v.faltanEnlaces.join(', '));
+  if(v.requiereCorreccion) pills.push('<span class="pill pill-red" title="' + escapeHtml(motivos.join(' | ')) + '">Corregir</span>');
+  var detalle = '';
+  if(estado !== 'incompleto' && completadoEn) detalle = '<div class="hint" style="margin-top:3px;">' + escapeHtml(fmtDateTime(completadoEn)) + '</div>';
+  else if(motivos.length) detalle = '<div class="hint" style="margin-top:3px;">' + escapeHtml(motivos[0]) + (motivos.length > 1 ? ' (+' + (motivos.length - 1) + ')' : '') + '</div>';
+  return '<div style="display:flex; flex-wrap:wrap; gap:4px;">' + pills.join('') + '</div>' + detalle;
+}
+/* Los 3 mensajes exactos que ve el docente al guardar (punto 6 del requerimiento). */
+function mensajePorEstado(estado){
+  if(estado === 'incompleto') return { texto:'Su plan de clase ESTÁ INCOMPLETO', tipo:'error' };
+  if(estado === 'con_retraso') return { texto:'Su plan de clase fue presentado como ATRASADO', tipo:'error' };
+  return { texto:'Su plan de clase ha sido COMPLETADO SATISFACTORIAMENTE', tipo:'success' };
+}
+function mensajeGuardadoSemanal(s){
+  return mensajePorEstado(estadoPresentacionSemanal(s));
+}
+/* Compara el plan guardado con el nuevo ignorando los campos que el propio guardado genera: si no
+   cambió nada, abrir y cerrar el plan no debe ensuciar el historial ni mover ninguna fecha. */
+function hayCambiosRegistro(previo, nuevo){
+  if(!previo) return true;
+  /* JSON.stringify normal depende del ORDEN de las claves, y el documento que vuelve de Firestore
+     no necesariamente conserva el orden con el que se escribió: sin ordenar las claves, dos planes
+     idénticos se verían como distintos y todo guardado contaría como edición. */
+  function estable(v){
+    if(v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+    if(Array.isArray(v)) return '[' + v.map(estable).join(',') + ']';
+    return '{' + Object.keys(v).sort().filter(function(k){
+      return k !== 'updatedAt' && k !== 'historial' && k !== 'completadoEn' && k.charAt(0) !== '_';
+    }).map(function(k){ return JSON.stringify(k) + ':' + estable(v[k]); }).join(',') + '}';
+  }
+  return estable(previo) !== estable(nuevo);
+}
+function registrarEdicionHistorial(historialPrevio, docenteId){
+  var h = (historialPrevio || []).map(function(x){ return Object.assign({}, x); });
+  var ahora = nowISO();
+  var ultimo = h[h.length - 1];
+  if(ultimo && ultimo.docenteId === docenteId && (new Date(ahora) - new Date(ultimo.hasta)) < HISTORIAL_VENTANA_MIN * 60000){
+    ultimo.hasta = ahora;
+    ultimo.guardados = (ultimo.guardados || 1) + 1;
+  } else {
+    h.push({ id: uid('ed'), docenteId: docenteId, desde: ahora, hasta: ahora, guardados: 1 });
+  }
+  return h.slice(-60);
+}
+
+/* Panel que el docente ve dentro del formulario, encima de los días: le dice EN VIVO qué le falta
+   para que el plan quede completo y sin observaciones, en vez de enterarse recién al guardar. */
+function semanalChecklistHtml(s, isIngles){
+  return checklistPlanHtml(validarPlanSemanal(s), isIngles, 'día de clase', 'cada día');
+}
+function tallerChecklistHtml(t){
+  return checklistPlanHtml(validarTallerPractico(t), false, 'semana en alguna fase', 'cada semana de cada fase');
+}
+function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
+  var momentos = v.metodo.momentos.map(function(m){ return m.label; }).join(' · ');
+  var color, titulo, detalles = [];
+  if(v.sinDias){
+    color = 'red'; titulo = te('Agregue al menos un ', isIngles) + etiquetaBloque + '.';
+  } else if(!v.completo){
+    color = 'red'; titulo = te('Plan INCOMPLETO — faltan casilleros por llenar:', isIngles);
+    detalles = v.faltanCasilleros;
+  } else if(v.requiereCorreccion){
+    color = 'gold'; titulo = te('Casilleros completos, pero hay observaciones que corregir:', isIngles);
+    detalles = v.problemasMetodo.slice();
+    if(v.faltanEnlaces.length) detalles.push(te('Falta el enlace de las diapositivas en: ', isIngles) + v.faltanEnlaces.join(', '));
+  } else {
+    color = 'green'; titulo = te('Plan completo: casilleros llenos, método desarrollado y enlace de diapositivas.', isIngles);
+  }
+  return '<div style="border:1px solid var(--' + color + '-600); background:var(--' + color + '-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
+    + '<div style="font-weight:700; color:var(--' + color + '-600);">' + escapeHtml(titulo) + '</div>'
+    + (detalles.length ? '<ul style="margin:6px 0 0 18px; padding:0;">' + detalles.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>' : '')
+    + '<div class="hint" style="margin-top:6px;">' + te('Método ', isIngles) + v.metodo.key + ': ' + escapeHtml(momentos)
+    + ' · ' + escapeHtml(etiquetaCadaBloque) + te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles) + '</div>'
+    + '</div>';
+}
+
+/* ---------- Historial de edición (panel lateral) ----------
+   Se eligió un DRAWER lateral derecho, no una ventana emergente: el plan sigue visible mientras se
+   revisa el historial (útil sobre todo para el administrador, que compara lo escrito con cuándo se
+   escribió), se cierra con Esc o clic fuera, y en móvil pasa a ocupar todo el ancho. */
+function cerrarDrawer(){
+  var d = document.getElementById('appDrawer'), b = document.getElementById('appDrawerBackdrop');
+  if(d){ d.classList.remove('open'); setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); }, 220); }
+  if(b){ b.classList.remove('open'); setTimeout(function(){ if(b.parentNode) b.parentNode.removeChild(b); }, 220); }
+  document.removeEventListener('keydown', drawerEscHandler);
+}
+function drawerEscHandler(e){ if(e.key === 'Escape') cerrarDrawer(); }
+function abrirDrawer(titulo, cuerpoHtml){
+  cerrarDrawer();
+  var back = document.createElement('div');
+  back.id = 'appDrawerBackdrop'; back.className = 'drawer-backdrop';
+  back.onclick = cerrarDrawer;
+  var dr = document.createElement('div');
+  dr.id = 'appDrawer'; dr.className = 'drawer';
+  dr.innerHTML = '<div class="drawer-head"><h3>' + escapeHtml(titulo) + '</h3><button class="drawer-close" title="Cerrar">×</button></div>'
+    + '<div class="drawer-body">' + cuerpoHtml + '</div>';
+  document.body.appendChild(back);
+  document.body.appendChild(dr);
+  dr.querySelector('.drawer-close').onclick = cerrarDrawer;
+  requestAnimationFrame(function(){ back.classList.add('open'); dr.classList.add('open'); });
+  document.addEventListener('keydown', drawerEscHandler);
+}
+function historialSemanalHtml(s){
+  return historialRegistroHtml(s, validarPlanSemanal(s), estadoPresentacionSemanal(s));
+}
+function historialTallerHtml(t){
+  return historialRegistroHtml(t, validarTallerPractico(t), estadoPresentacionTaller(t));
+}
+function historialRegistroHtml(s, v, estado){
+  var h = (s.historial || []).slice();
+  var docentes = load(LS.DOCENTES);
+  function quien(id){
+    var d = docentes.find(function(x){ return x.id === id; });
+    return d ? nombreFormal(d) : (id || '—');
+  }
+  var etiquetaEstado = { incompleto:'INCOMPLETO', a_tiempo:'A TIEMPO', con_retraso:'ATRASADO', sin_limite:'Completo (sin fecha límite)' }[estado] || estado;
+  var resumen = '<div style="background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:16px; font-size:13px;">'
+    + '<div><strong>' + escapeHtml(etiquetaEstado) + '</strong>' + (v.requiereCorreccion ? ' · <span style="color:var(--gold-600); font-weight:700;">Corregir</span>' : '') + '</div>'
+    + '<div class="ed-meta" style="margin-top:4px;">Completado el: ' + escapeHtml(s.completadoEn ? fmtDateTime(s.completadoEn) : '—') + '</div>'
+    + '<div class="ed-meta">Fecha límite: ' + escapeHtml(s.fechaHoraLimite ? fmtDateTimeLocal(s.fechaHoraLimite) : '—') + '</div>'
+    + '<div class="ed-meta">Sesiones de edición: ' + h.length + '</div>'
+    + '</div>';
+  if(!h.length){
+    return resumen + '<div class="hint">Todavía no hay ediciones registradas. El historial empieza a contar desde el primer guardado con cambios reales — abrir el plan solo para verlo no cuenta como edición.</div>';
+  }
+  var items = h.map(function(ed, i){
+    var clase = i === 0 ? 'hito-primero' : (i === h.length - 1 ? 'hito-ultimo' : '');
+    var mismo = ed.desde === ed.hasta;
+    var etiqueta = i === 0 ? 'Primera edición' : (i === h.length - 1 ? 'Última edición' : 'Edición ' + (i + 1));
+    return '<li class="' + clase + '">'
+      + '<div class="ed-fecha">' + escapeHtml(etiqueta) + '</div>'
+      + '<div>' + escapeHtml(fmtDateTime(ed.desde)) + (mismo ? '' : ' → ' + escapeHtml(fmtDateTime(ed.hasta))) + '</div>'
+      + '<div class="ed-meta">' + escapeHtml(quien(ed.docenteId)) + ' · ' + (ed.guardados || 1) + (ed.guardados > 1 ? ' guardados' : ' guardado') + '</div>'
+      + '</li>';
+  }).join('');
+  return resumen + '<ol>' + items + '</ol>'
+    + '<div class="hint" style="margin-top:12px;">Los guardados seguidos del mismo docente dentro de ' + HISTORIAL_VENTANA_MIN + ' minutos se agrupan como una sola sesión de edición.</div>';
+}
+function abrirHistorialSemanal(planId){
+  var s = load(LS.SEMANAL).find(function(x){ return x.id === planId; })
+       || (state.editingSemanal && state.editingSemanal.id === planId ? state.editingSemanal : null);
+  if(!s){ toast('Este plan todavía no se ha guardado, así que aún no tiene historial.', 'error'); return; }
+  abrirDrawer('Historial de edición — Plan N.º ' + (s.numero || '') + ' · ' + (s.asignatura || ''), historialSemanalHtml(s));
+}
+function abrirHistorialTaller(tallerId){
+  var t = load(LS.TALLER).find(function(x){ return x.id === tallerId; })
+       || (state.editingTaller && state.editingTaller.id === tallerId ? state.editingTaller : null);
+  if(!t){ toast('Este Taller Práctico todavía no se ha guardado, así que aún no tiene historial.', 'error'); return; }
+  abrirDrawer('Historial de edición — Taller N.º ' + (t.numero || '') + ' · ' + (t.asignatura || ''), historialTallerHtml(t));
+}
+
+/* Redibuja SOLO el panel de estado mientras el docente escribe (nunca el formulario entero: eso le
+   quitaría el foco al editor). Con retardo, para no recalcular en cada tecla. */
+var _checklistTimer = null;
+function refrescarChecklistSemanal(s){
+  clearTimeout(_checklistTimer);
+  _checklistTimer = setTimeout(function(){
+    var cont = document.getElementById('semanalChecklist');
+    if(cont) cont.innerHTML = semanalChecklistHtml(s, semanalEsIngles(s));
+  }, 500);
+}
+function refrescarChecklistTaller(t){
+  clearTimeout(_checklistTimer);
+  _checklistTimer = setTimeout(function(){
+    var cont = document.getElementById('tallerChecklist');
+    if(cont) cont.innerHTML = tallerChecklistHtml(t);
+  }, 500);
+}
+
 function blankSemanal(d){
   var niveles = misNiveles(d.id);
   var nivel = niveles[0] || '';
@@ -8007,7 +8369,8 @@ function blankSemanal(d){
     id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
-    unidadDidactica:'', bloqueCurricular:'',
+    unidadDidactica:'', bloqueCurricular:'', metodo: METODO_POR_DEFECTO,
+    completadoEn:'', historial:[],
     dias:[blankDia()],
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lcdo. José Gómez',
     locked:false,
@@ -8097,6 +8460,7 @@ function semanalToolbarHtml(s){
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
     + '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>'
     + '  <div class="spacer"></div>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnHistorialSemanal" title="Ver todas las veces que se editó este plan, desde la primera hasta la última">🕓 ' + te('Historial', isIngles) + '</button>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
@@ -8327,9 +8691,18 @@ function renderSemanalForm(d){
   + '      <div class="field"><label>' + te('Unidad Didáctica', isIngles) + '</label><input class="cell-input" id="sfUnidad" value="' + escapeHtml(s.unidadDidactica||'') + '" placeholder="' + te('Se completa según la semana del PCA', isIngles) + '" /></div>'
   + '      <div class="field"><label>' + te('Bloque Curricular', isIngles) + '</label>' + bloqueHtml + '</div>'
   + '    </div>'
+  + '    <div class="grid-2" style="margin-top:14px;">'
+  + '      <div class="field"><label>' + te('Método de la clase', isIngles) + '</label>'
+  + '        <select class="cell-select" id="sfMetodo">' + METODOS_CLASE.map(function(m){
+              return '<option value="' + m.key + '"' + ((s.metodo||METODO_POR_DEFECTO)===m.key?' selected':'') + '>' + escapeHtml(m.label) + '</option>';
+            }).join('') + '</select>'
+  + '        <div class="hint" style="margin-top:4px;">' + te('Las Actividades de aprendizaje de cada día deben desarrollar los momentos de este método.', isIngles) + '</div>'
+  + '      </div>'
+  + '    </div>'
   + '  </div>'
   + '  <div class="pca-band band-section">' + te('Desarrollo de las Clases', isIngles) + '</div>'
   + '  <div class="pca-section">'
+  + '    <div id="semanalChecklist" class="no-print">' + semanalChecklistHtml(s, isIngles) + '</div>'
   + '    <div id="diasWrap">' + diasHtml + '</div>'
   + '    <button class="btn btn-ghost btn-sm no-print" id="btnAddDia">' + te('+ Agregar otro día de clase', isIngles) + '</button>'
   + '  </div>'
@@ -8351,6 +8724,8 @@ function bindSemanalFormEvents(){
     saveSemanal(s);
     go(state.semanalReturnTo || 'semanallist');
   };
+  var histBtn = document.getElementById('btnHistorialSemanal');
+  if(histBtn) histBtn.onclick = function(){ abrirHistorialSemanal(s.id); };
   document.getElementById('btnExportSemanalWordNow').onclick = function(){ saveSemanal(s, true); exportSemanalWord(s.id); };
   document.getElementById('btnExportSemanalExcelNow').onclick = function(){ saveSemanal(s, true); exportSemanalExcel(s.id); };
   document.getElementById('btnExportSemanalPdfNow').onclick = printAsPdf;
@@ -8377,6 +8752,8 @@ function bindSemanalFormEvents(){
   var limiteInput = document.getElementById('sfFechaHoraLimite');
   if(limiteInput) limiteInput.addEventListener('change', function(e){ s.fechaHoraLimite = e.target.value; renderSemanalFormAgain(); });
   document.getElementById('sfUnidad').addEventListener('input', function(e){ s.unidadDidactica = e.target.value; });
+  var metodoSel = document.getElementById('sfMetodo');
+  if(metodoSel) metodoSel.addEventListener('change', function(e){ s.metodo = e.target.value; renderSemanalFormAgain(); });
   var bloqueInput = document.getElementById('sfBloque');
   if(bloqueInput) bloqueInput.addEventListener('input', function(e){ s.bloqueCurricular = e.target.value; });
   document.querySelectorAll('.bloque-cb').forEach(function(cb){
@@ -8413,7 +8790,7 @@ function bindSemanalFormEvents(){
     });
     box.querySelectorAll('.rte-editable').forEach(function(el){
       var key = el.getAttribute('data-rte-field');
-      el.addEventListener('input', function(){ dia[key] = el.innerHTML; });
+      el.addEventListener('input', function(){ dia[key] = el.innerHTML; refrescarChecklistSemanal(s); });
     });
   });
   bindRteToolbars(document.getElementById('diasWrap'));
@@ -8492,6 +8869,7 @@ function replanificarSemanal(semId){
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
     unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
+    metodo: s.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
     dias: dias,
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     createdAt: nowISO(), updatedAt: nowISO()
@@ -8512,12 +8890,11 @@ function saveSemanal(s, silent){
   }
   delete s._forzarGuardado;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
-  s.updatedAt = nowISO();
   var record = {
     id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId, s.asignatura),
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
-    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
+    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'', metodo: s.metodo || METODO_POR_DEFECTO,
     dias: (s.dias||[]).map(function(dia){
       return {
         id: dia.id, fecha: dia.fecha||'', contenidos: dia.contenidos||'',
@@ -8527,8 +8904,32 @@ function saveSemanal(s, silent){
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     importadoDeDocente: s.importadoDeDocente||'', importadoFecha: s.importadoFecha||'',
-    createdAt: s.createdAt, updatedAt: s.updatedAt
+    createdAt: s.createdAt,
+    completadoEn: existingHeader ? (existingHeader.completadoEn||'') : '',
+    historial: existingHeader ? (existingHeader.historial||[]) : [],
+    updatedAt: existingHeader ? existingHeader.updatedAt : s.updatedAt
   };
+  /* Abrir un plan solo para mirarlo (o guardarlo sin tocar nada) NO debe contar como una edición:
+     no se reescribe el documento, no se mueve updatedAt y no se agrega nada al historial — así el
+     plan conserva intacta su Observación de "a tiempo". Igual se le muestra al docente en qué
+     estado quedó su plan. */
+  var huboCambios = hayCambiosRegistro(existingHeader, record);
+  if(!huboCambios){
+    if(!silent){
+      var msgSinCambios = mensajeGuardadoSemanal(record);
+      toast(msgSinCambios.texto, msgSinCambios.tipo);
+    }
+    return;
+  }
+  s.updatedAt = nowISO();
+  record.updatedAt = s.updatedAt;
+  record.historial = registrarEdicionHistorial(record.historial, d.id);
+  /* completadoEn se sella la PRIMERA vez que el plan queda completo y ya no se vuelve a mover:
+     es la fecha contra la que se compara la fecha límite. Si el plan deja de estar completo
+     (p.ej. se vació un casillero), se limpia para que vuelva a sellarse cuando se complete. */
+  var completoAhora = validarPlanSemanal(record).completo;
+  record.completadoEn = completoAhora ? (record.completadoEn || record.updatedAt) : '';
+
   var all = load(LS.SEMANAL).filter(function(x){ return x.id!==s.id; });
   all.push(record);
   save(LS.SEMANAL, all);
@@ -8551,7 +8952,18 @@ function saveSemanal(s, silent){
     var diaVigente = s.dias[i];
     if(diaVigente) Object.assign(diaVigente, diaGuardado);
   });
-  if(!silent) toast('Plan semanal guardado correctamente.', 'success');
+  if(!silent){
+    var msgGuardado = mensajeGuardadoSemanal(record);
+    toast(msgGuardado.texto, msgGuardado.tipo);
+    /* Aviso aparte (no reemplaza al mensaje anterior, que es textual): los casilleros están llenos
+       pero el método o el enlace de diapositivas todavía tienen observaciones que corregir. */
+    var vFinal = validarPlanSemanal(record);
+    if(vFinal.requiereCorreccion){
+      var pendientes = vFinal.problemasMetodo.slice();
+      if(vFinal.faltanEnlaces.length) pendientes.push('falta el enlace de las diapositivas en ' + vFinal.faltanEnlaces.join(', '));
+      toast('Corregir: ' + pendientes.join('; '), 'error');
+    }
+  }
 }
 
 /* ============================= TALLER PRÁCTICO =============================
@@ -8595,7 +9007,7 @@ function blankTaller(d){
     id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
-    productoFinal:'', fases:[],
+    productoFinal:'', metodo: METODO_POR_DEFECTO, completadoEn:'', historial:[], fases:[],
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lic. José Gómez',
     createdAt: nowISO(), updatedAt: nowISO()
   };
@@ -8642,6 +9054,7 @@ function tallerToolbarHtml(t){
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToTallerList">← Volver a la lista</button>'
     + '  <span class="hint" id="tallerAutosaveHint">' + escapeHtml(autoguardadoHintTexto('taller')) + '</span>'
     + '  <div class="spacer"></div>'
+    + '  <button class="btn btn-ghost btn-sm" id="btnHistorialTaller" title="Ver todas las veces que se editó este Taller Práctico, desde la primera hasta la última">🕓 Historial</button>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportTallerPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-primary btn-sm" id="btnSaveTaller">Guardar plan</button>'
     + '</div>'
@@ -8788,7 +9201,14 @@ function renderTallerForm(d){
   + '  <div class="pca-band band-section">Datos Curriculares</div>'
   + '  <div class="pca-section">'
   + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
+  + '    <div class="field" style="margin-top:14px; max-width:420px;"><label>Método de la clase</label>'
+  + '      <select class="cell-select" id="tfMetodo">' + METODOS_CLASE.map(function(m){
+          return '<option value="' + m.key + '"' + ((t.metodo||METODO_POR_DEFECTO)===m.key?' selected':'') + '>' + escapeHtml(m.label) + '</option>';
+        }).join('') + '</select>'
+  + '      <div class="hint" style="margin-top:4px;">Las Actividades Académicas de cada semana deben desarrollar los momentos de este método.</div>'
+  + '    </div>'
   + '  </div>'
+  + '  <div class="pca-section no-print" id="tallerChecklist">' + tallerChecklistHtml(t) + '</div>'
   + tallerFasesHtml(t)
   + '  <div class="pca-band band-section">Firmas de Responsabilidad</div>'
   + '  <div class="pca-section">'
@@ -8809,6 +9229,10 @@ function bindTallerFormEvents(){
   var d = currentDocente();
   document.getElementById('btnBackToTallerList').onclick = function(){ go(state.tallerReturnTo || 'tallerlist'); };
   document.getElementById('btnExportTallerPdfNow').onclick = printAsPdf;
+  var histTallerBtn = document.getElementById('btnHistorialTaller');
+  if(histTallerBtn) histTallerBtn.onclick = function(){ abrirHistorialTaller(t.id); };
+  var metodoTallerSel = document.getElementById('tfMetodo');
+  if(metodoTallerSel) metodoTallerSel.addEventListener('change', function(e){ t.metodo = e.target.value; renderTallerFormAgain(); });
   document.getElementById('btnSaveTaller').onclick = function(){ saveTaller(t, false); };
   bindAutoguardadoDelegado('tallerDoc', 'taller');
 
@@ -8876,12 +9300,13 @@ function bindTallerFormEvents(){
     tr.querySelectorAll('[data-semf]').forEach(function(el){
       el.addEventListener(el.type==='date' ? 'change' : 'input', function(){
         sem[el.getAttribute('data-semf')] = el.value;
-        if(el.getAttribute('data-semf')==='fechaInicio'){ aplicarFechaSemanaTaller(sem, t.pcaId); renderTallerFormAgain(); }
+        if(el.getAttribute('data-semf')==='fechaInicio'){ aplicarFechaSemanaTaller(sem, t.pcaId); renderTallerFormAgain(); return; }
+        refrescarChecklistTaller(t);
       });
     });
     tr.querySelectorAll('.rte-editable').forEach(function(el){
       var key = el.getAttribute('data-rte-field');
-      el.addEventListener('input', function(){ sem[key] = el.innerHTML; });
+      el.addEventListener('input', function(){ sem[key] = el.innerHTML; refrescarChecklistTaller(t); });
     });
     tr.querySelectorAll('.taller-sem-tema-cb').forEach(function(cb){
       cb.onchange = function(){
@@ -8917,12 +9342,11 @@ function saveTaller(t, silent){
   }
   delete t._forzarGuardado;
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
-  t.updatedAt = nowISO();
   var record = {
     id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId, t.asignatura),
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: t.fechaHoraLimite||'',
-    productoFinal: sanitizeRte(t.productoFinal||''),
+    productoFinal: sanitizeRte(t.productoFinal||''), metodo: t.metodo || METODO_POR_DEFECTO,
     fases: (t.fases||[]).map(function(fase){
       return {
         id: fase.id, nombre: fase.nombre||'',
@@ -8939,8 +9363,25 @@ function saveTaller(t, silent){
     }),
     revisadoPor: t.revisadoPor||'', aprobadoPor: t.aprobadoPor||'',
     importadoDeDocente: t.importadoDeDocente||'', importadoFecha: t.importadoFecha||'',
-    createdAt: t.createdAt, updatedAt: t.updatedAt
+    createdAt: t.createdAt,
+    completadoEn: existingHeader ? (existingHeader.completadoEn||'') : '',
+    historial: existingHeader ? (existingHeader.historial||[]) : [],
+    updatedAt: existingHeader ? existingHeader.updatedAt : t.updatedAt
   };
+  /* Igual que en saveSemanal: abrir el Taller Práctico solo para mirarlo no cuenta como edición —
+     no se reescribe, no se mueve updatedAt y no se agrega nada al historial. */
+  if(!hayCambiosRegistro(existingHeader, record)){
+    if(!silent){
+      var msgSinCambiosT = mensajeGuardadoTaller(record);
+      toast(msgSinCambiosT.texto, msgSinCambiosT.tipo);
+    }
+    return;
+  }
+  t.updatedAt = nowISO();
+  record.updatedAt = t.updatedAt;
+  record.historial = registrarEdicionHistorial(record.historial, d.id);
+  record.completadoEn = validarTallerPractico(record).completo ? (record.completadoEn || record.updatedAt) : '';
+
   var all = load(LS.TALLER).filter(function(x){ return x.id!==t.id; });
   all.push(record);
   save(LS.TALLER, all);
@@ -8966,7 +9407,16 @@ function saveTaller(t, silent){
       if(semVigente) Object.assign(semVigente, semGuardada);
     });
   });
-  if(!silent) toast('Taller práctico guardado correctamente.', 'success');
+  if(!silent){
+    var msgTaller = mensajeGuardadoTaller(record);
+    toast(msgTaller.texto, msgTaller.tipo);
+    var vTaller = validarTallerPractico(record);
+    if(vTaller.requiereCorreccion){
+      var pendientesT = vTaller.problemasMetodo.slice();
+      if(vTaller.faltanEnlaces.length) pendientesT.push('falta el enlace de las diapositivas en ' + vTaller.faltanEnlaces.join(', '));
+      toast('Corregir: ' + pendientesT.join('; '), 'error');
+    }
+  }
 }
 /* "Replanificar" (botón de la lista de Taller Práctico): duplica un Taller Práctico existente en
    uno nuevo, con todas sus fases y semanas —y los mismos temas y niveles de logro que ya tenía
@@ -8988,6 +9438,7 @@ function replanificarTaller(tallerId){
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteVigente('semanal'),
     productoFinal: t.productoFinal||'',
+    metodo: t.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
     fases: (t.fases||[]).map(function(fase){
       return {
         id: uid('fase'), nombre: fase.nombre||'',
@@ -9028,9 +9479,11 @@ function renderTallerListInner(d, scopeAll){
     + '  <td><strong>' + escapeHtml(t.asignatura||'(sin asignatura)') + '</strong></td>'
     + '  <td>' + escapeHtml(t.curso||'—') + '</td>'
     + '  <td>' + fmtDate(t.fechaInicio) + ' al ' + fmtDate(t.fechaFin) + '</td>'
+    + '  <td>' + observacionTallerHtml(t) + '</td>'
     + '  <td>' + fmtDateTime(t.updatedAt) + '</td>'
     + '  <td style="white-space:nowrap;">'
     + '    <button class="btn btn-ghost btn-sm" data-edit-taller="' + t.id + '">Ver / Editar</button> '
+    + '    <button class="btn btn-ghost btn-sm" data-historial-taller="' + t.id + '" title="Ver el historial de edición de este Taller Práctico">🕓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-replanificar-taller="' + t.id + '" title="Duplica este Taller Práctico en uno nuevo, con los mismos temas y niveles de logro (editables)">Replanificar</button> '
     + '    <button class="btn btn-gold btn-sm" data-export-taller-pdf="' + t.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-danger btn-sm" data-delete-taller="' + t.id + '">Eliminar</button>'
@@ -9039,7 +9492,7 @@ function renderTallerListInner(d, scopeAll){
   }
 
   var theadDocente = scopeAll ? '<th>Docente</th>' : '';
-  var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
+  var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Observación</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
   var head = scopeAll
     ? '<p class="hint" style="margin-bottom:14px;">Talleres Prácticos de las asignaturas técnicas de Bachillerato (Diseño Gráfico, Computación, Robótica e Informática Aplicada).</p>'
     : '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Taller Práctico</h1><p>Plan de clase para proyectos de tu asignatura técnica, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewTaller">+ Nuevo Taller Práctico</button></div>';
@@ -9057,6 +9510,9 @@ function bindTallerListEvents(){
   });
   document.querySelectorAll('[data-edit-taller]').forEach(function(btn){
     btn.onclick = function(){ openTallerForm(btn.getAttribute('data-edit-taller'), state.subview==='admin' ? 'admin' : 'tallerlist'); };
+  });
+  document.querySelectorAll('[data-historial-taller]').forEach(function(btn){
+    btn.onclick = function(){ abrirHistorialTaller(btn.getAttribute('data-historial-taller')); };
   });
   document.querySelectorAll('[data-delete-taller]').forEach(function(btn){
     btn.onclick = function(){
@@ -10327,11 +10783,18 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
     if(s.docenteId!==docenteId || !s.fechaInicio || s.fechaInicio<fechaInicioParte || s.fechaInicio>fechaFinParte) return false;
     return esEscuelaPorNivelCurso(s.nivel, s.curso) === (banda==='escuela');
   }).map(function(s){
-    var estado = calcularEstadoPresentacion(semanalEstaCompleto(s), s.createdAt, s.fechaHoraLimite);
+    /* Mismo criterio que ve el docente al guardar y que muestra la columna Observación de la lista
+       (validarPlanSemanal + completadoEn), para que administración y docente nunca vean dos
+       veredictos distintos del mismo plan. */
+    var v = validarPlanSemanal(s);
+    var estado = estadoPresentacionSemanal(s);
+    var motivos = v.faltanCasilleros.concat(v.problemasMetodo);
+    if(v.faltanEnlaces.length) motivos.push('Sin enlace de diapositivas: ' + v.faltanEnlaces.join(', '));
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
     return {
       numero:s.numero, fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, asignatura:s.asignatura, curso:s.curso,
-      createdAt:s.createdAt, fechaHoraLimite:s.fechaHoraLimite, estado:estado,
+      createdAt:s.completadoEn || s.createdAt || s.updatedAt, fechaHoraLimite:s.fechaHoraLimite, estado:estado,
+      requiereCorreccion: v.requiereCorreccion, motivos: motivos,
       tareas: evalTexto.indexOf('tarea')!==-1,
       talleres: evalTexto.indexOf('taller')!==-1,
       lecciones: evalTexto.indexOf('lecci')!==-1
@@ -10383,13 +10846,16 @@ function renderAdminPresentacion(banda){
           + '<td>' + fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin) + '</td>'
           + '<td>' + (f.createdAt ? fmtDateTime(f.createdAt) : '—') + '</td>'
           + '<td>' + (f.fechaHoraLimite ? fmtDateTimeLocal(f.fechaHoraLimite) : '—') + '</td>'
-          + '<td>' + presentacionBadge(f.estado) + '</td>'
+          + '<td>' + presentacionBadge(f.estado)
+            + (f.requiereCorreccion ? ' <span style="font-weight:700; font-size:11px; letter-spacing:.02em; padding:4px 10px; border-radius:99px; color:#D62828; background:#FBE4E4; white-space:nowrap;" title="' + escapeHtml(f.motivos.join(' | ')) + '">Corregir</span>' : '')
+            + (f.motivos.length ? '<div class="hint" style="margin-top:3px;">' + escapeHtml(f.motivos[0]) + (f.motivos.length > 1 ? ' (+' + (f.motivos.length - 1) + ')' : '') + '</div>' : '')
+            + '</td>'
           + '<td style="text-align:center;">' + siNoBadge(f.tareas) + '</td>'
           + '<td style="text-align:center;">' + siNoBadge(f.talleres) + '</td>'
           + '<td style="text-align:center;">' + siNoBadge(f.lecciones) + '</td>'
           + '</tr>';
       }).join('');
-      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan creado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
+      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan completado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
     }).join('');
     return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
   }).filter(Boolean);
