@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260906203949">
+<meta name="app-build" content="20260907010113">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -7232,10 +7232,16 @@ function renderSemanalList(d){ return renderSemanalListInner(d, false); }
 function renderAdminSemanal(banda){ return renderSemanalListInner(currentDocente(), true, banda); }
 
 /* Numeración de Planes Semanales: cada uno guarda su propio número (no es la posición en la
-   lista), así que borrar uno no renumera a los demás. El siguiente plan que se crea continúa
-   después del número más alto que exista actualmente para ese docente. */
-function siguienteNumeroSemanal(docenteId){
-  var max = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).reduce(function(m,s){ return Math.max(m, s.numero||0); }, 0);
+   lista), así que borrar uno no renumera a los demás. La numeración es independiente POR
+   ASIGNATURA (no por docente en general): el primer plan de Matemática de un docente es el N.º 1,
+   el siguiente plan de Matemática es el N.º 2, sin importar cuántos planes de otras asignaturas
+   haya creado entre medio — cada asignatura lleva su propia cuenta desde 1. El siguiente número
+   continúa después del más alto que exista actualmente para ese docente Y esa asignatura. Se usa
+   parseInt (no el número tal cual) porque "Replanificar" guarda sufijos decimales como "3.1" o
+   "4.1.1" en este mismo campo — Math.max con esas cadenas de dos puntos da NaN y rompería la
+   numeración de ahí en adelante; parseInt siempre toma solo la parte entera inicial. */
+function siguienteNumeroSemanal(docenteId, asignatura){
+  var max = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId && s.asignatura===asignatura; }).reduce(function(m,s){ return Math.max(m, parseInt(s.numero,10)||0); }, 0);
   return max + 1;
 }
 /* Agrupa por trimestre y mes según la fecha de inicio del plan. El año lectivo de esta
@@ -7475,7 +7481,7 @@ function importarSemanal(semId){
   if(!s) return;
   var docenteFuente = allDocentes().find(function(x){ return x.id===s.docenteId; });
   state.editingSemanal = {
-    id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id),
+    id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, s.asignatura),
     nivel: s.nivel, especialidad: s.especialidad||'', curso:'', asignatura: s.asignatura,
     pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
     unidadDidactica:'', bloqueCurricular: s.bloqueCurricular||'',
@@ -7557,7 +7563,7 @@ function blankSemanal(d){
   var asignaturas = misAsignaturasPara(d.id, nivel, especialidad, curso);
   var asignatura = asignaturas[0] || '';
   return {
-    id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id),
+    id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
     unidadDidactica:'', bloqueCurricular:'',
@@ -7912,7 +7918,14 @@ function bindSemanalFormEvents(){
   document.getElementById('sfNivel').addEventListener('change', function(e){ s.nivel=e.target.value; s.especialidad=''; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
   document.getElementById('sfEspecialidad').addEventListener('change', function(e){ s.especialidad=e.target.value; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
   document.getElementById('sfCurso').addEventListener('change', function(e){ s.curso=e.target.value; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
-  document.getElementById('sfAsignatura').addEventListener('change', function(e){ s.asignatura=e.target.value; recomputeSemanalPca(s); renderSemanalFormAgain(); });
+  document.getElementById('sfAsignatura').addEventListener('change', function(e){
+    s.asignatura=e.target.value;
+    // Si el plan todavía no se ha guardado, su N.º se calculó con la asignatura de partida (o
+    // vacía) — al cambiar de asignatura antes del primer guardado hay que recalcularlo para la
+    // asignatura nueva, o quedaría con el número de la asignatura equivocada.
+    if(!load(LS.SEMANAL).some(function(x){ return x.id===s.id; })) s.numero = siguienteNumeroSemanal(s.docenteId, s.asignatura);
+    recomputeSemanalPca(s); renderSemanalFormAgain();
+  });
   document.getElementById('sfFechaInicio').addEventListener('change', function(e){
     s.fechaInicio = e.target.value;
     if(s.dias && s.dias[0]) s.dias[0].fecha = s.fechaInicio;
@@ -8001,8 +8014,8 @@ function mergeSemicolonLista(actual, nuevos){
   (nuevos||[]).forEach(function(t){ if(!set[t]){ items.push(t); set[t]=1; } });
   return joinItemsList(items);
 }
-function numeroReplanificado(docenteId, base){
-  var existentes = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId; }).map(function(s){ return String(s.numero); });
+function numeroReplanificado(docenteId, asignatura, base){
+  var existentes = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId && s.asignatura===asignatura; }).map(function(s){ return String(s.numero); });
   var i = 1, candidato;
   do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
   return candidato;
@@ -8032,7 +8045,7 @@ function replanificarSemanal(semId){
     }
     return nuevo;
   });
-  var nuevoNumero = numeroReplanificado(s.docenteId, s.numero);
+  var nuevoNumero = numeroReplanificado(s.docenteId, s.asignatura, s.numero);
   var nuevo = {
     id: uid('sem'), docenteId: s.docenteId, numero: nuevoNumero,
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
@@ -8060,7 +8073,7 @@ function saveSemanal(s, silent){
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
   s.updatedAt = nowISO();
   var record = {
-    id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId),
+    id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId, s.asignatura),
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
     unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
@@ -8111,8 +8124,10 @@ function saveSemanal(s, silent){
    Observación de "Completo/Incompleto" siga funcionando por semana. Reutiliza
    fechaLimiteVigente('semanal') como fecha límite (no tiene categoría propia en Fechas Límite). */
 var TALLER_FASE_NOMBRES_DEFECTO = ['Investigación y Planificación', 'Construcción del producto', 'Sustentación y Presentación del Producto'];
-function siguienteNumeroTaller(docenteId){
-  var max = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId; }).reduce(function(m,t){ return Math.max(m, t.numero||0); }, 0);
+/* Igual que siguienteNumeroSemanal: numeración independiente por asignatura, y parseInt en vez del
+   número tal cual porque "Replanificar" guarda sufijos decimales ("3.1") en este mismo campo. */
+function siguienteNumeroTaller(docenteId, asignatura){
+  var max = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId && t.asignatura===asignatura; }).reduce(function(m,t){ return Math.max(m, parseInt(t.numero,10)||0); }, 0);
   return max + 1;
 }
 function blankTallerSemana(){
@@ -8136,7 +8151,7 @@ function blankTaller(d){
   var cursos = misCursosTallerPara(d.id, nivel, especialidad, asignatura);
   var curso = cursos[0] || '';
   var t = {
-    id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id),
+    id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
     productoFinal:'', fases:[],
@@ -8359,7 +8374,11 @@ function bindTallerFormEvents(){
   document.getElementById('tfNivel').addEventListener('change', function(e){ t.nivel=e.target.value; t.especialidad=''; t.curso=''; t.asignatura=''; recomputeTallerPca(t); renderTallerFormAgain(); });
   var espSel = document.getElementById('tfEspecialidad');
   if(espSel) espSel.addEventListener('change', function(e){ t.especialidad=e.target.value; t.asignatura=''; t.curso=''; recomputeTallerPca(t); renderTallerFormAgain(); });
-  document.getElementById('tfAsignatura').addEventListener('change', function(e){ t.asignatura=e.target.value; t.curso=''; recomputeTallerPca(t); renderTallerFormAgain(); });
+  document.getElementById('tfAsignatura').addEventListener('change', function(e){
+    t.asignatura=e.target.value; t.curso='';
+    if(!load(LS.TALLER).some(function(x){ return x.id===t.id; })) t.numero = siguienteNumeroTaller(t.docenteId, t.asignatura);
+    recomputeTallerPca(t); renderTallerFormAgain();
+  });
   document.getElementById('tfCurso').addEventListener('change', function(e){ t.curso=e.target.value; recomputeTallerPca(t); renderTallerFormAgain(); });
   document.getElementById('tfFechaInicio').addEventListener('change', function(e){ t.fechaInicio=e.target.value; marcarAutoguardadoPendiente('taller'); });
   document.getElementById('tfFechaFin').addEventListener('change', function(e){ t.fechaFin=e.target.value; marcarAutoguardadoPendiente('taller'); });
@@ -8459,7 +8478,7 @@ function saveTaller(t, silent){
   var ownerId = existingHeader ? existingHeader.docenteId : d.id;
   t.updatedAt = nowISO();
   var record = {
-    id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId),
+    id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId, t.asignatura),
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: t.fechaHoraLimite||'',
     productoFinal: sanitizeRte(t.productoFinal||''),
@@ -8513,8 +8532,8 @@ function saveTaller(t, silent){
    marcados— pero editable de forma independiente (no comparte fases/semanas con el original).
    Numera el nuevo como el original + ".1" (p.ej. "3.1"), o ".2"/".3"... si ya existe ese número
    (por si se replanifica más de una vez). Igual que numeroReplanificado/replanificarSemanal. */
-function numeroReplanificadoTaller(docenteId, base){
-  var existentes = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId; }).map(function(t){ return String(t.numero); });
+function numeroReplanificadoTaller(docenteId, asignatura, base){
+  var existentes = load(LS.TALLER).filter(function(t){ return t.docenteId===docenteId && t.asignatura===asignatura; }).map(function(t){ return String(t.numero); });
   var i = 1, candidato;
   do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
   return candidato;
@@ -8522,7 +8541,7 @@ function numeroReplanificadoTaller(docenteId, base){
 function replanificarTaller(tallerId){
   var t = load(LS.TALLER).find(function(x){ return x.id===tallerId; });
   if(!t) return;
-  var nuevoNumero = numeroReplanificadoTaller(t.docenteId, t.numero);
+  var nuevoNumero = numeroReplanificadoTaller(t.docenteId, t.asignatura, t.numero);
   var nuevo = {
     id: uid('tp'), docenteId: t.docenteId, numero: nuevoNumero,
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
