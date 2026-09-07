@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260907184911">
+<meta name="app-build" content="20260907213259">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1086,9 +1086,15 @@ function asistenciaDocId(nivel, especialidad, curso, fecha){
 /* El curso real de un estudiante: si se registró eligiendo "Otro…", el valor que cuenta es el que
    escribió a mano (cursoManual), no el literal "Otro…" que quedó guardado en el campo curso. */
 function cursoRealDe(e){ return e.curso==='Otro…' ? (e.cursoManual||'') : (e.curso||''); }
+/* El curso se compara SIEMPRE normalizado (ver normCursoCmp): al registrar estudiantes se
+   escribieron dos símbolos casi idénticos — "°" (grado) y "º" (ordinal) — así que un mismo curso
+   quedó guardado con dos escrituras distintas. Sin normalizar, el sistema los trataba como dos
+   cursos separados: el cuadro de Curso mostraba la misma opción dos veces y cada una cargaba solo
+   una parte de los estudiantes. */
 function estudiantesDe(nivel, especialidad, curso){
   return load(LS.ESTUDIANTES).filter(function(e){
-    return e.nivel===nivel && (e.especialidad||'')===(especialidad||'') && cursoRealDe(e)===curso && e.estado!=='Inactivo';
+    return e.nivel===nivel && (e.especialidad||'')===(especialidad||'')
+      && normCursoCmp(cursoRealDe(e))===normCursoCmp(curso) && e.estado!=='Inactivo';
   }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
 }
 /* Cursos que REALMENTE existen porque hay al menos un estudiante registrado en ellos (pestaña
@@ -1098,15 +1104,25 @@ function estudiantesDe(nivel, especialidad, curso){
    Disciplina, Reportes, Mi Asistencia del docente) — no en los formularios donde se registra un
    estudiante por primera vez, que siguen necesitando la lista completa + "Otro…" para poder crear
    un curso nuevo. */
+/* Agrupa por curso NORMALIZADO y devuelve UNA sola opción por curso real. Como etiqueta se elige
+   la escritura más frecuente entre los estudiantes de ese curso, que es también con la que se
+   guardaron las hojas de asistencia existentes (asistenciaDocId lleva el texto del curso): así la
+   opción unificada sigue apuntando a la misma hoja de siempre y no se abre una paralela. */
 function cursosDeEstudiantesRegistrados(nivel, especialidad){
-  var set = {};
+  var variantes = {};
   load(LS.ESTUDIANTES).forEach(function(e){
     if(nivel && e.nivel!==nivel) return;
     if(especialidad && (e.especialidad||'')!==especialidad) return;
     var c = cursoRealDe(e);
-    if(c) set[c]=1;
+    if(!c) return;
+    var k = normCursoCmp(c);
+    if(!variantes[k]) variantes[k] = {};
+    variantes[k][c] = (variantes[k][c]||0) + 1;
   });
-  return Object.keys(set).sort();
+  return Object.keys(variantes).map(function(k){
+    var v = variantes[k];
+    return Object.keys(v).sort(function(a,b){ return v[b]-v[a] || a.localeCompare(b); })[0];
+  }).sort();
 }
 var TITULO_SIGLAS = {
   'licenciado':'Lic.', 'licenciada':'Lic.', 'ingeniero':'Ing.', 'ingeniera':'Ing.',
@@ -2683,7 +2699,17 @@ function renderManualDocente(){
     + '<p>Igual que en el PCA, arriba del documento aparece la fecha límite definida por el administrador — de solo lectura para ti.</p>'
     + '<h3>Exportar</h3>'
     + '<p>Los mismos botones <b>PDF ✓ / Word / Excel</b> están disponibles en cada Plan Semanal, con el mismo comportamiento que en el PCA.</p>'
-    + manualTip('A diferencia del PCA, tus Planes Semanales <b>nunca se bloquean</b>: puedes seguir editándolos y completándolos en cualquier momento, incluso después de la fecha límite. Eso sí, el administrador ve en su reporte de "Presentación de Planes" si cada plan quedó <b>completo</b> (con Contenidos, Actividades y Nivel de Logro en todos los días) y si lo terminaste <b>antes</b> de la fecha límite — por eso conviene completar todos los campos de cada día, no solo crearlo.')
+    + '<h3>Rúbrica: cuándo tu plan queda “completo”</h3>'
+    + '<p>Un Plan Semanal está <b>completo</b> cuando <b>todos</b> los días que agregaste tienen llenos sus tres casilleros: <b>Actividades de aprendizaje</b>, <b>Recursos</b> e <b>Instrumentos de evaluación</b>. Si a un solo día le falta uno, el plan entero cuenta como incompleto.</p>'
+    + '<p>Además, dentro de <b>Actividades</b> de cada día deben aparecer y estar desarrollados los momentos del <b>método</b> y un <b>enlace a las diapositivas</b>. Esto no vuelve incompleto al plan ni lo hace atrasado: genera la observación <b>“Corregir”</b>, que desaparece sola en cuanto haces la corrección.</p>'
+    + '<p>El método depende de tu asignatura:</p>'
+    + '<ul><li><b>Inglés</b> (incluidos todos los grupos ENGLISH): se planifica con <b>PPP</b> — Presentation, Practice, Production. No se elige: el sistema lo fija solo y revisa esos tres momentos. Puedes redactarlos en inglés o en español.</li>'
+    + '<li><b>Las demás asignaturas</b>: eliges entre <b>ACC</b> (Anticipación, Construcción, Consolidación) y <b>ERCA</b> (Experiencia, Reflexión, Conceptualización, Aplicación).</li></ul>'
+    + '<p>Una excepción más: a <b>Educación Física</b> no se le exige el enlace de diapositivas, porque no dicta con ellas. Sus planes solo necesitan los tres casilleros y los momentos del método.</p>'
+    + '<p>Mientras editas, el recuadro de color que aparece sobre los días te dice en vivo qué falta. Al guardar, el sistema te responde con uno de estos tres mensajes: <b>“Su plan de clase ha sido COMPLETADO SATISFACTORIAMENTE”</b>, <b>“Su plan de clase ESTÁ INCOMPLETO”</b> o <b>“Su plan de clase fue presentado como ATRASADO”</b>.</p>'
+    + '<h3>Historial de edición</h3>'
+    + '<p>El botón <b>🕓 Historial</b> abre un panel lateral con todas las veces que se editó el plan, desde la primera hasta la última. <b>Abrir el plan solo para verlo no cuenta como edición</b>: si no cambias nada, no se registra nada y tu plan conserva intacta su observación de “a tiempo”.</p>'
+    + manualTip('A diferencia del PCA, tus Planes Semanales <b>nunca se bloquean</b>: puedes seguir editándolos y completándolos en cualquier momento, incluso después de la fecha límite. Eso sí, el administrador ve en su reporte de "Presentación de Planes" si el plan quedó completo y si lo terminaste <b>antes</b> de la fecha límite — por eso conviene llenar todos los casilleros de cada día, no solo crearlo.')
   );
 
   var secObservacion = manualSection('sec-8', '8. Observación de Clases', ''
@@ -2755,7 +2781,7 @@ function renderManualDocente(){
     + '<h3>Envié una ficha de detección con un error y ya no puedo editarla</h3>'
     + '<p>Es normal — las fichas quedan bloqueadas apenas se envían, para que el DECE trabaje siempre con la versión original. Contacta directamente al DECE para la corrección.</p>'
     + '<h3>¿Por qué mi Plan Semanal aparece como "Incompleto" para el administrador si ya lo guardé?</h3>'
-    + '<p>Guardar el plan no es lo mismo que llenarlo por completo. Revisa que <b>todos</b> los días que agregaste tengan Contenidos Esenciales, Actividades y al menos un Nivel de Logro marcado — si a un solo día le falta algo, el plan entero cuenta como incompleto.</p>'
+    + '<p>Guardar el plan no es lo mismo que llenarlo por completo. Revisa que <b>todos</b> los días que agregaste tengan <b>Actividades de aprendizaje</b>, <b>Recursos</b> e <b>Instrumentos de evaluación</b> — si a un solo día le falta uno de esos tres, el plan entero cuenta como incompleto. El recuadro de color que aparece sobre los días, dentro del formulario, te dice exactamente qué día y qué casillero falta.</p>'
     + '<h3>Al guardar mi PCA o Plan Semanal me sale un aviso de que "se modificó en otro dispositivo o pestaña" — ¿qué significa "Sobrescribir" y "Cancelar"?</h3>'
     + '<p>Este aviso aparece cuando el mismo plan se abrió en dos lugares a la vez (por ejemplo, una pestaña del celular y otra de la laptop, o una pestaña que dejaste abierta desde la mañana mientras seguiste trabajando en otra por la tarde) y en el otro lugar ya se guardó un cambio más reciente. El sistema te avisa ANTES de guardar, en vez de reemplazar en silencio lo que ya estaba guardado.</p>'
     + '<ul><li><b>Sobrescribir de todas formas:</b> guarda lo que tienes en ESTA pantalla ahora mismo, y reemplaza en la nube lo que se había guardado en el otro dispositivo o pestaña — ese otro cambio se pierde. Úsalo solo si estás seguro de que la versión que ves en pantalla es la buena y completa.</li>'
@@ -2879,13 +2905,15 @@ function renderManualAdmin(){
     + '<tr><td><span style="color:#D69E00; background:#FFF6D9; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Atrasado</span></td><td>El plan está <b>completo</b>, pero esa fecha es <b>después</b> de la Fecha Límite.</td></tr>'
     + '<tr><td><span style="color:#5B6B85; background:#EEF1F6; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px; white-space:nowrap;">Sin fecha límite definida</span></td><td>El plan está completo, pero esa categoría todavía no tiene ninguna Fecha Límite registrada (ve a la sección 9, Fechas Límite).</td></tr>'
     + '</tbody></table>'
-    + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha correspondiente contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”. En Planes Semanales esa fecha es la de creación; en PCA es la fecha en que quedó completo (que puede ser bastante después de creado, si el docente lo fue llenando de a poco).')
+    + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha correspondiente contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”. Tanto en Planes Semanales y Talleres Prácticos como en PCA, esa fecha es la de <b>completado</b> (el instante en que el plan cumplió el criterio por primera vez), no la de creación — por eso abrir un plan más tarde solo para verlo nunca lo vuelve atrasado.')
     + '<h3>Presentación de Planes Semanales — ¿qué significa "completo"?</h3>'
-    + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen, cada uno: al menos un <b>Contenido Esencial</b> marcado, algo escrito en <b>Actividades</b>, y al menos un <b>Nivel de Logro</b> (Básico, Intermedio o Avanzado) marcado. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>.</p>'
-    + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con su fecha de creación, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
+    + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen llenos sus tres casilleros: <b>Actividades de aprendizaje</b>, <b>Recursos</b> e <b>Instrumentos de evaluación</b>. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>. El mismo criterio se aplica al <b>Taller Práctico</b>, donde el bloque revisado es cada <b>semana de cada fase</b> y el casillero de evaluación es el <b>Instrumento</b>.</p>'
+    + '<p>Aparte de eso, la Observación puede traer un <b>segundo distintivo “Corregir”</b> cuando los casilleros están llenos pero las Actividades no desarrollan los momentos del método o falta el <b>enlace a las diapositivas</b>. Esto nunca convierte un plan puntual en atrasado: es una observación aparte, que se apaga sola cuando el docente corrige.</p>'
+    + '<p>Dos excepciones por asignatura, aplicadas automáticamente: las clases de <b>Inglés</b> se revisan con el método <b>PPP</b> (Presentation, Practice, Production) en lugar de ACC/ERCA — el docente no puede cambiarlo — y a <b>Educación Física</b> no se le exige el enlace de diapositivas.</p>'
+    + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con la fecha en que quedó completo, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
     + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
     + '<p>Un PCA se considera completo cuando, en cada una de las primeras unidades hasta ' + corteTextoManual + ', <b>todas las semanas que el docente creó</b> tienen sus 4 casilleros llenos: <b>Destreza</b>, <b>Temas y Subtemas</b>, <b>Nivel de Logro Intermedio</b> y <b>Nivel de Logro Avanzado</b>. No basta con que una sola semana tenga algo escrito — si cualquier semana de esas primeras unidades le falta aunque sea uno de esos 4 campos, o si alguna de esas unidades no tiene ninguna semana creada, el PCA entero queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte de unidades lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
-    + '<p>A diferencia de Planes Semanales, aquí la fecha que se compara contra la Fecha Límite <b>no es la de creación</b> del PCA, sino la fecha en la que <b>quedó completo por última vez</b> (columna "Completado el") — un PCA se puede crear a tiempo pero seguir llenándose semana a semana durante varios días, y lo que importa para la Observación es cuándo de verdad terminó de cumplir el criterio de arriba.</p>'
+    + '<p>La fecha que se compara contra la Fecha Límite <b>no es la de creación</b> del PCA, sino la fecha en la que <b>quedó completo por primera vez</b> (columna "Completado el") — un PCA se puede crear a tiempo pero seguir llenándose semana a semana durante varios días, y lo que importa para la Observación es cuándo de verdad terminó de cumplir el criterio de arriba. Seguir editándolo después no mueve esa fecha; solo se vuelve a calcular si el PCA deja de estar completo (por ejemplo, si se agrega una semana vacía o el administrador sube el corte de unidades).</p>'
     + manualShot('Observación de presentación', ''
         + '<table><thead><tr><th>Docente</th><th>Creado el</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>'
         + '<tr><td>María Fernanda Torres</td><td>05/09/2026</td><td>12/09/2026</td><td>15/09/2026</td><td><span style="color:#0F5132; background:#E3F5EC; padding:3px 9px; border-radius:99px; font-weight:700; font-size:11px;">Presentó a tiempo</span></td></tr>'
@@ -3122,7 +3150,7 @@ function renderInspEstudiantesLista(){
   var filtrados = todos.filter(function(e){
     if(f.nivel && e.nivel !== f.nivel) return false;
     if(f.especialidad && (e.especialidad||'') !== f.especialidad) return false;
-    if(f.curso && e.curso !== f.curso) return false;
+    if(f.curso && normCursoCmp(cursoRealDe(e)) !== normCursoCmp(f.curso)) return false;
     return true;
   });
   var nSeleccionados = filtrados.filter(function(e){ return seleccion[e.id]; }).length;
@@ -3192,7 +3220,7 @@ function bindInspEstudiantesListaEvents(){
     var filtrados = load(LS.ESTUDIANTES).filter(function(e){
       if(f.nivel && e.nivel !== f.nivel) return false;
       if(f.especialidad && (e.especialidad||'') !== f.especialidad) return false;
-      if(f.curso && e.curso !== f.curso) return false;
+      if(f.curso && normCursoCmp(cursoRealDe(e)) !== normCursoCmp(f.curso)) return false;
       return true;
     });
     filtrados.forEach(function(e){ if(selAll.checked) seleccion[e.id] = true; else delete seleccion[e.id]; });
@@ -4044,7 +4072,7 @@ function renderInspIncidenteForm(){
     var estudiantesOpts = load(LS.ESTUDIANTES).filter(function(e){
       if(e.estado==='Inactivo') return false;
       if(filtro.nivel && e.nivel!==filtro.nivel) return false;
-      if(filtro.curso && (e.curso==='Otro…'?e.cursoManual:e.curso)!==filtro.curso) return false;
+      if(filtro.curso && normCursoCmp(cursoRealDe(e))!==normCursoCmp(filtro.curso)) return false;
       return true;
     }).sort(function(a,b){ return (a.apellidos+a.nombres).localeCompare(b.apellidos+b.nombres); });
     // Si el estudiante ya elegido (al editar un incidente existente) queda fuera del filtro
@@ -4481,7 +4509,7 @@ function renderRepIndividual(){
   var e = estudiantes.find(function(x){ return x.id===f.estudianteId; });
   if(!e) return selHtml;
   var docs = load(LS.ASISTENCIA).filter(function(a){
-    return a.nivel===e.nivel && (a.especialidad||'')===(e.especialidad||'') && a.curso===cursoRealDe(e)
+    return a.nivel===e.nivel && (a.especialidad||'')===(e.especialidad||'') && normCursoCmp(a.curso)===normCursoCmp(cursoRealDe(e))
       && (!f.fechaInicio || a.fecha >= f.fechaInicio) && (!f.fechaFin || a.fecha <= f.fechaFin);
   }).sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
   var totales = {P:0,A:0,F:0};
@@ -4532,7 +4560,10 @@ function renderRepMensual(){
   if(!f.nivel || !f.curso || !f.mes) return selHtml;
   var estudiantes = estudiantesDe(f.nivel, f.especialidad, f.curso);
   var docs = load(LS.ASISTENCIA).filter(function(a){
-    return a.nivel===f.nivel && (a.especialidad||'')===(f.especialidad||'') && a.curso===f.curso && (a.fecha||'').indexOf(f.mes)===0;
+    /* Se comparan los cursos normalizados para que el reporte incluya también las hojas que
+       quedaron guardadas con la otra escritura del curso ("°" en vez de "º"): son días reales de
+       clase de este mismo curso y, si no, se perderían del reporte. */
+    return a.nivel===f.nivel && (a.especialidad||'')===(f.especialidad||'') && normCursoCmp(a.curso)===normCursoCmp(f.curso) && (a.fecha||'').indexOf(f.mes)===0;
   });
   var totalesPorEst = {};
   estudiantes.forEach(function(e){ totalesPorEst[e.id] = {P:0,A:0,F:0}; });
@@ -6749,7 +6780,27 @@ var PCA_EN = {
   'No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".':
     'No Annual Curriculum Plan (PCA) was found for this level, course and subject. Create it first under "Annual Curriculum Plans".',
   'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.':
-    'There is no PCA week whose date matches the date set in this weekly plan.'
+    'There is no PCA week whose date matches the date set in this weekly plan.',
+  /* Control de cumplimiento (método de la clase y panel de estado del formulario). */
+  'Método de la clase': 'Teaching method',
+  'Las Actividades de aprendizaje de cada día deben desarrollar los momentos de este método.':
+    'The Learning Activities of each day must develop the stages of this method.',
+  'Historial': 'History',
+  'Agregue al menos un ': 'Add at least one ',
+  'día de clase': 'class day',
+  'Plan INCOMPLETO — faltan casilleros por llenar:': 'INCOMPLETE plan — these fields are still empty:',
+  'Casilleros completos, pero hay observaciones que corregir:':
+    'All fields are filled in, but there are remarks to correct:',
+  'Falta el enlace de las diapositivas en: ': 'The slides link is missing in: ',
+  'Plan completo: casilleros llenos, método desarrollado y enlace de diapositivas.':
+    'Plan complete: all fields filled in, method developed and slides link present.',
+  'Método ': 'Method ',
+  ' (obligatorio en Inglés)': ' (required for English)',
+  'cada día': 'each day',
+  ' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.':
+    ' needs Learning Activities, Resources, Assessment Instruments and a link to the slides.',
+  ' necesita Actividades, Recursos e Instrumentos de evaluación. Esta asignatura no requiere enlace de diapositivas.':
+    ' needs Learning Activities, Resources and Assessment Instruments. This subject does not require a slides link.'
 };
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
@@ -7995,9 +8046,6 @@ function bindSemanalListSharedEvents(){
 
 /* ============================= PLAN SEMANAL — FORM ============================= */
 function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', actividades:'', recursos:'', evaluacion:''}; }
-/* Para "Presentación de Planes": un Plan Semanal cuenta como lleno si tiene al menos un día
-   creado y CADA día tiene Contenidos, Actividades y al menos un Nivel de Logro marcado — un plan
-   con días en blanco (creado pero sin llenar) no cuenta como presentado, aunque exista. */
 /* (La antigua semanalEstaCompleto — Contenidos + Actividades + Nivel de Logro — se retiró: ahora
    existe un solo criterio de completitud, validarPlanSemanal(), definido más abajo.) */
 /* Texto plano de los 3 niveles de logro seleccionados para un día del Plan Semanal, para usarlo
@@ -8035,9 +8083,54 @@ var METODOS_CLASE = [
       {label:'Reflexión',         alias:['reflexion']},
       {label:'Conceptualización', alias:['conceptualizacion']},
       {label:'Aplicación',        alias:['aplicacion']}
+    ]},
+  /* PPP: método obligatorio de las clases de Inglés. Como el formulario de Inglés se muestra en
+     inglés y el docente puede redactar en cualquiera de los dos idiomas, cada momento acepta tanto
+     el término en inglés como su equivalente en español. "practice"/"practica" van antes que
+     "production"/"produccion" en la lista, pero eso no importa: la posición de cada momento se
+     busca por separado y luego se ordena por dónde aparece en el texto. */
+  { key:'PPP', label:'PPP — Presentation, Practice, Production (Inglés)',
+    momentos:[
+      {label:'Presentation / Presentación', alias:['presentation','presentacion']},
+      {label:'Practice / Práctica',         alias:['practice','practica']},
+      {label:'Production / Producción',     alias:['production','produccion']}
     ]}
 ];
 var METODO_POR_DEFECTO = 'ACC';
+/* Inglés se planifica con PPP, no con ACC/ERCA: el método no se elige, se impone por asignatura
+   para que la revisión no dependa de que el docente acierte a marcarlo. */
+var METODO_INGLES = 'PPP';
+function asignaturaEsIngles(asignatura){
+  return /inglés|ingles|english/i.test(asignatura||'');
+}
+/* Educación Física no dicta con diapositivas, así que el enlace no se le exige. Se revisa por
+   asignatura, no por nivel ni por docente. */
+function asignaturaExentaDiapositivas(asignatura){
+  return /educaci[oó]n\s*f[ií]sica|cultura\s*f[ií]sica/i.test(asignatura||'');
+}
+/* Método que realmente se evalúa: para Inglés siempre PPP, sin importar lo guardado; para el
+   resto, lo que el docente eligió (y si quedó PPP por un cambio de asignatura, vuelve al
+   predeterminado, porque PPP solo aplica a Inglés). */
+function metodoEfectivo(asignatura, metodoGuardado){
+  if(asignaturaEsIngles(asignatura)) return METODO_INGLES;
+  var m = metodoGuardado || METODO_POR_DEFECTO;
+  return m === METODO_INGLES ? METODO_POR_DEFECTO : m;
+}
+/* Selector de método, compartido por el Plan Semanal y el Taller Práctico. En Inglés se muestra
+   PPP y queda bloqueado (el método no es una elección del docente); en el resto de asignaturas se
+   ofrecen ACC y ERCA, y PPP no aparece porque no les corresponde. */
+function metodoSelectorHtml(id, asignatura, metodoGuardado, isIngles){
+  var esIngles = asignaturaEsIngles(asignatura);
+  var vigente = metodoEfectivo(asignatura, metodoGuardado);
+  var opciones = METODOS_CLASE.filter(function(m){
+    return esIngles ? m.key === METODO_INGLES : m.key !== METODO_INGLES;
+  });
+  return '<select class="cell-select" id="' + id + '"' + (esIngles ? ' disabled' : '') + '>'
+    + opciones.map(function(m){
+        return '<option value="' + m.key + '"' + (vigente === m.key ? ' selected' : '') + '>' + escapeHtml(m.label) + '</option>';
+      }).join('')
+    + '</select>';
+}
 /* Texto mínimo bajo cada momento para considerarlo "desarrollado" y no un simple titular. */
 var MIN_CARACTERES_MOMENTO = 25;
 /* Minutos dentro de los cuales varios guardados del mismo docente cuentan como UNA sola sesión de
@@ -8058,7 +8151,14 @@ function normalizarTextoPlan(t){
 function analizarMomentosMetodo(htmlActividades, metodoKey){
   var metodo = metodoDeClase(metodoKey);
   var plano = richTextToPlain(htmlActividades || '');
-  var norm = normalizarTextoPlan(plano);
+  /* Las direcciones web se borran ANTES de buscar los momentos, porque el propio enlace de las
+     diapositivas suele contener el nombre de un momento y lo daría por presente sin estarlo
+     (docs.google.com/PRESENTATION/... hacía que "Presentation" del método PPP siempre apareciera).
+     Se reemplazan por espacios de la misma longitud para no mover las posiciones, que después se
+     usan para recortar el texto original. */
+  var norm = normalizarTextoPlan(plano).replace(/https?:\/\/\S+/gi, function(m){
+    return new Array(m.length + 1).join(' ');
+  });
   var ubicados = metodo.momentos.map(function(mom){
     var pos = -1;
     mom.alias.forEach(function(a){
@@ -8071,10 +8171,12 @@ function analizarMomentosMetodo(htmlActividades, metodoKey){
   var presentes = ubicados.filter(function(x){ return x.pos !== -1; }).sort(function(a,b){ return a.pos - b.pos; });
   var sinDesarrollar = [];
   presentes.forEach(function(x, i){
-    var fin = (i + 1 < presentes.length) ? presentes[i+1].pos : plano.length;
-    /* Se descarta el propio titular del momento (hasta el primer ":" o salto de línea) para medir
-       solo el contenido que viene debajo. */
-    var cuerpo = plano.slice(x.pos, fin).replace(/^[^\n:]{0,40}[:\n]/, '').trim();
+    var fin = (i + 1 < presentes.length) ? presentes[i+1].pos : norm.length;
+    /* Se mide sobre "norm" (mismo largo que el original, pero ya sin direcciones web): así un
+       momento cuyo único contenido es el enlace de las diapositivas cuenta como NO desarrollado.
+       Se descarta además el propio titular del momento (hasta el primer ":" o salto de línea)
+       para medir solo el contenido que viene debajo. */
+    var cuerpo = norm.slice(x.pos, fin).replace(/^[^\n:]{0,40}[:\n]/, '').trim();
     if(cuerpo.length < MIN_CARACTERES_MOMENTO) sinDesarrollar.push(x.label);
   });
   return { metodo: metodo, faltantes: faltantes, sinDesarrollar: sinDesarrollar, ok: !faltantes.length && !sinDesarrollar.length };
@@ -8085,7 +8187,7 @@ function tieneEnlaceDiapositivas(actividades, recursos){
 /* Núcleo compartido por el Plan Semanal (un bloque = un día) y el Taller Práctico (un bloque = una
    semana de una fase). Cada bloque llega ya normalizado como
    {etiqueta, actividades, recursos, evaluacion, etiquetaEvaluacion}. */
-function validarBloquesPlan(bloques, metodoKey){
+function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
   var faltanCasilleros = [], problemasMetodo = [], faltanEnlaces = [];
   bloques.forEach(function(b){
     var faltan = [];
@@ -8096,7 +8198,7 @@ function validarBloquesPlan(bloques, metodoKey){
     var an = analizarMomentosMetodo(b.actividades, metodoKey);
     if(an.faltantes.length) problemasMetodo.push(b.etiqueta + ': no aparece ' + an.faltantes.join(', '));
     else if(an.sinDesarrollar.length) problemasMetodo.push(b.etiqueta + ': ' + an.sinDesarrollar.join(', ') + ' sin desarrollar');
-    if(!tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
+    if(exigirEnlace && !tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
   });
   return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
 }
@@ -8104,10 +8206,11 @@ function validarBloquesPlan(bloques, metodoKey){
    desarrollado y si hay enlace de diapositivas. */
 function validarPlanSemanal(s){
   var dias = s.dias || [];
-  var metodoKey = s.metodo || METODO_POR_DEFECTO;
+  var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
+  var exigirEnlace = !asignaturaExentaDiapositivas(s.asignatura);
   var r = validarBloquesPlan(dias.map(function(dia, i){
     return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion };
-  }), metodoKey);
+  }), metodoKey, exigirEnlace);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
   var completo = dias.length > 0 && !faltanCasilleros.length;
   var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length;
@@ -8119,14 +8222,17 @@ function validarPlanSemanal(s){
     faltanCasilleros: faltanCasilleros,
     problemasMetodo: problemasMetodo,
     faltanEnlaces: faltanEnlaces,
-    metodo: metodoDeClase(metodoKey)
+    metodo: metodoDeClase(metodoKey),
+    exigeEnlace: exigirEnlace,
+    metodoImpuesto: asignaturaEsIngles(s.asignatura)
   };
 }
 /* Mismo control para el Taller Práctico. Aquí el bloque a revisar no es un "día" sino cada SEMANA
    dentro de cada FASE, y el casillero de evaluación es el "Instrumento" de esa semana (la columna
    "Instrumentos de evaluación" de la tabla de fases). La Técnica queda como campo opcional. */
 function validarTallerPractico(t){
-  var metodoKey = t.metodo || METODO_POR_DEFECTO;
+  var metodoKey = metodoEfectivo(t.asignatura, t.metodo);
+  var exigirEnlace = !asignaturaExentaDiapositivas(t.asignatura);
   var bloques = [];
   (t.fases || []).forEach(function(fase, fi){
     (fase.semanas || []).forEach(function(sem, si){
@@ -8137,7 +8243,7 @@ function validarTallerPractico(t){
       });
     });
   });
-  var r = validarBloquesPlan(bloques, metodoKey);
+  var r = validarBloquesPlan(bloques, metodoKey, exigirEnlace);
   var completo = bloques.length > 0 && !r.faltanCasilleros.length;
   var metodoOk = completo && !r.problemasMetodo.length && !r.faltanEnlaces.length;
   return {
@@ -8148,7 +8254,9 @@ function validarTallerPractico(t){
     faltanCasilleros: r.faltanCasilleros,
     problemasMetodo: r.problemasMetodo,
     faltanEnlaces: r.faltanEnlaces,
-    metodo: metodoDeClase(metodoKey)
+    metodo: metodoDeClase(metodoKey),
+    exigeEnlace: exigirEnlace,
+    metodoImpuesto: asignaturaEsIngles(t.asignatura)
   };
 }
 function estadoPresentacionTaller(t){
@@ -8244,7 +8352,7 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   var momentos = v.metodo.momentos.map(function(m){ return m.label; }).join(' · ');
   var color, titulo, detalles = [];
   if(v.sinDias){
-    color = 'red'; titulo = te('Agregue al menos un ', isIngles) + etiquetaBloque + '.';
+    color = 'red'; titulo = te('Agregue al menos un ', isIngles) + te(etiquetaBloque, isIngles) + '.';
   } else if(!v.completo){
     color = 'red'; titulo = te('Plan INCOMPLETO — faltan casilleros por llenar:', isIngles);
     detalles = v.faltanCasilleros;
@@ -8259,7 +8367,12 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
     + '<div style="font-weight:700; color:var(--' + color + '-600);">' + escapeHtml(titulo) + '</div>'
     + (detalles.length ? '<ul style="margin:6px 0 0 18px; padding:0;">' + detalles.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>' : '')
     + '<div class="hint" style="margin-top:6px;">' + te('Método ', isIngles) + v.metodo.key + ': ' + escapeHtml(momentos)
-    + ' · ' + escapeHtml(etiquetaCadaBloque) + te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles) + '</div>'
+    + (v.metodoImpuesto ? te(' (obligatorio en Inglés)', isIngles) : '')
+    + ' · ' + escapeHtml(te(etiquetaCadaBloque, isIngles))
+    + (v.exigeEnlace
+        ? te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles)
+        : te(' necesita Actividades, Recursos e Instrumentos de evaluación. Esta asignatura no requiere enlace de diapositivas.', isIngles))
+    + '</div>'
     + '</div>';
 }
 
@@ -8693,9 +8806,7 @@ function renderSemanalForm(d){
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
   + '      <div class="field"><label>' + te('Método de la clase', isIngles) + '</label>'
-  + '        <select class="cell-select" id="sfMetodo">' + METODOS_CLASE.map(function(m){
-              return '<option value="' + m.key + '"' + ((s.metodo||METODO_POR_DEFECTO)===m.key?' selected':'') + '>' + escapeHtml(m.label) + '</option>';
-            }).join('') + '</select>'
+  + '        ' + metodoSelectorHtml('sfMetodo', s.asignatura, s.metodo, isIngles)
   + '        <div class="hint" style="margin-top:4px;">' + te('Las Actividades de aprendizaje de cada día deben desarrollar los momentos de este método.', isIngles) + '</div>'
   + '      </div>'
   + '    </div>'
@@ -8894,7 +9005,7 @@ function saveSemanal(s, silent){
     id: s.id, docenteId: ownerId, numero: s.numero || (existingHeader && existingHeader.numero) || siguienteNumeroSemanal(ownerId, s.asignatura),
     nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
-    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'', metodo: s.metodo || METODO_POR_DEFECTO,
+    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'', metodo: metodoEfectivo(s.asignatura, s.metodo),
     dias: (s.dias||[]).map(function(dia){
       return {
         id: dia.id, fecha: dia.fecha||'', contenidos: dia.contenidos||'',
@@ -9202,9 +9313,7 @@ function renderTallerForm(d){
   + '  <div class="pca-section">'
   + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
   + '    <div class="field" style="margin-top:14px; max-width:420px;"><label>Método de la clase</label>'
-  + '      <select class="cell-select" id="tfMetodo">' + METODOS_CLASE.map(function(m){
-          return '<option value="' + m.key + '"' + ((t.metodo||METODO_POR_DEFECTO)===m.key?' selected':'') + '>' + escapeHtml(m.label) + '</option>';
-        }).join('') + '</select>'
+  + '      ' + metodoSelectorHtml('tfMetodo', t.asignatura, t.metodo, false)
   + '      <div class="hint" style="margin-top:4px;">Las Actividades Académicas de cada semana deben desarrollar los momentos de este método.</div>'
   + '    </div>'
   + '  </div>'
@@ -9346,7 +9455,7 @@ function saveTaller(t, silent){
     id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId, t.asignatura),
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: t.fechaHoraLimite||'',
-    productoFinal: sanitizeRte(t.productoFinal||''), metodo: t.metodo || METODO_POR_DEFECTO,
+    productoFinal: sanitizeRte(t.productoFinal||''), metodo: metodoEfectivo(t.asignatura, t.metodo),
     fases: (t.fases||[]).map(function(fase){
       return {
         id: fase.id, nombre: fase.nombre||'',
