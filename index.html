@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260907010113">
+<meta name="app-build" content="20260907013322">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -351,6 +351,74 @@
   .pca-band.band-unit{background:var(--blue-600); display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
   .pca-section{padding:18px 20px;}
   .pca-doc .pca-band + .pca-section{padding-top:18px;}
+
+  /* ===================== CRONOGRAMA ESCOLAR (calendario de la página de inicio) =====================
+     Reproduce el calendario institucional del archivo Excel "CRONOGRAMA ANUAL": una tabla por mes
+     (Semanas · LU-DO · Actividades) con los días pintados según la leyenda de categorías. Los
+     colores conservan el mismo significado que en el Excel original (verde=entregas, amarillo=
+     actividades internas, naranja=feriados, celeste=pruebas), pero en tonos suavizados para
+     pantalla, y con su equivalente para modo oscuro. */
+  .cro-cat-entregar{ --cro-bg:#E4F5D0; --cro-ink:#3B6B1C; --cro-dot:#79B948; }
+  .cro-cat-interna{ --cro-bg:#FDF1BE; --cro-ink:#7A5900; --cro-dot:#E8C132; }
+  .cro-cat-feriado{ --cro-bg:#FBE0C4; --cro-ink:#8A4712; --cro-dot:#E28936; }
+  .cro-cat-pruebas{ --cro-bg:#D4EFFA; --cro-ink:#125E79; --cro-dot:#4FBCDF; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .cro-cat-entregar{ --cro-bg:#1E3312; --cro-ink:#B8E38C; --cro-dot:#79B948; }
+    :root:not([data-theme="light"]) .cro-cat-interna{ --cro-bg:#3A2E08; --cro-ink:#F0D479; --cro-dot:#E8C132; }
+    :root:not([data-theme="light"]) .cro-cat-feriado{ --cro-bg:#3A2412; --cro-ink:#F0B27A; --cro-dot:#E28936; }
+    :root:not([data-theme="light"]) .cro-cat-pruebas{ --cro-bg:#0E2E3C; --cro-ink:#8FD6EE; --cro-dot:#4FBCDF; }
+  }
+  :root[data-theme="dark"] .cro-cat-entregar{ --cro-bg:#1E3312; --cro-ink:#B8E38C; --cro-dot:#79B948; }
+  :root[data-theme="dark"] .cro-cat-interna{ --cro-bg:#3A2E08; --cro-ink:#F0D479; --cro-dot:#E8C132; }
+  :root[data-theme="dark"] .cro-cat-feriado{ --cro-bg:#3A2412; --cro-ink:#F0B27A; --cro-dot:#E28936; }
+  :root[data-theme="dark"] .cro-cat-pruebas{ --cro-bg:#0E2E3C; --cro-ink:#8FD6EE; --cro-dot:#4FBCDF; }
+
+  .cro-doc{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-1); overflow:hidden; }
+  .cro-top{ background:var(--blue-900); color:#fff; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .cro-top .cro-inst{ font-family:var(--serif); font-size:15px; letter-spacing:.01em; }
+  .cro-top .cro-sub{ font-size:12px; opacity:.82; margin-top:2px; }
+  .cro-legend{ display:flex; flex-wrap:wrap; gap:8px 16px; padding:12px 20px; border-bottom:1px solid var(--line); background:var(--surface-2); }
+  .cro-legend .it{ display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); font-weight:600; }
+  .cro-legend .sw{ width:13px; height:13px; border-radius:4px; background:var(--cro-bg); border:1px solid var(--cro-dot); flex:0 0 auto; }
+  .cro-tri{ padding:4px 20px 20px; }
+  .cro-tri-title{ font-family:var(--serif); font-size:14px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--blue-900);
+    padding:16px 0 10px; display:flex; align-items:center; gap:12px; }
+  .cro-tri-title::after{ content:""; flex:1; height:1px; background:var(--line); }
+  .cro-mes{ border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; margin-bottom:14px; background:var(--surface); }
+  .cro-mes-head{ background:var(--blue-600); color:#fff; padding:9px 14px; font-weight:700; font-size:12.5px; letter-spacing:.06em; text-transform:uppercase;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .cro-mes-head .cro-mes-acc{ display:inline-flex; gap:6px; }
+  .cro-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .cro-table th{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700;
+    padding:7px 4px; background:var(--surface-2); border-bottom:1px solid var(--line); text-align:center; }
+  .cro-table th.cro-th-sem{ width:64px; }
+  .cro-table th.cro-th-dia{ width:40px; }
+  .cro-table th.cro-th-act{ width:auto; text-align:left; padding-left:12px; }
+  .cro-table td{ border-bottom:1px solid var(--line); padding:0; vertical-align:middle; }
+  .cro-table tr:last-child td{ border-bottom:none; }
+  .cro-sem{ text-align:center; font-weight:700; font-size:12.5px; color:var(--blue-700); background:var(--blue-50); font-variant-numeric:tabular-nums; padding:6px 4px; }
+  .cro-dia{ text-align:center; font-size:13px; font-variant-numeric:tabular-nums; padding:6px 2px; color:var(--ink); }
+  .cro-dia.cro-fin{ color:var(--muted); }
+  /* El día pintado se resuelve solo con el relleno de la categoría (igual que en el Excel original):
+     nada de color-mix(), que no existe en navegadores algo antiguos y dejaría la celda sin borde. */
+  .cro-dia.has-cat{ background:var(--cro-bg); color:var(--cro-ink); font-weight:700; }
+  .cro-act{ padding:8px 12px; font-size:12.5px; line-height:1.5; color:var(--ink); white-space:pre-line; }
+  .cro-act:empty::before{ content:"—"; color:var(--line-strong); }
+  .cro-notas{ margin:0 0 14px; border:1px dashed var(--line-strong); border-radius:var(--radius-sm); padding:12px 14px; background:var(--surface-2); }
+  .cro-notas h4{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--blue-900); margin-bottom:7px; }
+  .cro-notas ul{ margin:0; padding-left:18px; }
+  .cro-notas li{ font-size:12.5px; color:var(--muted); padding:2px 0; }
+  .cro-empty{ padding:28px 20px; text-align:center; color:var(--muted); font-size:13.5px; }
+  /* Editor */
+  .cro-ed-dia{ display:flex; flex-direction:column; gap:4px; align-items:stretch; }
+  .cro-ed-dia input{ width:100%; text-align:center; padding:5px 2px; border:1px solid var(--line-strong); border-radius:4px; background:var(--surface); color:var(--ink); font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .cro-ed-dia select{ width:100%; padding:3px 2px; border:1px solid var(--line); border-radius:4px; background:var(--cro-bg, var(--surface-2)); color:var(--ink); font-size:10px; }
+  .cro-ed-cell{ padding:6px 3px; }
+  .cro-ed-act textarea{ width:100%; min-height:58px; resize:vertical; padding:7px 9px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--surface); color:var(--ink); font-size:12.5px; font-family:var(--sans); line-height:1.45; }
+  @media (max-width:760px){
+    .cro-table{ table-layout:auto; }
+    .cro-table th.cro-th-act, .cro-act{ min-width:180px; }
+  }
   .unit-block{border-top:1px solid var(--line);}
   .unit-block:first-child{border-top:none;}
   .unit-head-input{background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); color:#fff; padding:6px 10px; border-radius:6px; font-size:13px; font-weight:600; min-width:220px;}
@@ -1481,6 +1549,7 @@ var state = {
   sidebarOpen: false,
   navCollapsed: {},  // { [nombre-de-grupo]: true } — solo se guarda cuando el usuario colapsa algo distinto del default
   editingPca: null,   // working copy of a PCA while editing
+  editingCronograma: null, // copia de trabajo del Cronograma Escolar mientras se edita
   pcaReturnTo: 'pcalist',
   editingSemanal: null,  // working copy of a Plan Semanal while editing
   semanalReturnTo: 'semanallist',
@@ -1540,7 +1609,7 @@ function guardarUltimaVista(){
 /* No se restaura la vista de "editar a este docente" (adminEditDocente/adminNewDocente): depende
    de un working copy que no sobrevive un recargo, y reabrirla a ciegas podría confundir más de lo
    que ayuda — se queda simplemente en la pestaña "admin". */
-var SUBVIEW_SIN_RESTAURAR = {adminEditDocente:'admin', adminNewDocente:'admin'};
+var SUBVIEW_SIN_RESTAURAR = {adminEditDocente:'admin', adminNewDocente:'admin', cronograma:'dashboard'};
 var RESTORED_LAST_VIEW = false;
 var RESTORE_STARTED_AT = null;
 function intentarRestaurarUltimaVista(d){
@@ -1842,6 +1911,9 @@ function renderShell(){
   var esInspector = d.role === 'inspector';
   if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'dece' || state.subview === 'dececonsultas')) state.subview = 'dashboard';
   if(!puedeVerInspeccion(d.role) && state.subview === 'inspeccion') state.subview = 'dashboard';
+  /* El editor del Cronograma Escolar es exclusivo de 'admin' y 'directivo': para el resto (incluido
+     DECE, Inspector y cualquier docente) el calendario de la página de inicio es de solo lectura. */
+  if(!puedeEditarCronograma(d.role) && state.subview === 'cronograma') state.subview = 'dashboard';
   /* El Inspector General solo puede ver "Perfil y Datos del Docente" e "Inspección General" —
      si por cualquier vía (estado viejo, enlace directo) queda apuntando a otra sección, lo manda
      de vuelta a Inicio. */
@@ -1902,6 +1974,7 @@ function renderShell(){
   else if(state.subview === 'adminNewDocente') sub = renderAdminNewDocente(d);
   else if(state.subview === 'manualdocente') sub = renderManualDocente();
   else if(state.subview === 'manualadmin') sub = renderManualAdmin();
+  else if(state.subview === 'cronograma') sub = renderCronogramaEditor(d);
   else if(state.subview === 'inspeccion') sub = renderInspeccion(d);
   else if(state.subview === 'observacion') sub = renderObservacion(d);
   else if(state.subview === 'misasistencia') sub = renderMiAsistencia(d);
@@ -1961,6 +2034,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'adminNewDocente') bindAdminNewDocenteEvents();
   else if(state.subview === 'manualdocente') bindManualEvents();
   else if(state.subview === 'manualadmin') bindManualEvents();
+  else if(state.subview === 'cronograma') bindCronogramaEditorEvents();
   else if(state.subview === 'inspeccion') bindInspeccionEvents();
   else if(state.subview === 'observacion') bindObservacionEvents();
   else if(state.subview === 'misasistencia') bindMiAsistenciaEvents();
@@ -2038,7 +2112,8 @@ function renderDashboard(d){
     + '<div class="grid-4">'
     + '  <button class="action-card" data-go="inspeccion"><div class="ic">🧭</div><h3>Inspección General</h3><p>Estudiantes, asistencia, disciplina y reportes.</p></button>'
     + '  <button class="action-card" data-go="cargahoraria"><div class="ic">🗂️</div><h3>Mi Carga Horaria</h3><p>Indica qué asignaturas dictas y en qué cursos o grados.</p></button>'
-    + '</div>';
+    + '</div>'
+    + cronogramaHtml(d);
   }
   return ''
   + '<div class="page-head"><div><div class="eyebrow">Inicio</div><h1>¡Bienvenido/a, ' + escapeHtml(d.usuarioId || d.nombres) + '!</h1><p>Gestiona tu carga horaria y tus planes curriculares anuales desde un solo lugar.</p></div></div>'
@@ -2050,10 +2125,358 @@ function renderDashboard(d){
   + '  <button class="action-card" data-go="database"><div class="ic">💾</div><h3>Base de datos</h3><p>Exporta o importa un respaldo de la información.</p></button>'
   + '  <button class="action-card" data-go="manualdocente"><div class="ic">📖</div><h3>Manual de Usuario</h3><p>Guía paso a paso de todas las funciones del sistema.</p></button>'
   + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
-  + '</div>';
+  + '</div>'
+  + cronogramaHtml(d);
 }
 function bindDashboardEvents(){
   document.querySelectorAll('[data-go]').forEach(function(btn){ btn.onclick = function(){ go(btn.getAttribute('data-go')); }; });
+  var btnCro = document.getElementById('btnEditarCronograma');
+  if(btnCro) btnCro.onclick = function(){ abrirEditorCronograma(); };
+}
+
+/* ============================= CRONOGRAMA ESCOLAR =============================
+   Calendario institucional del año lectivo, incrustado en la página de Inicio: un bloque por
+   trimestre, dentro de él una tabla por mes (Semana · LU-DO · Actividades académicas) con los días
+   pintados según la categoría de la leyenda. Es la versión en pantalla del archivo Excel
+   "CRONOGRAMA ANUAL 2026-2027" que maneja la institución.
+
+   Dónde se guarda: en la colección `config` (documento id 'cronograma'), no en una colección
+   nueva — `config` ya tiene exactamente los permisos que hacen falta en firestore.rules
+   (cualquier usuario autenticado LEE, solo el personal administrativo ESCRIBE), así que el
+   calendario queda disponible para todos los docentes sin tener que tocar las reglas de Firebase.
+
+   Quién edita: solo los roles 'admin' y 'directivo' (ver puedeEditarCronograma). Para el resto
+   —incluidos todos los docentes— es de solo lectura: no ven el botón de edición ni el editor.
+
+   Semilla: mientras nadie haya guardado un cronograma propio, se muestra el del año lectivo
+   2026-2027 transcrito del Excel (1er y 2do trimestre). Apenas un administrador guarda cambios,
+   pasa a mandar lo guardado en Firestore. */
+var CRONO_CATS = [
+  {key:'entregar', label:'Actividades por entregar'},
+  {key:'interna',  label:'Actividades internas del colegio'},
+  {key:'feriado',  label:'Feriados'},
+  {key:'pruebas',  label:'Semana de pruebas y exámenes'}
+];
+var CRONO_CAT_LABEL = {entregar:'Por entregar', interna:'Interna', feriado:'Feriado', pruebas:'Pruebas'};
+/* Letras usadas solo por la semilla compacta de abajo: "25*i" = día 25 con categoría interna. */
+var CRONO_CAT_LETRA = {i:'interna', e:'entregar', f:'feriado', p:'pruebas'};
+var CRONO_DIAS_CABECERA = ['LU','MA','MI','JU','VI','SA','DO'];
+var CRONO_SEMILLA = [
+  { trimestre:'PRIMER TRIMESTRE', nombre:'SEPTIEMBRE',
+    semanas:[
+      ['1','31,1*i,2,3,4*i,5,6','1: Inauguración del año lectivo e indicaciones de los dirigentes (Código de convivencia y lineamientos)\n2-4: Refuerzo de temas que se evaluarán en las pruebas de diagnóstico\n4: Inauguración de iniciales y preparatoria'],
+      ['2','7,8,9,10,11,12,13','7-11: Se aplican las pruebas de diagnóstico y las siguientes horas de clase se nivelan los temas básicos esenciales que presentan dificultades según la prueba de diagnóstico.'],
+      ['3','14,15,16,17,18,19,20','14-18: Se continúa con la nivelación en caso de ser necesario'],
+      ['4','21,22,23,24,25*i,26,27','25: Juramento de la bandera'],
+      ['5','28,29,30*e,1,2,3,4','30: Entrega de cuestionarios para la prueba sumativa']
+    ],
+    notaTitulo:'Asignaturas consideradas para pruebas de diagnóstico',
+    notas:[
+      '1ero de básica: Lenguaje y matemáticas',
+      'Elemental: Lenguaje, matemáticas e inglés',
+      'Media: Matemáticas, lenguaje e inglés (hasta 6to de básica)',
+      'Superior: Matemáticas',
+      'Bachillerato en ciencias: Matemáticas, física y química',
+      'Bachillerato técnico: Matemáticas, física y química'
+    ] },
+  { trimestre:'PRIMER TRIMESTRE', nombre:'OCTUBRE',
+    semanas:[
+      ['6','5*p,6*p,7*p,8*p,9*f,10,11','05-14: Semana de pruebas sumativas del parcial 1\n09: Feriado independencia de Guayaquil'],
+      ['7','12*p,13*p,14*p,15,16,17,18',''],
+      ['8','19,20,21,22,23,24,25',''],
+      ['9','26,27,28,29,30,31,1','']
+    ] },
+  { trimestre:'PRIMER TRIMESTRE', nombre:'NOVIEMBRE',
+    semanas:[
+      ['10','2*f,3*f,4,5,6,7,8','2 y 3: Feriado de la independencia de Cuenca y difuntos'],
+      ['11','9,10,11*e,12,13,14,15','11: Entrega de cuestionarios del parcial 2'],
+      ['12','16*p,17*p,18*p,19*p,20*p,21,22','16-24: Semana de pruebas sumativas del parcial 2'],
+      ['13','23*p,24*p,25,26,27,28,29',''],
+      ['14','30*p,1*p,2*p,3*p,4*p,5,6','30 al 04: Semana de exámenes de recuperación']
+    ] },
+  { trimestre:'SEGUNDO TRIMESTRE', nombre:'DICIEMBRE',
+    semanas:[
+      ['1','7,8,9,10,11,12,13',''],
+      ['2','14,15,16,17,18,19,20',''],
+      ['3','21,22,23,24*i,25*f,26,27','24: Programa navideño alumnos\n25 de diciembre al 01 de enero: feriado de navidad y fin de año'],
+      ['','28*f,29*f,30*f,31*f,1*f,2,3','']
+    ] },
+  { trimestre:'SEGUNDO TRIMESTRE', nombre:'ENERO',
+    semanas:[
+      ['4','4,5,6,7,8,9,10',''],
+      ['5','11,12,13,14,15,16,17','12: Entrega de cuestionarios de la prueba sumativa'],
+      ['6','18,19,20,21,22,23,24','Del 19 al 27: Semana de pruebas sumativas del parcial 1'],
+      ['7','25,26,27,28,29,30,31','28-30: Simulacro de proyectos']
+    ] },
+  { trimestre:'SEGUNDO TRIMESTRE', nombre:'FEBRERO',
+    semanas:[
+      ['8','1,2,3,4,5,6,7','2-5: Feria de proyectos'],
+      ['9','8*i,9*i,10,11,12,13,14','12: Programa de carnaval\n13: Feriado de provincialización'],
+      ['10','15,16,17,18,19,20,21','16-17: Carnaval'],
+      ['11','22,23,24,25,26,27,28','27: Entrega de cuestionarios de la prueba sumativa']
+    ] },
+  { trimestre:'SEGUNDO TRIMESTRE', nombre:'MARZO',
+    semanas:[
+      ['12','1,2,3,4,5,6,7','Diseño empieza desde el 5/03'],
+      ['13','8,9,10,11,12,13,14','Del 9 al 17: Semana de pruebas sumativas del parcial 2']
+    ] }
+];
+function cronoParseDias(str){
+  var out = String(str||'').split(',').map(function(tok){
+    var p = tok.split('*');
+    return { n: (p[0]||'').trim(), cat: CRONO_CAT_LETRA[(p[1]||'').trim()] || '' };
+  });
+  while(out.length < 7) out.push({n:'', cat:''});
+  return out.slice(0,7);
+}
+function cronogramaSemillaMeses(){
+  return CRONO_SEMILLA.map(function(m, idx){
+    return {
+      id: 'cro_semilla_' + (idx+1),
+      orden: idx + 1,
+      trimestre: m.trimestre,
+      nombre: m.nombre,
+      notaTitulo: m.notaTitulo || '',
+      notas: (m.notas || []).slice(),
+      semanas: m.semanas.map(function(s, i){
+        return { id: 'cro_semilla_' + (idx+1) + '_s' + (i+1), numero: s[0], dias: cronoParseDias(s[1]), actividades: s[2] || '' };
+      })
+    };
+  });
+}
+function cronogramaRecord(){ return load(LS.CONFIG).find(function(c){ return c.id === 'cronograma'; }); }
+function cronogramaMeses(){
+  var rec = cronogramaRecord();
+  if(rec && rec.meses && rec.meses.length) return rec.meses;
+  return cronogramaSemillaMeses();
+}
+function guardarCronogramaMeses(meses){
+  var otros = load(LS.CONFIG).filter(function(c){ return c.id !== 'cronograma'; });
+  save(LS.CONFIG, otros.concat([{ id:'cronograma', meses: meses, updatedAt: nowISO() }]));
+}
+function puedeEditarCronograma(role){ return role === 'admin' || role === 'directivo'; }
+function cronogramaPorTrimestre(meses){
+  var bloques = [], idx = {};
+  meses.slice().sort(function(a,b){ return (a.orden||0) - (b.orden||0); }).forEach(function(m){
+    var t = (m.trimestre || 'SIN TRIMESTRE').trim() || 'SIN TRIMESTRE';
+    if(idx[t] === undefined){ idx[t] = bloques.length; bloques.push({ trimestre:t, meses:[] }); }
+    bloques[idx[t]].meses.push(m);
+  });
+  return bloques;
+}
+function cronoLeyendaHtml(){
+  return '<div class="cro-legend">' + CRONO_CATS.map(function(c){
+    return '<span class="it cro-cat-' + c.key + '"><span class="sw"></span>' + escapeHtml(c.label) + '</span>';
+  }).join('') + '</div>';
+}
+function cronoMesHtml(m){
+  var head = '<tr><th class="cro-th-sem">Semana</th>'
+    + CRONO_DIAS_CABECERA.map(function(x){ return '<th class="cro-th-dia">' + x + '</th>'; }).join('')
+    + '<th class="cro-th-act">Actividades académicas</th></tr>';
+  var filas = (m.semanas||[]).map(function(s){
+    var celdas = '';
+    for(var i=0; i<7; i++){
+      var dia = (s.dias||[])[i] || {n:'', cat:''};
+      var cls = 'cro-dia' + (dia.cat ? ' has-cat cro-cat-' + dia.cat : '') + (i>=5 ? ' cro-fin' : '');
+      var titulo = dia.cat ? ' title="' + escapeHtml(CRONO_CAT_LABEL[dia.cat] || '') + '"' : '';
+      celdas += '<td class="' + cls + '"' + titulo + '>' + escapeHtml(dia.n||'') + '</td>';
+    }
+    return '<tr><td class="cro-sem">' + escapeHtml(s.numero||'') + '</td>' + celdas
+      + '<td class="cro-act">' + escapeHtml(s.actividades||'') + '</td></tr>';
+  }).join('');
+  var notas = (m.notas && m.notas.length)
+    ? '<div class="cro-notas"><h4>' + escapeHtml(m.notaTitulo || 'Notas') + '</h4><ul>'
+      + m.notas.map(function(n){ return '<li>' + escapeHtml(n) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  return '<div class="cro-mes">'
+    + '  <div class="cro-mes-head"><span>' + escapeHtml(m.nombre || '') + '</span></div>'
+    + '  <table class="cro-table"><thead>' + head + '</thead><tbody>' + filas + '</tbody></table>'
+    + '</div>'
+    + notas;
+}
+function cronogramaHtml(d){
+  var meses = cronogramaMeses();
+  var editable = puedeEditarCronograma(d.role);
+  var cuerpo = meses.length
+    ? cronogramaPorTrimestre(meses).map(function(b){
+        return '<div class="cro-tri"><div class="cro-tri-title">' + escapeHtml(b.trimestre) + '</div>'
+          + b.meses.map(cronoMesHtml).join('') + '</div>';
+      }).join('')
+    : '<div class="cro-empty">Todavía no hay meses en el cronograma.' + (editable ? ' Usa “Editar cronograma” para agregar el primero.' : '') + '</div>';
+  return ''
+  + '<div class="cro-doc" style="margin-top:26px;">'
+  + '  <div class="cro-top">'
+  + '    <div><div class="cro-inst">Cronograma escolar · Año lectivo 2026-2027</div><div class="cro-sub">Actividades académicas por semana, según el calendario institucional.</div></div>'
+  + (editable ? '    <button class="btn btn-gold btn-sm" id="btnEditarCronograma">✎ Editar cronograma</button>' : '')
+  + '  </div>'
+  + cronoLeyendaHtml()
+  + cuerpo
+  + '</div>';
+}
+
+/* --- Cronograma · editor (solo admin/directivo) --- */
+function abrirEditorCronograma(){
+  state.editingCronograma = JSON.parse(JSON.stringify(cronogramaMeses()));
+  go('cronograma');
+}
+function cronoNuevaSemana(){
+  var dias = [];
+  for(var i=0; i<7; i++) dias.push({n:'', cat:''});
+  return { id: uid('crosem'), numero:'', dias: dias, actividades:'' };
+}
+function cronoNuevoMes(orden){
+  return { id: uid('cromes'), orden: orden, trimestre:'PRIMER TRIMESTRE', nombre:'NUEVO MES', notaTitulo:'', notas:[], semanas:[cronoNuevaSemana()] };
+}
+function renderCronogramaEditor(d){
+  if(!puedeEditarCronograma(d.role)){ state.subview = 'dashboard'; return renderDashboard(d); }
+  var meses = state.editingCronograma || (state.editingCronograma = JSON.parse(JSON.stringify(cronogramaMeses())));
+  var catOpts = function(sel){
+    return '<option value="">—</option>' + CRONO_CATS.map(function(c){
+      return '<option value="' + c.key + '" ' + (sel===c.key?'selected':'') + '>' + escapeHtml(CRONO_CAT_LABEL[c.key]) + '</option>';
+    }).join('');
+  };
+  var mesesHtml = meses.map(function(m, mi){
+    var head = '<tr><th class="cro-th-sem">Semana</th>'
+      + CRONO_DIAS_CABECERA.map(function(x){ return '<th class="cro-th-dia">' + x + '</th>'; }).join('')
+      + '<th class="cro-th-act">Actividades académicas</th><th style="width:44px;"></th></tr>';
+    var filas = (m.semanas||[]).map(function(s, si){
+      var celdas = '';
+      for(var i=0; i<7; i++){
+        var dia = (s.dias||[])[i] || {n:'', cat:''};
+        celdas += '<td class="cro-ed-cell ' + (dia.cat ? 'cro-cat-' + dia.cat : '') + '">'
+          + '<div class="cro-ed-dia">'
+          + '  <input value="' + escapeHtml(dia.n||'') + '" data-cro-dia="' + mi + '|' + si + '|' + i + '" maxlength="2" aria-label="Día" />'
+          + '  <select data-cro-cat="' + mi + '|' + si + '|' + i + '" aria-label="Categoría">' + catOpts(dia.cat) + '</select>'
+          + '</div></td>';
+      }
+      return '<tr>'
+        + '<td class="cro-ed-cell"><input style="width:100%; text-align:center; padding:5px 2px; border:1px solid var(--line-strong); border-radius:4px; background:var(--surface); color:var(--ink); font-size:12.5px;" value="' + escapeHtml(s.numero||'') + '" data-cro-sem="' + mi + '|' + si + '" aria-label="Número de semana" /></td>'
+        + celdas
+        + '<td class="cro-ed-cell cro-ed-act"><textarea data-cro-act="' + mi + '|' + si + '" placeholder="Actividades de la semana…">' + escapeHtml(s.actividades||'') + '</textarea></td>'
+        + '<td class="cro-ed-cell" style="text-align:center;"><button class="row-remove" data-cro-delsem="' + mi + '|' + si + '" title="Quitar semana">✕</button></td>'
+        + '</tr>';
+    }).join('');
+    return '<div class="cro-mes" style="margin-bottom:18px;">'
+      + '  <div class="cro-mes-head">'
+      + '    <span>Mes ' + (mi+1) + '</span>'
+      + '    <span class="cro-mes-acc">'
+      + '      <button class="btn btn-ghost btn-sm" data-cro-subir="' + mi + '" ' + (mi===0?'disabled':'') + ' style="background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">↑</button>'
+      + '      <button class="btn btn-ghost btn-sm" data-cro-bajar="' + mi + '" ' + (mi===meses.length-1?'disabled':'') + ' style="background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">↓</button>'
+      + '      <button class="btn btn-danger btn-sm" data-cro-delmes="' + mi + '" style="background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">Eliminar mes</button>'
+      + '    </span>'
+      + '  </div>'
+      + '  <div class="pca-section" style="padding:14px 14px 4px;">'
+      + '    <div class="field-row">'
+      + '      <div class="field"><label>Trimestre</label><input class="cell-input" value="' + escapeHtml(m.trimestre||'') + '" data-cro-tri="' + mi + '" placeholder="PRIMER TRIMESTRE" /></div>'
+      + '      <div class="field"><label>Mes</label><input class="cell-input" value="' + escapeHtml(m.nombre||'') + '" data-cro-nombre="' + mi + '" placeholder="SEPTIEMBRE" /></div>'
+      + '    </div>'
+      + '  </div>'
+      + '  <div style="overflow-x:auto;"><table class="cro-table"><thead>' + head + '</thead><tbody>' + filas + '</tbody></table></div>'
+      + '  <div class="pca-section" style="padding:12px 14px;">'
+      + '    <button class="btn btn-ghost btn-sm" data-cro-addsem="' + mi + '">+ Agregar semana</button>'
+      + '    <div class="field" style="margin-top:12px;"><label>Título de la nota al pie (opcional)</label><input class="cell-input" value="' + escapeHtml(m.notaTitulo||'') + '" data-cro-notatit="' + mi + '" placeholder="p. ej. Asignaturas consideradas para pruebas de diagnóstico" /></div>'
+      + '    <div class="field" style="margin-top:10px;"><label>Notas al pie (una por línea)</label><textarea class="cell-input" rows="3" data-cro-notas="' + mi + '" placeholder="Una línea por nota…">' + escapeHtml((m.notas||[]).join('\n')) + '</textarea></div>'
+      + '  </div>'
+      + '</div>';
+  }).join('');
+  return ''
+  + '<div class="pca-toolbar no-print">'
+  + '  <button class="btn btn-ghost btn-sm" id="btnCroCancelar">← Volver sin guardar</button>'
+  + '  <div class="spacer"></div>'
+  + '  <button class="btn btn-primary btn-sm" id="btnCroGuardar">Guardar cronograma</button>'
+  + '</div>'
+  + '<div class="page-head"><div><div class="eyebrow">Cronograma escolar</div><h1>Editar cronograma</h1><p>Agrega meses, semanas y actividades. Cada día puede marcarse con una categoría (entregas, actividad interna, feriado o semana de pruebas) y así se pinta en el calendario de la página de inicio.</p></div></div>'
+  + cronoLeyendaHtml()
+  + mesesHtml
+  + '<div style="display:flex; gap:10px; margin:8px 0 30px; flex-wrap:wrap;">'
+  + '  <button class="btn btn-ghost" id="btnCroAddMes">+ Agregar mes</button>'
+  + '  <div class="spacer"></div>'
+  + '  <button class="btn btn-primary" id="btnCroGuardar2">Guardar cronograma</button>'
+  + '</div>';
+}
+function bindCronogramaEditorEvents(){
+  var meses = state.editingCronograma || [];
+  function reRender(){ render(); }
+  function idxDe(attr, el){ return el.getAttribute(attr).split('|').map(Number); }
+
+  document.querySelectorAll('[data-cro-tri]').forEach(function(el){
+    el.addEventListener('input', function(){ meses[Number(el.getAttribute('data-cro-tri'))].trimestre = el.value; });
+  });
+  document.querySelectorAll('[data-cro-nombre]').forEach(function(el){
+    el.addEventListener('input', function(){ meses[Number(el.getAttribute('data-cro-nombre'))].nombre = el.value; });
+  });
+  document.querySelectorAll('[data-cro-notatit]').forEach(function(el){
+    el.addEventListener('input', function(){ meses[Number(el.getAttribute('data-cro-notatit'))].notaTitulo = el.value; });
+  });
+  document.querySelectorAll('[data-cro-notas]').forEach(function(el){
+    el.addEventListener('input', function(){
+      meses[Number(el.getAttribute('data-cro-notas'))].notas = el.value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+    });
+  });
+  document.querySelectorAll('[data-cro-sem]').forEach(function(el){
+    el.addEventListener('input', function(){ var p = idxDe('data-cro-sem', el); meses[p[0]].semanas[p[1]].numero = el.value; });
+  });
+  document.querySelectorAll('[data-cro-act]').forEach(function(el){
+    el.addEventListener('input', function(){ var p = idxDe('data-cro-act', el); meses[p[0]].semanas[p[1]].actividades = el.value; });
+  });
+  document.querySelectorAll('[data-cro-dia]').forEach(function(el){
+    el.addEventListener('input', function(){ var p = idxDe('data-cro-dia', el); meses[p[0]].semanas[p[1]].dias[p[2]].n = el.value; });
+  });
+  document.querySelectorAll('[data-cro-cat]').forEach(function(el){
+    el.addEventListener('change', function(){ var p = idxDe('data-cro-cat', el); meses[p[0]].semanas[p[1]].dias[p[2]].cat = el.value; reRender(); });
+  });
+  document.querySelectorAll('[data-cro-addsem]').forEach(function(btn){
+    btn.onclick = function(){ meses[Number(btn.getAttribute('data-cro-addsem'))].semanas.push(cronoNuevaSemana()); reRender(); };
+  });
+  document.querySelectorAll('[data-cro-delsem]').forEach(function(btn){
+    btn.onclick = function(){
+      var p = idxDe('data-cro-delsem', btn);
+      confirmDialog('¿Quitar esta semana del cronograma?', function(){ meses[p[0]].semanas.splice(p[1],1); reRender(); }, 'Quitar');
+    };
+  });
+  document.querySelectorAll('[data-cro-delmes]').forEach(function(btn){
+    btn.onclick = function(){
+      var mi = Number(btn.getAttribute('data-cro-delmes'));
+      confirmDialog('¿Eliminar el mes “' + (meses[mi].nombre||'') + '” con todas sus semanas?', function(){
+        meses.splice(mi,1); meses.forEach(function(m,i){ m.orden = i+1; }); reRender();
+      }, 'Eliminar');
+    };
+  });
+  document.querySelectorAll('[data-cro-subir]').forEach(function(btn){
+    btn.onclick = function(){
+      var mi = Number(btn.getAttribute('data-cro-subir'));
+      if(mi<=0) return;
+      var tmp = meses[mi-1]; meses[mi-1] = meses[mi]; meses[mi] = tmp;
+      meses.forEach(function(m,i){ m.orden = i+1; }); reRender();
+    };
+  });
+  document.querySelectorAll('[data-cro-bajar]').forEach(function(btn){
+    btn.onclick = function(){
+      var mi = Number(btn.getAttribute('data-cro-bajar'));
+      if(mi >= meses.length-1) return;
+      var tmp = meses[mi+1]; meses[mi+1] = meses[mi]; meses[mi] = tmp;
+      meses.forEach(function(m,i){ m.orden = i+1; }); reRender();
+    };
+  });
+  var addMes = document.getElementById('btnCroAddMes');
+  if(addMes) addMes.onclick = function(){
+    var ultimo = meses[meses.length-1];
+    var nuevo = cronoNuevoMes(meses.length+1);
+    if(ultimo) nuevo.trimestre = ultimo.trimestre;
+    meses.push(nuevo);
+    reRender();
+  };
+  function guardar(){
+    meses.forEach(function(m,i){ m.orden = i+1; if(!m.id) m.id = uid('cromes'); });
+    guardarCronogramaMeses(meses);
+    state.editingCronograma = null;
+    toast('Cronograma guardado. Ya lo ven todos los docentes en la página de inicio.', 'success');
+    go('dashboard');
+  }
+  var g1 = document.getElementById('btnCroGuardar'); if(g1) g1.onclick = guardar;
+  var g2 = document.getElementById('btnCroGuardar2'); if(g2) g2.onclick = guardar;
+  var cancelar = document.getElementById('btnCroCancelar');
+  if(cancelar) cancelar.onclick = function(){ state.editingCronograma = null; go('dashboard'); };
 }
 
 /* ============================= MANUALES DE USUARIO ============================= */
