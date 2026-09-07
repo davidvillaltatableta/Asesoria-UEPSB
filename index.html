@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260907013322">
+<meta name="app-build" content="20260907025234">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -6429,12 +6429,30 @@ function bindPcaImportarPickerEvents(d){
    vigente, se abre en el formulario sin guardar nada todavía) y además dejar la marca de origen
    (importadoDeDocente/importadoFecha) para que quede trazable de quién se copió el contenido —
    ver el aviso en pcaToolbarHtml. */
-function importarPca(pcaId){
+async function importarPca(pcaId){
   var d = currentDocente();
   var header = load(LS.PCA).find(function(p){ return p.id===pcaId; });
   if(!header) return;
   var docenteFuente = allDocentes().find(function(x){ return x.id===header.docenteId; });
   var cont = load(LS.CONT).filter(function(c){ return c.pcaId===pcaId; });
+  /* Las semanas de un PCA AJENO ya no están en memoria: la sincronización en tiempo real de
+     CONTENIDOS está acotada a lo propio para no descargar miles de documentos en cada carga (ver
+     attachRealtimeListeners). Aquí se piden una sola vez y solo las de ese PCA — unas pocas
+     decenas de documentos, y únicamente cuando el docente usa realmente esta función. */
+  if(!cont.length){
+    try{
+      var snap = await window.FB.getDocs(window.FB.query(
+        window.FB.collection(window.FB.db, FS_COLLECTION.CONT),
+        window.FB.where('pcaId', '==', pcaId)
+      ));
+      cont = [];
+      snap.forEach(function(s){ cont.push(s.data()); });
+    }catch(e){
+      console.error('No se pudieron leer las semanas del PCA a importar', e);
+      toast('No se pudieron leer las semanas de ese PCA. Revisa tu conexión e inténtalo de nuevo.', 'error');
+      return;
+    }
+  }
   var unidades = (header.unidadesNombres || []).map(function(nombre){
     var filas = cont.filter(function(c){ return c.unidad===nombre; }).sort(function(a,b){ return (a.semana||0)-(b.semana||0); });
     if(filas.length===0) filas = [weekRow(1)];
@@ -10909,7 +10927,17 @@ async function attachRealtimeListeners(){
     var permitidoParaInspector = soyInspector && key === 'INCIDENTES';
     if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; return; }
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
-    var queryRef = ((key === 'OBSERVACIONES' || key === 'FICHA_DETECCION') && !soyAdmin)
+    /* CONTENIDOS es, con diferencia, la colección más pesada del sistema (una fila por CADA semana
+       de CADA unidad de CADA PCA de TODO el colegio: miles de documentos). Sincronizarla completa
+       para cada docente significaba que una sola carga de la página costaba miles de lecturas de
+       Firestore, cuando en la práctica un docente solo necesita las semanas de SUS propios PCA.
+       Acotada por docenteId, cada docente baja ~100 documentos en vez de varios miles.
+       El personal administrativo sí la necesita completa: los reportes de Presentación de PCA
+       evalúan la completitud de todos los docentes (ver unidadesParaCompletitud).
+       Único caso que sí necesita semanas ajenas: "Importar PCA de otro docente" — resuelto con una
+       lectura puntual dentro de importarPca(), no manteniendo toda la colección en memoria. */
+    var acotarAPropio = !soyAdmin && (key === 'OBSERVACIONES' || key === 'FICHA_DETECCION' || key === 'CONT');
+    var queryRef = acotarAPropio
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
       : colRef;
     var unsub = window.FB.onSnapshot(queryRef, function(snap){
