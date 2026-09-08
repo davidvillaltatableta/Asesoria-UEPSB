@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260907213259">
+<meta name="app-build" content="20260908165852">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -309,6 +309,11 @@
   .input-link-wrap.has-link .input-link-btn{display:flex;}
   .row-remove{background:none; border:none; color:var(--red-600); cursor:pointer; font-size:16px; padding:2px 6px; border-radius:6px;}
   .row-remove:hover{background:var(--red-100);}
+  /* Botones de reordenar/insertar semanas del PCA: van apilados en la última columna de cada fila. */
+  .row-tools{display:flex; flex-direction:column; gap:2px; align-items:center;}
+  .row-btn{background:none; border:1px solid transparent; color:var(--blue-700); cursor:pointer; font-size:13px; line-height:1; padding:3px 6px; border-radius:6px; min-width:26px;}
+  .row-btn:hover:not(:disabled){background:var(--blue-100); border-color:var(--line);}
+  .row-btn:disabled{color:var(--line-strong); cursor:default;}
 
   .pill{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; font-size:11px; font-weight:700; letter-spacing:.02em;}
   .pill-blue{background:var(--blue-100); color:var(--blue-700);}
@@ -1596,6 +1601,7 @@ var state = {
   editingAdminDocente: null,  // working copy of the docente being edited by admin (survives concurrent real-time updates)
   adminPcaFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
   adminSemanalFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
+  adminTallerFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
@@ -2668,6 +2674,17 @@ function renderManualDocente(){
         + '<tr><td>Unidad 2</td><td>Fracciones y decimales</td><td>1er Trimestre</td><td>7</td></tr>'
         + '</tbody></table>')
     + manualTip('Tu PCA <b>nunca se bloquea</b>: puedes seguir editándolo y guardándolo las veces que necesites, incluso después de la fecha límite. El administrador ve en su reporte de "Presentación de PCA" si quedó completo (con al menos 3 unidades con contenido real) y si lo terminaste antes de la fecha límite.')
+    + '<h3>Ordenar las semanas de Contenidos</h3>'
+    + '<p>Las semanas del PCA son un <b>calendario continuo</b>: van de 7 en 7 días y siguen corriendo de una unidad a la siguiente. Cada fila tiene, a la derecha, cuatro botones:</p>'
+    + '<table><thead><tr><th>Botón</th><th>Qué hace</th></tr></thead><tbody>'
+    + '<tr><td><b>▲ / ▼</b></td><td>Sube o baja esa semana. Se mueve <b>lo escrito</b> — temas, niveles de logro, página — y las <b>fechas se quedan en su sitio</b>, porque pertenecen al calendario. Así adelantas o atrasas un tema sin desordenar las fechas del año.</td></tr>'
+    + '<tr><td><b>＋</b></td><td>Inserta una semana en blanco <b>justo debajo</b> de esa. Todo lo que venía después baja un lugar y las fechas siguientes se corren 7 días, que es lo que pasa de verdad al intercalar una semana de clase.</td></tr>'
+    + '<tr><td><b>✕</b></td><td>Elimina esa semana y <b>cierra el hueco</b>: las siguientes se adelantan 7 días. Es el inverso exacto del <b>＋</b>, para que el calendario nunca quede con saltos.</td></tr>'
+    + '</tbody></table>'
+    + '<h3>Cambiar una fecha ya establecida</h3>'
+    + '<p>Si cambias la <b>fecha de inicio</b> de cualquier semana, el sistema recalcula solo todas las demás para mantener la secuencia: las de arriba restan 7 días y las de abajo suman 7, en todas las unidades. Cada semana conserva su propia duración.</p>'
+    + '<p>La <b>fecha de fin</b> no arrastra a las demás: solo cambia el largo de esa semana en particular (por ejemplo, una semana corta por feriado).</p>'
+    + manualTip('Cada vez que el sistema corre fechas por ti, aparece abajo un aviso con el botón <b>“Deshacer”</b> durante 8 segundos, que devuelve todas las fechas exactamente como estaban. Y nada se guarda en la nube hasta que pulses <b>“Guardar plan”</b>.')
     + '<h3>Fecha límite de entrega</h3>'
     + '<p>Arriba del documento verás la <b>Fecha y hora límite de entrega</b>, definida por el administrador — es de solo lectura para ti, y se usa para saber si entregaste tu PCA a tiempo.</p>'
     + '<h3>Exportar tu PCA</h3>'
@@ -2704,11 +2721,13 @@ function renderManualDocente(){
     + '<p>Además, dentro de <b>Actividades</b> de cada día deben aparecer y estar desarrollados los momentos del <b>método</b> y un <b>enlace a las diapositivas</b>. Esto no vuelve incompleto al plan ni lo hace atrasado: genera la observación <b>“Corregir”</b>, que desaparece sola en cuanto haces la corrección.</p>'
     + '<p>El método depende de tu asignatura:</p>'
     + '<ul><li><b>Inglés</b> (incluidos todos los grupos ENGLISH): se planifica con <b>PPP</b> — Presentation, Practice, Production. No se elige: el sistema lo fija solo y revisa esos tres momentos. Puedes redactarlos en inglés o en español.</li>'
-    + '<li><b>Las demás asignaturas</b>: eliges entre <b>ACC</b> (Anticipación, Construcción, Consolidación) y <b>ERCA</b> (Experiencia, Reflexión, Conceptualización, Aplicación).</li></ul>'
+    + '<li><b>Las demás asignaturas</b>: eliges entre <b>ACC</b> (Anticipación, Construcción, Consolidación), <b>ERCA</b> (Experiencia, Reflexión, Conceptualización, Aplicación) y <b>ERCA + ACC</b>.</li></ul>'
+    + '<p>Con <b>ERCA + ACC</b> no tienes que meter los siete momentos en cada día: cada día desarrolla <b>uno de los dos métodos completo</b>, y la semana debe tener <b>al menos un día de cada uno</b>. Si todos los días usan el mismo, el sistema avisa que falta el otro — por eso este método necesita al menos dos días de clase.</p>'
     + '<p>Una excepción más: a <b>Educación Física</b> no se le exige el enlace de diapositivas, porque no dicta con ellas. Sus planes solo necesitan los tres casilleros y los momentos del método.</p>'
     + '<p>Mientras editas, el recuadro de color que aparece sobre los días te dice en vivo qué falta. Al guardar, el sistema te responde con uno de estos tres mensajes: <b>“Su plan de clase ha sido COMPLETADO SATISFACTORIAMENTE”</b>, <b>“Su plan de clase ESTÁ INCOMPLETO”</b> o <b>“Su plan de clase fue presentado como ATRASADO”</b>.</p>'
     + '<h3>Historial de edición</h3>'
-    + '<p>El botón <b>🕓 Historial</b> abre un panel lateral con todas las veces que se editó el plan, desde la primera hasta la última. <b>Abrir el plan solo para verlo no cuenta como edición</b>: si no cambias nada, no se registra nada y tu plan conserva intacta su observación de “a tiempo”.</p>'
+    + '<p>El botón <b>🕓 Historial</b> abre un panel lateral con la línea de tiempo completa del plan: empieza en el momento en que se <b>creó</b> (y en la importación, si se trajo de otro docente) y sigue con cada sesión de edición, indicando quién la hizo y cuántos guardados incluyó. <b>Abrir el plan solo para verlo no cuenta como edición</b>: si no cambias nada, no se registra nada y tu plan conserva intacta su observación de “a tiempo”.</p>'
+    + '<p>En los planes creados antes de que existiera este registro no hay sesiones guardadas, así que el historial muestra la creación y una <b>última modificación</b> señalada como anterior al registro detallado.</p>'
     + manualTip('A diferencia del PCA, tus Planes Semanales <b>nunca se bloquean</b>: puedes seguir editándolos y completándolos en cualquier momento, incluso después de la fecha límite. Eso sí, el administrador ve en su reporte de "Presentación de Planes" si el plan quedó completo y si lo terminaste <b>antes</b> de la fecha límite — por eso conviene llenar todos los casilleros de cada día, no solo crearlo.')
   );
 
@@ -2907,9 +2926,13 @@ function renderManualAdmin(){
     + '</tbody></table>'
     + manualTip('El orden de revisión siempre es el mismo: primero <b>¿está completo?</b> — si no, es Incompleto y ahí termina la evaluación. Si sí está completo, recién ahí se compara la fecha correspondiente contra la Fecha Límite para decidir entre “a tiempo” y “atrasado”. Tanto en Planes Semanales y Talleres Prácticos como en PCA, esa fecha es la de <b>completado</b> (el instante en que el plan cumplió el criterio por primera vez), no la de creación — por eso abrir un plan más tarde solo para verlo nunca lo vuelve atrasado.')
     + '<h3>Presentación de Planes Semanales — ¿qué significa "completo"?</h3>'
-    + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen llenos sus tres casilleros: <b>Actividades de aprendizaje</b>, <b>Recursos</b> e <b>Instrumentos de evaluación</b>. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>. El mismo criterio se aplica al <b>Taller Práctico</b>, donde el bloque revisado es cada <b>semana de cada fase</b> y el casillero de evaluación es el <b>Instrumento</b>.</p>'
+    + '<p>Un Plan Semanal se considera completo cuando <b>todos los días que el docente agregó</b> tienen llenos sus tres casilleros: <b>Actividades de aprendizaje</b>, <b>Recursos</b> e <b>Instrumentos de evaluación</b>. Si a cualquier día le falta alguno de esos tres, el plan entero queda como <b>Incompleto</b>. El mismo criterio se aplica al <b>Taller Práctico</b>, donde el bloque revisado es cada <b>semana de cada fase</b>, el casillero de evaluación es el <b>Instrumento</b> y los momentos que se revisan son los suyos propios: Exploración de conocimientos previos, Desarrollo de la actividad y Retroalimentación.</p>'
     + '<p>Aparte de eso, la Observación puede traer un <b>segundo distintivo “Corregir”</b> cuando los casilleros están llenos pero las Actividades no desarrollan los momentos del método o falta el <b>enlace a las diapositivas</b>. Esto nunca convierte un plan puntual en atrasado: es una observación aparte, que se apaga sola cuando el docente corrige.</p>'
-    + '<p>Dos excepciones por asignatura, aplicadas automáticamente: las clases de <b>Inglés</b> se revisan con el método <b>PPP</b> (Presentation, Practice, Production) en lugar de ACC/ERCA — el docente no puede cambiarlo — y a <b>Educación Física</b> no se le exige el enlace de diapositivas.</p>'
+    + '<p>Los momentos que se revisan dependen del instrumento y de la asignatura, y se aplican automáticamente:</p>'
+    + '<ul><li><b>Plan Semanal, la mayoría de asignaturas:</b> el método que elige el docente, <b>ACC</b> o <b>ERCA</b>.</li>'
+    + '<li><b>Plan Semanal de Inglés:</b> <b>PPP</b> — Presentation, Practice, Production. No se elige.</li>'
+    + '<li><b>Taller Práctico:</b> sus propios tres momentos — <b>Exploración de conocimientos previos</b>, <b>Desarrollo de la actividad</b> y <b>Retroalimentación</b>. Tampoco se eligen.</li></ul>'
+    + '<p>Una excepción más: a <b>Educación Física</b> no se le exige el enlace de diapositivas.</p>'
     + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con la fecha en que quedó completo, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
     + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
     + '<p>Un PCA se considera completo cuando, en cada una de las primeras unidades hasta ' + corteTextoManual + ', <b>todas las semanas que el docente creó</b> tienen sus 4 casilleros llenos: <b>Destreza</b>, <b>Temas y Subtemas</b>, <b>Nivel de Logro Intermedio</b> y <b>Nivel de Logro Avanzado</b>. No basta con que una sola semana tenga algo escrito — si cualquier semana de esas primeras unidades le falta aunque sea uno de esos 4 campos, o si alguna de esas unidades no tiene ninguna semana creada, el PCA entero queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte de unidades lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
@@ -6782,6 +6805,10 @@ var PCA_EN = {
   'No hay una semana del PCA cuya fecha coincida con la fecha puesta en este plan semanal.':
     'There is no PCA week whose date matches the date set in this weekly plan.',
   /* Control de cumplimiento (método de la clase y panel de estado del formulario). */
+  'Subir esta semana': 'Move this week up',
+  'Bajar esta semana': 'Move this week down',
+  'Insertar una semana debajo de esta': 'Insert a week below this one',
+  'Eliminar esta semana': 'Delete this week',
   'Método de la clase': 'Teaching method',
   'Las Actividades de aprendizaje de cada día deben desarrollar los momentos de este método.':
     'The Learning Activities of each day must develop the stages of this method.',
@@ -6897,6 +6924,64 @@ function renderPcaForm(d){
   + '</div>';
 }
 
+/* ============ SECUENCIA DE FECHAS DEL PCA ============
+   Las semanas de un PCA son un CALENDARIO continuo: van de 7 en 7 días y siguen corriendo de una
+   unidad a la siguiente (la Unidad 2 empieza la semana después de que termina la Unidad 1). Por eso
+   estas funciones tratan todas las unidades como una sola secuencia ordenada de semanas.
+   La columna de fechas pertenece al calendario, no al contenido: mover una semana de sitio mueve lo
+   ESCRITO (temas, niveles de logro, página), no las fechas — así el calendario del año no se
+   desordena y los Planes Semanales, que se enlazan a la semana del PCA por sus fechas, siguen
+   apuntando a la semana correcta. */
+var DIAS_ENTRE_SEMANAS_PCA = 7;
+var DURACION_SEMANA_POR_DEFECTO = 4; /* lunes a viernes */
+var CAMPOS_CONTENIDO_SEMANA = ['destreza','nivelLogroIntermedio','nivelLogroAvanzado','temas','pagina','observacion'];
+function todasLasFilasPca(p){
+  var out = [];
+  (p.unidades||[]).forEach(function(u){ (u.filas||[]).forEach(function(f){ out.push(f); }); });
+  return out;
+}
+/* Días entre el inicio y el fin de esa misma semana, para conservarlos al recalcular. */
+function duracionSemana(f){
+  if(f.fechaInicio && f.fechaFin){
+    var d = Math.round((new Date(f.fechaFin) - new Date(f.fechaInicio)) / 86400000);
+    if(d >= 0 && d <= 30) return d;
+  }
+  return DURACION_SEMANA_POR_DEFECTO;
+}
+/* Recalcula TODAS las semanas del PCA tomando como ancla la fila indicada: las de arriba restan 7
+   días y las de abajo suman 7, cada una conservando su propia duración. Devuelve cuántas cambiaron. */
+function resecuenciarFechasPca(p, anclaId){
+  var filas = todasLasFilasPca(p);
+  var idx = filas.findIndex(function(f){ return f.id === anclaId; });
+  if(idx === -1 || !filas[idx].fechaInicio) return 0;
+  var base = filas[idx].fechaInicio;
+  var cambiadas = 0;
+  filas.forEach(function(f, j){
+    if(j === idx) return;
+    var inicio = addDays(base, (j - idx) * DIAS_ENTRE_SEMANAS_PCA);
+    var fin = addDays(inicio, duracionSemana(f));
+    if(f.fechaInicio !== inicio || f.fechaFin !== fin) cambiadas++;
+    f.fechaInicio = inicio;
+    f.fechaFin = fin;
+  });
+  return cambiadas;
+}
+function snapshotFechasPca(p){
+  return todasLasFilasPca(p).map(function(f){ return {id:f.id, fechaInicio:f.fechaInicio, fechaFin:f.fechaFin}; });
+}
+function restaurarFechasPca(p, snapshot){
+  var porId = {};
+  snapshot.forEach(function(s){ porId[s.id] = s; });
+  todasLasFilasPca(p).forEach(function(f){
+    if(porId[f.id]){ f.fechaInicio = porId[f.id].fechaInicio; f.fechaFin = porId[f.id].fechaFin; }
+  });
+}
+function intercambiarContenidoSemanas(a, b){
+  CAMPOS_CONTENIDO_SEMANA.forEach(function(k){
+    var tmp = a[k]; a[k] = b[k]; b[k] = tmp;
+  });
+}
+
 function unitBlockHtml(u, ui, pcaId, isIngles, esTecnico){
   var rows = u.filas.map(function(f, fi){
     return '<tr data-wkrow="'+f.id+'">'
@@ -6912,7 +6997,12 @@ function unitBlockHtml(u, ui, pcaId, isIngles, esTecnico){
     + '<td style="min-width:300px;">' + richEditorHtml('temas', f.id, f.temas, te('Temas y subtemas', isIngles)) + '</td>'
     + '<td><input class="cell-input" data-wf="pagina" style="min-width:60px;" value="'+escapeHtml(f.pagina)+'" /></td>'
     + '<td style="min-width:130px;">' + estadoSemanaBadgeHtml(f, pcaId) + '</td>'
-    + '<td><button class="row-remove" data-wkremove="'+f.id+'">✕</button></td>'
+    + '<td class="no-print"><div class="row-tools">'
+    +   '<button class="row-btn" data-wkup="'+f.id+'" title="' + te('Subir esta semana', isIngles) + '"' + (fi===0?' disabled':'') + '>▲</button>'
+    +   '<button class="row-btn" data-wkdown="'+f.id+'" title="' + te('Bajar esta semana', isIngles) + '"' + (fi===u.filas.length-1?' disabled':'') + '>▼</button>'
+    +   '<button class="row-btn" data-wkinsert="'+f.id+'" title="' + te('Insertar una semana debajo de esta', isIngles) + '">＋</button>'
+    +   '<button class="row-remove" data-wkremove="'+f.id+'" title="' + te('Eliminar esta semana', isIngles) + '">✕</button>'
+    + '</div></td>'
     + '</tr>';
   }).join('');
   return ''
@@ -7027,15 +7117,72 @@ function bindPcaFormEvents(){
       renderPcaFormAgain();
     };
   });
+  /* Mover una semana: se intercambia el CONTENIDO con la vecina y las fechas se quedan donde
+     estaban, porque pertenecen al calendario. Así "subir" un tema lo adelanta una semana sin
+     desordenar las fechas del año ni romper el enlace con los Planes Semanales. */
+  function moverSemana(btn, attr, delta){
+    var tbody = btn.closest('tbody');
+    var u = p.unidades.find(function(x){ return x.id===tbody.getAttribute('data-unitbody'); });
+    var i = u.filas.findIndex(function(f){ return f.id===btn.getAttribute(attr); });
+    var j = i + delta;
+    if(i===-1 || j<0 || j>=u.filas.length) return;
+    intercambiarContenidoSemanas(u.filas[i], u.filas[j]);
+    renderPcaFormAgain();
+  }
+  document.querySelectorAll('[data-wkup]').forEach(function(btn){
+    btn.onclick = function(){ moverSemana(btn, 'data-wkup', -1); };
+  });
+  document.querySelectorAll('[data-wkdown]').forEach(function(btn){
+    btn.onclick = function(){ moverSemana(btn, 'data-wkdown', 1); };
+  });
+  /* Insertar una semana entre dos: entra una semana en blanco justo debajo, todo lo que venía
+     después baja un lugar y el calendario se recalcula desde la primera semana, así que el año
+     completo se corre 7 días — que es justo lo que pasa al intercalar una semana de clase. */
+  document.querySelectorAll('[data-wkinsert]').forEach(function(btn){
+    btn.onclick = function(){
+      var tbody = btn.closest('tbody');
+      var u = p.unidades.find(function(x){ return x.id===tbody.getAttribute('data-unitbody'); });
+      var i = u.filas.findIndex(function(f){ return f.id===btn.getAttribute('data-wkinsert'); });
+      if(i===-1) return;
+      var previo = snapshotFechasPca(p);
+      u.filas.splice(i+1, 0, weekRow(i+2));
+      u.filas.forEach(function(f,k){ f.semana = k+1; });
+      var primera = todasLasFilasPca(p)[0];
+      var cambiadas = primera ? resecuenciarFechasPca(p, primera.id) : 0;
+      renderPcaFormAgain();
+      if(cambiadas){
+        toastConDeshacer('Semana insertada; las siguientes se corrieron 7 días.', function(){
+          u.filas = u.filas.filter(function(f,k){ return k !== i+1; });
+          u.filas.forEach(function(f,k){ f.semana = k+1; });
+          restaurarFechasPca(p, previo);
+          renderPcaFormAgain();
+        });
+      } else {
+        toast('Semana insertada.', 'success');
+      }
+    };
+  });
+  /* Eliminar una semana cierra el hueco del calendario: las siguientes se adelantan 7 días. Es el
+     inverso exacto de insertar, para que la secuencia de fechas nunca quede con saltos. */
   document.querySelectorAll('[data-wkremove]').forEach(function(btn){
     btn.onclick = function(){
-      var tr = btn.closest('tr');
       var tbody = btn.closest('tbody');
-      var unitId = tbody.getAttribute('data-unitbody');
-      var u = p.unidades.find(function(x){ return x.id===unitId; });
-      u.filas = u.filas.filter(function(f){ return f.id!==btn.getAttribute('data-wkremove'); });
-      u.filas.forEach(function(f,i){ f.semana = i+1; });
+      var u = p.unidades.find(function(x){ return x.id===tbody.getAttribute('data-unitbody'); });
+      var i = u.filas.findIndex(function(f){ return f.id===btn.getAttribute('data-wkremove'); });
+      if(i===-1) return;
+      var eliminada = u.filas[i];
+      var previo = snapshotFechasPca(p);
+      u.filas.splice(i, 1);
+      u.filas.forEach(function(f,k){ f.semana = k+1; });
+      var primera = todasLasFilasPca(p)[0];
+      var cambiadas = primera ? resecuenciarFechasPca(p, primera.id) : 0;
       renderPcaFormAgain();
+      toastConDeshacer(cambiadas ? 'Semana eliminada; las siguientes se adelantaron 7 días.' : 'Semana eliminada.', function(){
+        u.filas.splice(i, 0, eliminada);
+        u.filas.forEach(function(f,k){ f.semana = k+1; });
+        restaurarFechasPca(p, previo);
+        renderPcaFormAgain();
+      });
     };
   });
   document.querySelectorAll('[data-unitbody]').forEach(function(tbody){
@@ -7045,7 +7192,33 @@ function bindPcaFormEvents(){
       var rowId = tr.getAttribute('data-wkrow');
       var f = u.filas.find(function(x){ return x.id===rowId; });
       tr.querySelectorAll('[data-wf]').forEach(function(el){
-        el.addEventListener('input', function(){ f[el.getAttribute('data-wf')] = el.value; });
+        var campo = el.getAttribute('data-wf');
+        el.addEventListener('input', function(){ f[campo] = el.value; });
+        if(campo !== 'fechaInicio') return;
+        /* La duración y las fechas previas se leen AHORA, mientras la fila todavía tiene sus
+           valores originales: el listener de 'input' de arriba ya habrá pisado fechaInicio cuando
+           salte 'change'. */
+        var duracion = duracionSemana(f);
+        var inicioPrevio = f.fechaInicio, finPrevio = f.fechaFin;
+        el.addEventListener('change', function(){
+          f.fechaInicio = el.value;
+          if(!f.fechaInicio) return;
+          f.fechaFin = addDays(f.fechaInicio, duracion);
+          var previo = snapshotFechasPca(p);
+          /* En este punto las DEMÁS filas todavía tienen sus fechas viejas, pero la editada ya no;
+             se repone su valor original para que "Deshacer" revierta también esa fila. */
+          previo.forEach(function(s){
+            if(s.id === f.id){ s.fechaInicio = inicioPrevio; s.fechaFin = finPrevio; }
+          });
+          var cambiadas = resecuenciarFechasPca(p, f.id);
+          renderPcaFormAgain();
+          if(cambiadas){
+            toastConDeshacer('Se corrieron ' + cambiadas + ' semana(s) para mantener la secuencia del calendario.', function(){
+              restaurarFechasPca(p, previo);
+              renderPcaFormAgain();
+            });
+          }
+        });
       });
       tr.querySelectorAll('.rte-editable').forEach(function(el){
         var key = el.getAttribute('data-rte-field');
@@ -8094,9 +8267,28 @@ var METODOS_CLASE = [
       {label:'Presentation / Presentación', alias:['presentation','presentacion']},
       {label:'Practice / Práctica',         alias:['practice','practica']},
       {label:'Production / Producción',     alias:['production','produccion']}
+    ]},
+  /* Método combinado: no exige los 7 momentos en cada día, sino que CADA día desarrolle uno de los
+     dos métodos completo y que la semana tenga al menos un día de cada uno. Por eso lleva "combina"
+     en vez de una lista propia de momentos, y "descripcion" para el panel del formulario. */
+  { key:'ERCA+ACC', label:'ERCA + ACC — un día con ERCA y otro con ACC en la misma semana',
+    combina:['ERCA','ACC'],
+    descripcion:'cada día desarrolla ERCA o ACC completo, y la semana necesita al menos un día de cada uno',
+    momentos:[] },
+  /* Momentos propios del Taller Práctico: no es una opción entre otras, es el único método de ese
+     instrumento (por eso su formulario no ofrece selector). */
+  { key:'TP', label:'Exploración de conocimientos previos, Desarrollo de la actividad, Retroalimentación',
+    momentos:[
+      {label:'Exploración de conocimientos previos', alias:['exploracion de conocimientos previos','conocimientos previos','exploracion']},
+      {label:'Desarrollo de la actividad',           alias:['desarrollo de la actividad','desarrollo']},
+      {label:'Retroalimentación',                    alias:['retroalimentacion']}
     ]}
 ];
 var METODO_POR_DEFECTO = 'ACC';
+/* Métodos que el docente puede ELEGIR en un Plan Semanal. PPP se impone en Inglés y TP es exclusivo
+   del Taller Práctico, así que ninguno de los dos aparece en esa lista. */
+var METODOS_SEMANAL = ['ACC','ERCA','ERCA+ACC'];
+var METODO_TALLER = 'TP';
 /* Inglés se planifica con PPP, no con ACC/ERCA: el método no se elige, se impone por asignatura
    para que la revisión no dependa de que el docente acierte a marcarlo. */
 var METODO_INGLES = 'PPP';
@@ -8114,7 +8306,9 @@ function asignaturaExentaDiapositivas(asignatura){
 function metodoEfectivo(asignatura, metodoGuardado){
   if(asignaturaEsIngles(asignatura)) return METODO_INGLES;
   var m = metodoGuardado || METODO_POR_DEFECTO;
-  return m === METODO_INGLES ? METODO_POR_DEFECTO : m;
+  /* Si quedó guardado un método que no corresponde a un Plan Semanal (PPP por un cambio de
+     asignatura, o TP heredado de un Taller), vuelve al predeterminado. */
+  return METODOS_SEMANAL.indexOf(m) !== -1 ? m : METODO_POR_DEFECTO;
 }
 /* Selector de método, compartido por el Plan Semanal y el Taller Práctico. En Inglés se muestra
    PPP y queda bloqueado (el método no es una elección del docente); en el resto de asignaturas se
@@ -8123,7 +8317,7 @@ function metodoSelectorHtml(id, asignatura, metodoGuardado, isIngles){
   var esIngles = asignaturaEsIngles(asignatura);
   var vigente = metodoEfectivo(asignatura, metodoGuardado);
   var opciones = METODOS_CLASE.filter(function(m){
-    return esIngles ? m.key === METODO_INGLES : m.key !== METODO_INGLES;
+    return esIngles ? m.key === METODO_INGLES : METODOS_SEMANAL.indexOf(m.key) !== -1;
   });
   return '<select class="cell-select" id="' + id + '"' + (esIngles ? ' disabled' : '') + '>'
     + opciones.map(function(m){
@@ -8184,22 +8378,63 @@ function analizarMomentosMetodo(htmlActividades, metodoKey){
 function tieneEnlaceDiapositivas(actividades, recursos){
   return /https?:\/\/[^\s"'<>]+/i.test((actividades || '') + ' ' + (recursos || ''));
 }
+/* Revisa UN bloque contra el método pedido. Con un método simple es directo; con uno combinado
+   (ERCA+ACC) el bloque cumple si desarrolla completo CUALQUIERA de los dos, y si no cumple ninguno
+   se informa el que estuvo más cerca — así el docente ve qué le faltó al que estaba intentando, en
+   vez de una lista de los siete momentos. */
+function analizarMetodoBloque(actividades, metodoKey){
+  var metodo = metodoDeClase(metodoKey);
+  if(!metodo.combina){
+    var an = analizarMomentosMetodo(actividades, metodoKey);
+    return { ok: an.ok, aplicados: an.ok ? [metodoKey] : [], detalle: an, metodoUsado: metodoKey };
+  }
+  var aplicados = [], mejor = null;
+  metodo.combina.forEach(function(k){
+    var a = analizarMomentosMetodo(actividades, k);
+    if(a.ok) aplicados.push(k);
+    var encontrados = a.metodo.momentos.length - a.faltantes.length;
+    if(!mejor || encontrados > mejor.encontrados) mejor = { detalle:a, k:k, encontrados:encontrados };
+  });
+  return { ok: aplicados.length > 0, aplicados: aplicados, detalle: mejor.detalle, metodoUsado: mejor.k };
+}
 /* Núcleo compartido por el Plan Semanal (un bloque = un día) y el Taller Práctico (un bloque = una
    semana de una fase). Cada bloque llega ya normalizado como
    {etiqueta, actividades, recursos, evaluacion, etiquetaEvaluacion}. */
 function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
+  var metodo = metodoDeClase(metodoKey);
   var faltanCasilleros = [], problemasMetodo = [], faltanEnlaces = [];
+  var aplicadosEnPlan = {};
   bloques.forEach(function(b){
     var faltan = [];
     if(!richTextToPlain(b.actividades || '').trim()) faltan.push('Actividades de aprendizaje');
     if(!richTextToPlain(b.recursos || '').trim()) faltan.push('Recursos');
     if(!richTextToPlain(b.evaluacion || '').trim()) faltan.push(b.etiquetaEvaluacion || 'Instrumentos de evaluación');
     if(faltan.length){ faltanCasilleros.push(b.etiqueta + ': falta ' + faltan.join(', ')); return; }
-    var an = analizarMomentosMetodo(b.actividades, metodoKey);
-    if(an.faltantes.length) problemasMetodo.push(b.etiqueta + ': no aparece ' + an.faltantes.join(', '));
-    else if(an.sinDesarrollar.length) problemasMetodo.push(b.etiqueta + ': ' + an.sinDesarrollar.join(', ') + ' sin desarrollar');
+    var res = analizarMetodoBloque(b.actividades, metodoKey);
+    res.aplicados.forEach(function(k){ aplicadosEnPlan[k] = true; });
+    if(!res.ok){
+      /* Con el método combinado se indica entre paréntesis cuál de los dos se estaba desarrollando,
+         para que el aviso no se lea como si faltaran los momentos de ambos a la vez. Si no aparece
+         ningún momento de ninguno, se dice directamente que ese día no desarrolla ninguno. */
+      var sinNinguno = metodo.combina && res.detalle.faltantes.length === res.detalle.metodo.momentos.length;
+      if(sinNinguno){
+        problemasMetodo.push(b.etiqueta + ': no desarrolla ni ' + metodo.combina.join(' ni ') );
+      } else {
+        var et = metodo.combina ? b.etiqueta + ' (' + res.metodoUsado + ')' : b.etiqueta;
+        if(res.detalle.faltantes.length) problemasMetodo.push(et + ': no aparece ' + res.detalle.faltantes.join(', '));
+        else if(res.detalle.sinDesarrollar.length) problemasMetodo.push(et + ': ' + res.detalle.sinDesarrollar.join(', ') + ' sin desarrollar');
+      }
+    }
     if(exigirEnlace && !tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
   });
+  /* Exigencia propia del método combinado: además de que cada día desarrolle uno de los dos, la
+     semana completa debe tener al menos un día de cada método. Solo tiene sentido revisarlo cuando
+     no falta ningún casillero — si faltan, el plan ya está incompleto. */
+  if(metodo.combina && bloques.length && !faltanCasilleros.length){
+    metodo.combina.forEach(function(k){
+      if(!aplicadosEnPlan[k]) problemasMetodo.push('Ningún día desarrolla completo el método ' + k);
+    });
+  }
   return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
 }
 /* Devuelve el diagnóstico completo de un plan: qué casilleros faltan, si el método está bien
@@ -8231,7 +8466,9 @@ function validarPlanSemanal(s){
    dentro de cada FASE, y el casillero de evaluación es el "Instrumento" de esa semana (la columna
    "Instrumentos de evaluación" de la tabla de fases). La Técnica queda como campo opcional. */
 function validarTallerPractico(t){
-  var metodoKey = metodoEfectivo(t.asignatura, t.metodo);
+  /* El Taller Práctico no usa ACC/ERCA/PPP: tiene sus propios momentos, iguales para todas sus
+     asignaturas técnicas, así que el método no depende de lo guardado ni de la asignatura. */
+  var metodoKey = METODO_TALLER;
   var exigirEnlace = !asignaturaExentaDiapositivas(t.asignatura);
   var bloques = [];
   (t.fases || []).forEach(function(fase, fi){
@@ -8256,7 +8493,7 @@ function validarTallerPractico(t){
     faltanEnlaces: r.faltanEnlaces,
     metodo: metodoDeClase(metodoKey),
     exigeEnlace: exigirEnlace,
-    metodoImpuesto: asignaturaEsIngles(t.asignatura)
+    metodoImpuesto: true
   };
 }
 function estadoPresentacionTaller(t){
@@ -8349,7 +8586,7 @@ function tallerChecklistHtml(t){
   return checklistPlanHtml(validarTallerPractico(t), false, 'semana en alguna fase', 'cada semana de cada fase');
 }
 function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
-  var momentos = v.metodo.momentos.map(function(m){ return m.label; }).join(' · ');
+  var momentos = v.metodo.descripcion || v.metodo.momentos.map(function(m){ return m.label; }).join(' · ');
   var color, titulo, detalles = [];
   if(v.sinDias){
     color = 'red'; titulo = te('Agregue al menos un ', isIngles) + te(etiquetaBloque, isIngles) + '.';
@@ -8366,8 +8603,9 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   return '<div style="border:1px solid var(--' + color + '-600); background:var(--' + color + '-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
     + '<div style="font-weight:700; color:var(--' + color + '-600);">' + escapeHtml(titulo) + '</div>'
     + (detalles.length ? '<ul style="margin:6px 0 0 18px; padding:0;">' + detalles.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>' : '')
-    + '<div class="hint" style="margin-top:6px;">' + te('Método ', isIngles) + v.metodo.key + ': ' + escapeHtml(momentos)
-    + (v.metodoImpuesto ? te(' (obligatorio en Inglés)', isIngles) : '')
+    + '<div class="hint" style="margin-top:6px;">'
+    + (v.metodo.key === METODO_TALLER ? 'Momentos del Taller Práctico' : te('Método ', isIngles) + v.metodo.key) + ': ' + escapeHtml(momentos)
+    + (v.metodo.key === METODO_INGLES ? te(' (obligatorio en Inglés)', isIngles) : '')
     + ' · ' + escapeHtml(te(etiquetaCadaBloque, isIngles))
     + (v.exigeEnlace
         ? te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles)
@@ -8408,35 +8646,79 @@ function historialSemanalHtml(s){
 function historialTallerHtml(t){
   return historialRegistroHtml(t, validarTallerPractico(t), estadoPresentacionTaller(t));
 }
+/* La línea de tiempo completa del registro: arranca en la CREACIÓN, sigue con la importación (si el
+   plan se trajo de otro docente) y con cada sesión de edición registrada.
+   Los planes creados antes de que existiera el historial no tienen sesiones guardadas, pero sí
+   createdAt y updatedAt: para ellos se muestra igual el hito de creación y, si updatedAt es
+   claramente posterior, un hito final de "última modificación" advirtiendo que el detalle de esa
+   época no se registró. Así el historial nunca aparece vacío ni empieza a mitad de camino. */
+var MARGEN_CREACION_SEG = 60;
+function eventosHistorial(s){
+  var ev = [];
+  if(s.createdAt) ev.push({ tipo:'creado', fecha:s.createdAt, docenteId:s.docenteId });
+  if(s.importadoFecha) ev.push({ tipo:'importado', fecha:s.importadoFecha, detalle:s.importadoDeDocente||'' });
+  (s.historial || []).forEach(function(h){
+    ev.push({ tipo:'edicion', fecha:h.desde, hasta:h.hasta, docenteId:h.docenteId, guardados:h.guardados });
+  });
+  var ultimoRegistrado = ev.reduce(function(max, e){
+    var f = e.hasta || e.fecha || '';
+    return f > max ? f : max;
+  }, '');
+  /* El margen evita un hito falso en planes recién creados, donde createdAt y updatedAt se generan
+     con milisegundos de diferencia. */
+  if(s.updatedAt && (!ultimoRegistrado || (new Date(s.updatedAt) - new Date(ultimoRegistrado)) > MARGEN_CREACION_SEG * 1000)){
+    ev.push({ tipo:'previo', fecha:s.updatedAt, docenteId:s.docenteId });
+  }
+  ev.sort(function(a,b){ return (a.fecha||'').localeCompare(b.fecha||''); });
+  return ev;
+}
 function historialRegistroHtml(s, v, estado){
-  var h = (s.historial || []).slice();
   var docentes = load(LS.DOCENTES);
   function quien(id){
     var d = docentes.find(function(x){ return x.id === id; });
     return d ? nombreFormal(d) : (id || '—');
   }
+  var eventos = eventosHistorial(s);
+  var sesiones = (s.historial || []).length;
   var etiquetaEstado = { incompleto:'INCOMPLETO', a_tiempo:'A TIEMPO', con_retraso:'ATRASADO', sin_limite:'Completo (sin fecha límite)' }[estado] || estado;
   var resumen = '<div style="background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:16px; font-size:13px;">'
     + '<div><strong>' + escapeHtml(etiquetaEstado) + '</strong>' + (v.requiereCorreccion ? ' · <span style="color:var(--gold-600); font-weight:700;">Corregir</span>' : '') + '</div>'
-    + '<div class="ed-meta" style="margin-top:4px;">Completado el: ' + escapeHtml(s.completadoEn ? fmtDateTime(s.completadoEn) : '—') + '</div>'
+    + '<div class="ed-meta" style="margin-top:4px;">Creado el: ' + escapeHtml(s.createdAt ? fmtDateTime(s.createdAt) : '—') + '</div>'
+    + '<div class="ed-meta">Completado el: ' + escapeHtml(s.completadoEn ? fmtDateTime(s.completadoEn) : '—') + '</div>'
     + '<div class="ed-meta">Fecha límite: ' + escapeHtml(s.fechaHoraLimite ? fmtDateTimeLocal(s.fechaHoraLimite) : '—') + '</div>'
-    + '<div class="ed-meta">Sesiones de edición: ' + h.length + '</div>'
+    + '<div class="ed-meta">Sesiones de edición registradas: ' + sesiones + '</div>'
     + '</div>';
-  if(!h.length){
-    return resumen + '<div class="hint">Todavía no hay ediciones registradas. El historial empieza a contar desde el primer guardado con cambios reales — abrir el plan solo para verlo no cuenta como edición.</div>';
-  }
-  var items = h.map(function(ed, i){
-    var clase = i === 0 ? 'hito-primero' : (i === h.length - 1 ? 'hito-ultimo' : '');
-    var mismo = ed.desde === ed.hasta;
-    var etiqueta = i === 0 ? 'Primera edición' : (i === h.length - 1 ? 'Última edición' : 'Edición ' + (i + 1));
+  if(!eventos.length) return resumen + '<div class="hint">Este registro todavía no se ha guardado, así que no tiene línea de tiempo.</div>';
+  var ediciones = 0;
+  var items = eventos.map(function(e, i){
+    var clase = i === 0 ? 'hito-primero' : (i === eventos.length - 1 ? 'hito-ultimo' : '');
+    var titulo, cuerpo, meta;
+    if(e.tipo === 'creado'){
+      titulo = 'Creación del plan';
+      cuerpo = fmtDateTime(e.fecha);
+      meta = quien(e.docenteId);
+    } else if(e.tipo === 'importado'){
+      titulo = 'Importado de otro docente';
+      cuerpo = fmtDateTime(e.fecha);
+      meta = e.detalle ? 'Tomado del plan de ' + e.detalle : '';
+    } else if(e.tipo === 'previo'){
+      titulo = 'Última modificación';
+      cuerpo = fmtDateTime(e.fecha);
+      meta = 'Anterior al registro detallado de ediciones';
+    } else {
+      ediciones++;
+      titulo = ediciones === 1 ? 'Primera edición' : 'Edición ' + ediciones;
+      cuerpo = fmtDateTime(e.fecha) + (e.hasta && e.hasta !== e.fecha ? ' → ' + fmtDateTime(e.hasta) : '');
+      meta = quien(e.docenteId) + ' · ' + (e.guardados || 1) + (e.guardados > 1 ? ' guardados' : ' guardado');
+    }
     return '<li class="' + clase + '">'
-      + '<div class="ed-fecha">' + escapeHtml(etiqueta) + '</div>'
-      + '<div>' + escapeHtml(fmtDateTime(ed.desde)) + (mismo ? '' : ' → ' + escapeHtml(fmtDateTime(ed.hasta))) + '</div>'
-      + '<div class="ed-meta">' + escapeHtml(quien(ed.docenteId)) + ' · ' + (ed.guardados || 1) + (ed.guardados > 1 ? ' guardados' : ' guardado') + '</div>'
+      + '<div class="ed-fecha">' + escapeHtml(titulo) + '</div>'
+      + '<div>' + escapeHtml(cuerpo) + '</div>'
+      + (meta ? '<div class="ed-meta">' + escapeHtml(meta) + '</div>' : '')
       + '</li>';
   }).join('');
   return resumen + '<ol>' + items + '</ol>'
-    + '<div class="hint" style="margin-top:12px;">Los guardados seguidos del mismo docente dentro de ' + HISTORIAL_VENTANA_MIN + ' minutos se agrupan como una sola sesión de edición.</div>';
+    + '<div class="hint" style="margin-top:12px;">Los guardados seguidos del mismo docente dentro de ' + HISTORIAL_VENTANA_MIN + ' minutos se agrupan como una sola sesión de edición. Abrir el plan sin cambiar nada no cuenta como edición.</div>';
 }
 function abrirHistorialSemanal(planId){
   var s = load(LS.SEMANAL).find(function(x){ return x.id === planId; })
@@ -9118,7 +9400,7 @@ function blankTaller(d){
     id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
     pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
-    productoFinal:'', metodo: METODO_POR_DEFECTO, completadoEn:'', historial:[], fases:[],
+    productoFinal:'', metodo: METODO_TALLER, completadoEn:'', historial:[], fases:[],
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lic. José Gómez',
     createdAt: nowISO(), updatedAt: nowISO()
   };
@@ -9312,9 +9594,9 @@ function renderTallerForm(d){
   + '  <div class="pca-band band-section">Datos Curriculares</div>'
   + '  <div class="pca-section">'
   + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
-  + '    <div class="field" style="margin-top:14px; max-width:420px;"><label>Método de la clase</label>'
-  + '      ' + metodoSelectorHtml('tfMetodo', t.asignatura, t.metodo, false)
-  + '      <div class="hint" style="margin-top:4px;">Las Actividades Académicas de cada semana deben desarrollar los momentos de este método.</div>'
+  + '    <div class="field" style="margin-top:14px; max-width:560px;"><label>Momentos de la clase</label>'
+  + '      <input class="cell-input" value="' + escapeHtml(metodoDeClase(METODO_TALLER).momentos.map(function(m){ return m.label; }).join(' · ')) + '" readonly />'
+  + '      <div class="hint" style="margin-top:4px;">Las Actividades Académicas de cada semana deben desarrollar estos tres momentos. Son los propios del Taller Práctico: no se eligen.</div>'
   + '    </div>'
   + '  </div>'
   + '  <div class="pca-section no-print" id="tallerChecklist">' + tallerChecklistHtml(t) + '</div>'
@@ -9340,8 +9622,6 @@ function bindTallerFormEvents(){
   document.getElementById('btnExportTallerPdfNow').onclick = printAsPdf;
   var histTallerBtn = document.getElementById('btnHistorialTaller');
   if(histTallerBtn) histTallerBtn.onclick = function(){ abrirHistorialTaller(t.id); };
-  var metodoTallerSel = document.getElementById('tfMetodo');
-  if(metodoTallerSel) metodoTallerSel.addEventListener('change', function(e){ t.metodo = e.target.value; renderTallerFormAgain(); });
   document.getElementById('btnSaveTaller').onclick = function(){ saveTaller(t, false); };
   bindAutoguardadoDelegado('tallerDoc', 'taller');
 
@@ -9455,7 +9735,7 @@ function saveTaller(t, silent){
     id: t.id, docenteId: ownerId, numero: t.numero || (existingHeader && existingHeader.numero) || siguienteNumeroTaller(ownerId, t.asignatura),
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: t.fechaHoraLimite||'',
-    productoFinal: sanitizeRte(t.productoFinal||''), metodo: metodoEfectivo(t.asignatura, t.metodo),
+    productoFinal: sanitizeRte(t.productoFinal||''), metodo: METODO_TALLER,
     fases: (t.fases||[]).map(function(fase){
       return {
         id: fase.id, nombre: fase.nombre||'',
@@ -9547,7 +9827,7 @@ function replanificarTaller(tallerId){
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteVigente('semanal'),
     productoFinal: t.productoFinal||'',
-    metodo: t.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
+    metodo: METODO_TALLER, completadoEn:'', historial:[],
     fases: (t.fases||[]).map(function(fase){
       return {
         id: uid('fase'), nombre: fase.nombre||'',
@@ -9578,6 +9858,20 @@ function renderTallerListInner(d, scopeAll){
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id]=x; });
 
+  /* Mismo filtro que la lista de Planes Semanales (Docente / Asignatura / Curso / Fecha de corte).
+     El Taller Práctico es exclusivo de Bachillerato, así que aquí el filtro de Curso siempre
+     aplica — no hace falta la excepción de nivelEsBandaA() que sí tiene el Plan Semanal. */
+  var filtroHtml = '';
+  if(scopeAll){
+    var filtro = state.adminTallerFilter;
+    if(filtro.docenteId) talleres = talleres.filter(function(t){ return t.docenteId===filtro.docenteId; });
+    if(filtro.fechaInicio) talleres = talleres.filter(function(t){ return (t.fechaInicio||'') >= filtro.fechaInicio; });
+    if(filtro.fechaFin) talleres = talleres.filter(function(t){ return (t.fechaInicio||'') <= filtro.fechaFin; });
+    if(filtro.asignatura) talleres = talleres.filter(function(t){ return t.asignatura===filtro.asignatura; });
+    if(filtro.curso) talleres = talleres.filter(function(t){ return normCursoCmp(t.curso)===normCursoCmp(filtro.curso); });
+    filtroHtml = adminFiltroBarraHtml(filtro, 'atf', 'Curso (Bachillerato)');
+  }
+
   function rowHtml(t){
     var owner = scopeAll ? docentesById[t.docenteId] : null;
     var docenteCell = scopeAll ? '<td>' + (owner ? escapeHtml(nombreFormal(owner)) : '<span class="hint">(docente eliminado)</span>') + '</td>' : '';
@@ -9607,12 +9901,13 @@ function renderTallerListInner(d, scopeAll){
     : '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Taller Práctico</h1><p>Plan de clase para proyectos de tu asignatura técnica, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewTaller">+ Nuevo Taller Práctico</button></div>';
 
   if(talleres.length===0){
-    return head + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>' + (scopeAll ? 'No hay Talleres Prácticos registrados todavía.' : 'Todavía no has creado ningún Taller Práctico.<br/><button class="btn btn-primary" id="btnNewTaller2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
+    return head + filtroHtml + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>' + (scopeAll ? 'No hay Talleres Prácticos que coincidan con el filtro.' : 'Todavía no has creado ningún Taller Práctico.<br/><button class="btn btn-primary" id="btnNewTaller2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
   }
-  return head + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + talleres.map(rowHtml).join('') + '</tbody></table></div></div>';
+  return head + filtroHtml + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + talleres.map(rowHtml).join('') + '</tbody></table></div></div>';
 }
 function renderTallerList(d){ return renderTallerListInner(d, false); }
 function bindTallerListEvents(){
+  if(document.getElementById('atfDocente')) bindAdminFiltroBarraEvents(state.adminTallerFilter, 'atf');
   ['btnNewTaller','btnNewTaller2'].forEach(function(id){
     var b = document.getElementById(id);
     if(b) b.onclick = function(){ openTallerForm(null, 'tallerlist'); };
