@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260908165852">
+<meta name="app-build" content="20260909205901">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -2946,10 +2946,15 @@ function renderManualAdmin(){
   );
 
   var secFechas = manualSection('sec-a10', '9. Fechas Límite', ''
-    + '<p>Aquí defines las fechas y horas tope de entrega, separadas en dos categorías: <b>PCA</b> y <b>Planes Semanales</b>. La fecha más reciente que registres en cada categoría se usa para autorellenar el campo "Fecha Límite" de los PCA/Planes nuevos que se creen de ahí en adelante — el docente solo la ve, no la puede cambiar.</p>'
+    + '<p>Aquí defines las fechas y horas tope de entrega, separadas en dos categorías: <b>PCA</b> y <b>Planes Semanales</b>. El docente solo ve la fecha en su plan, no la puede cambiar.</p>'
+    + '<p>Las dos categorías funcionan distinto, a propósito:</p>'
+    + '<ul><li><b>PCA:</b> una sola fecha vigente. La más reciente que registres autorellena los PCA nuevos.</li>'
+    + '<li><b>Planes Semanales:</b> <b>una fecha por cada semana de clase</b>. El plan toma la fecha de la semana que le corresponde según su Fecha de Inicio, y se ajusta solo si el docente cambia esa fecha.</li></ul>'
     + manualStep(1, 'Elige la categoría (PCA o Planes Semanales).')
-    + manualStep(2, 'Ingresa la fecha y hora tope, y una nota opcional (por ejemplo, "Trimestre 1").')
-    + manualStep(3, 'Haz clic en <b>“+ Agregar”</b>.')
+    + manualStep(2, 'En Planes Semanales, indica primero la <b>Semana del plan</b> (el lunes de esa semana). La fecha cubre los 7 días siguientes, así que sirve para cualquier plan que empiece dentro de esa semana.')
+    + manualStep(3, 'Ingresa la fecha y hora tope, y una nota opcional (por ejemplo, "Trimestre 1").')
+    + manualStep(4, 'Haz clic en <b>“+ Agregar”</b>. Si ya había una fecha para esa misma semana, se reemplaza.')
+    + manualTip('Si una semana todavía no tiene fecha propia, el plan usa la fila <b>General</b> (la que dejas sin semana asignada) como respaldo. Y si no hay ninguna general, ese plan queda como "Completado (sin fecha límite)" — es preferible a juzgarlo con el plazo de otra semana.')
     + '<p>Las fechas de Planes Semanales quedan agrupadas por mes (siguiendo el año lectivo, de septiembre a agosto) para que sea fácil ubicar cualquier corte. Puedes <b>Editar</b> o <b>Eliminar</b> cualquier fecha ya registrada.</p>'
   );
 
@@ -2993,7 +2998,7 @@ function renderManualAdmin(){
     + manualTip('Si al buscar una cédula aparece más de un Registro Acumulativo General, es un duplicado — ábrelos y elimina el que sobre.')
     + '<h3>Fichas de Detección</h3>'
     + '<p>Cuando un docente detecta una dificultad y envía una Ficha de Detección desde su propio menú, la verás aquí junto con las tuyas propias — es la ficha institucional en papel (dificultades académicas, aspectos a considerarse, padres de familia, acciones y logros) mapeada tal cual al sistema. A diferencia de la Ficha de Datos, esta la <b>crea el docente</b>, no tú — tu trabajo es revisarla, completar <b>“Recibido por”</b> y actualizar su <b>Estado</b> (Nueva, En revisión, Atendida) conforme le das seguimiento.</p>'
-    + '<p>El campo <b>Cédula</b> va primero en el formulario, junto a un botón <b>“Buscar”</b> (visible solo para ti, no para el docente): al escribir la cédula del estudiante y presionar Buscar, el sistema completa automáticamente Nombre, Nivel Educativo y Curso — tomando esos datos <b>del Registro Acumulativo General</b> (nunca de Inspección General), porque es la fuente que llenó el representante.</p>'
+    + '<p>El campo <b>Cédula</b> va primero en el formulario y se alimenta de la <b>matrícula de Inspección General</b>: el docente escribe la cédula o el nombre y elige de la lista que se despliega sola, con el curso al lado para no confundir homónimos. Al elegir, se completan solos Nombre, Nivel Educativo y Curso. Si el estudiante no estuviera en la matrícula, el sistema busca además en el <b>Registro Acumulativo General</b> del DECE. El botón <b>“Buscar”</b> (visible solo para ti, no para el docente) hace lo mismo a demanda e indica de qué fuente salieron los datos.</p>'
     + manualTip('Si una ficha de detección amerita abrir el registro completo del estudiante, puedes crear una Ficha de Datos Informativos nueva con su información.')
   );
 
@@ -5460,19 +5465,62 @@ function nombresCoinciden(a, b){
   if(!na || !nb) return false;
   return na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
 }
-/* Búsqueda por cédula usada en Ficha de Detección: busca únicamente en el Registro Acumulativo
-   General (Ficha de Datos Informativos, colección `dece`), NUNCA en Inspección General
-   (Estudiantes) — a propósito, para que Nombre/Nivel/Curso salgan de los datos que llenó el
-   representante, no de la matrícula de Inspección. */
+/* Estudiantes de Inspección General que tienen cédula registrada, para alimentar el cuadro de
+   Cédula de la Ficha de Detección. Es la matrícula completa del colegio, así que sirve para
+   cualquier estudiante — no solo para los que ya tienen Registro Acumulativo del DECE. */
+function estudiantesConCedula(){
+  return load(LS.ESTUDIANTES)
+    .filter(function(e){ return (e.ci||'').trim() && e.estado!=='Inactivo'; })
+    .sort(function(a,b){ return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||'')); });
+}
+/* El curso del estudiante se guarda como lo escribió Inspección ("3.° EGB A", con signo de grado),
+   mientras que el desplegable de la ficha se arma del catálogo ("3.º EGB A", con ordinal). Sin esta
+   equivalencia el curso se autocompletaba con un valor que el desplegable no reconocía y quedaba
+   en "Elija un elemento…". */
+function cursoDelCatalogo(nivel, cursoEstudiante){
+  var opciones = cursosFor(nivel) || [];
+  var match = opciones.find(function(o){ return normCursoCmp(o) === normCursoCmp(cursoEstudiante); });
+  return match || cursoEstudiante || '';
+}
+/* Lista desplegable nativa para el cuadro de Cédula: el docente puede escribir la cédula o el
+   nombre y el navegador filtra solo. El valor que queda en el campo es siempre la cédula; el
+   nombre y el curso van como etiqueta para que sepa a quién está eligiendo. */
+function datalistEstudiantesHtml(){
+  return '<datalist id="fdListaCedulas">' + estudiantesConCedula().map(function(e){
+    var etiqueta = ((e.apellidos||'') + ' ' + (e.nombres||'')).trim();
+    var curso = cursoRealDe(e);
+    if(curso) etiqueta += ' · ' + curso;
+    return '<option value="' + escapeHtml((e.ci||'').trim()) + '">' + escapeHtml(etiqueta) + '</option>';
+  }).join('') + '</datalist>';
+}
+function estudianteInspeccionPorCedula(cedula){
+  cedula = (cedula||'').trim();
+  if(!cedula) return null;
+  var e = load(LS.ESTUDIANTES).find(function(x){ return (x.ci||'').trim() === cedula; });
+  if(!e) return null;
+  return {
+    nombre: ((e.apellidos||'') + ' ' + (e.nombres||'')).trim(),
+    nivel: e.nivel || '',
+    curso: cursoDelCatalogo(e.nivel, cursoRealDe(e)),
+    origen: 'Inspección General'
+  };
+}
+/* Búsqueda por cédula usada en Ficha de Detección. Consulta primero la matrícula de Inspección
+   General (Estudiantes), que es la lista completa y la que alimenta el cuadro de cédula; si el
+   estudiante no está ahí, cae al Registro Acumulativo General del DECE (Ficha de Datos
+   Informativos), que era la única fuente hasta ahora. */
 function buscarInfoPorCedula(cedula){
   cedula = (cedula||'').trim();
   if(!cedula) return null;
+  var deInspeccion = estudianteInspeccionPorCedula(cedula);
+  if(deInspeccion) return deInspeccion;
   var fichaDatos = load(LS.DECE).find(function(x){ return (x.cedulaEstudiante||'').trim() === cedula; });
   if(!fichaDatos) return null;
   return {
     nombre: fichaDatos.estudianteNombre || '',
     nivel: fichaDatos.nivelEducativo || '',
-    curso: fichaDatos.curso || ''
+    curso: cursoDelCatalogo(fichaDatos.nivelEducativo, fichaDatos.curso),
+    origen: 'Registro Acumulativo del DECE'
   };
 }
 function fichasDeteccionAgrupadasHtml(){
@@ -5799,7 +5847,7 @@ function renderFichaDeteccionForm(d){
   + '  <div class="pca-band band-section">DATOS INFORMATIVOS</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-3">'
-  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="10 dígitos" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + '</div>' + (isStaff ? '<div class="hint" style="margin-top:4px;">Busca en el Registro Acumulativo General (Ficha de Datos Informativos) y llena Nombre, Nivel y Curso automáticamente.</div>' : '') + '</div>'
+  + '      <div class="field"><label>Cédula del estudiante</label><div style="display:flex; gap:6px;"><input class="cell-input" id="fdCedula" list="fdListaCedulas" autocomplete="off" value="'+escapeHtml(f.cedulaEstudiante||'')+'" placeholder="Cédula o nombre del estudiante" '+(editable?'':'disabled')+' />' + (isStaff && editable ? '<button type="button" class="btn btn-ghost btn-sm no-print" id="btnFdBuscarCedula" style="white-space:nowrap;">Buscar</button>' : '') + datalistEstudiantesHtml() + '</div>' + (editable ? '<div class="hint" style="margin-top:4px;">Escribe la cédula o el nombre y elige de la lista: sale de Inspección General y llena Nombre, Nivel y Curso automáticamente.</div>' : '') + '</div>'
   + '      <div class="field"><label>Nombre del estudiante</label><input class="cell-input" id="fdEstudiante" value="'+escapeHtml(f.estudianteNombre||'')+'" '+(editable?'':'disabled')+' /></div>'
   + '      <div class="field"><label>Fecha</label><input class="cell-input" type="date" id="fdFecha" value="'+escapeHtml(f.fecha)+'" '+(editable?'':'disabled')+' /></div>'
   + '    </div>'
@@ -5878,16 +5926,29 @@ function bindFichaDeteccionFormEvents(){
   var fdCursoSel = document.getElementById('fdCurso');
   if(fdCursoSel) fdCursoSel.onchange = function(e){ f.curso = e.target.value; };
   document.getElementById('fdFecha').oninput = function(e){ f.fecha = e.target.value; };
-  document.getElementById('fdCedula').oninput = function(e){ f.cedulaEstudiante = e.target.value; };
+  /* Al elegir de la lista (o al terminar de escribir una cédula que exista) se llenan solos Nombre,
+     Nivel y Curso. Solo se redibuja cuando de verdad hubo un cambio, para no interrumpir al docente
+     mientras teclea. */
+  function autocompletarPorCedula(){
+    var info = buscarInfoPorCedula(f.cedulaEstudiante);
+    if(!info) return false;
+    var cambio = false;
+    if(info.nombre && f.estudianteNombre !== info.nombre){ f.estudianteNombre = info.nombre; cambio = true; }
+    if(info.nivel && f.nivelBgu !== info.nivel){ f.nivelBgu = info.nivel; cambio = true; }
+    if(info.curso && f.curso !== info.curso){ f.curso = info.curso; cambio = true; }
+    if(cambio) renderFichaDeteccionFormAgain();
+    return true;
+  }
+  document.getElementById('fdCedula').oninput = function(e){
+    f.cedulaEstudiante = e.target.value;
+    autocompletarPorCedula();
+  };
   var btnBuscarCedula = document.getElementById('btnFdBuscarCedula');
   if(btnBuscarCedula) btnBuscarCedula.onclick = function(){
     var info = buscarInfoPorCedula(f.cedulaEstudiante);
-    if(!info) return toast('No se encontró ningún estudiante con esa cédula.', 'error');
-    if(info.nombre) f.estudianteNombre = info.nombre;
-    if(info.nivel) f.nivelBgu = info.nivel;
-    if(info.curso) f.curso = info.curso;
-    renderFichaDeteccionFormAgain();
-    toast('Datos encontrados y completados automáticamente.', 'success');
+    if(!info) return toast('No se encontró ningún estudiante con esa cédula, ni en Inspección General ni en el Registro Acumulativo del DECE.', 'error');
+    autocompletarPorCedula();
+    toast('Datos tomados de ' + info.origen + '.', 'success');
   };
   document.getElementById('fdRemitidoPor').oninput = function(e){ f.remitidoPor = e.target.value; };
   document.getElementById('fdCualidad').oninput = function(e){ f.cualidadEstudiante = e.target.value; };
@@ -8170,7 +8231,7 @@ function importarSemanal(semId){
   state.editingSemanal = {
     id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, s.asignatura),
     nivel: s.nivel, especialidad: s.especialidad||'', curso:'', asignatura: s.asignatura,
-    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteParaSemana(''),
     unidadDidactica:'', bloqueCurricular: s.bloqueCurricular||'',
     dias: (s.dias||[]).map(function(dia){
       return {
@@ -8763,7 +8824,9 @@ function blankSemanal(d){
   return {
     id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
-    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    /* Sin fechas todavía: toma la general de respaldo y se ajusta a la de su semana en cuanto se
+       fija la Fecha de Inicio (ver aplicarFechaLimiteDeSemana). */
+    pcaId:'', semanaRowId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteParaSemana(''),
     unidadDidactica:'', bloqueCurricular:'', metodo: METODO_POR_DEFECTO,
     completadoEn:'', historial:[],
     dias:[blankDia()],
@@ -8806,7 +8869,14 @@ function applySemanaSelection(s, pcaId, rowId){
    no tiene Fecha Inicio/Fin registrada, o el docente escribió una fecha distinta), NO se borra
    la semana ya vinculada — así Nivel de Logro y Contenidos Esenciales no desaparecen solo por
    escribir una fecha que no calza exactamente con el rango guardado en el PCA. */
+/* Al fijar o cambiar la semana del plan, su fecha límite pasa a ser la de ESA semana. Se recalcula
+   siempre que cambian las fechas, para que un plan que se mueve de semana lleve el plazo correcto.
+   El administrador puede seguir ajustándola a mano en el propio plan. */
+function aplicarFechaLimiteDeSemana(s){
+  s.fechaHoraLimite = fechaLimiteParaSemana(s.fechaInicio);
+}
 function applyFechaSelection(s){
+  aplicarFechaLimiteDeSemana(s);
   if(!s.pcaId){ return; }
   if(!s.fechaInicio){ s.semanaRowId = ''; return; }
   var semanas = semanasDePca(s.pcaId);
@@ -11409,16 +11479,52 @@ function bindAdminPresentacionPcaEvents(){
 
 /* ============================= ADMIN: FECHAS LÍMITE (PCA / Planes Semanales) (solo admin) ============================= */
 /* La fecha límite VIGENTE de una categoría es la más recientemente registrada — esa es la que
-   se usa para autorellenar el campo Fecha Límite de un PCA o Plan Semanal nuevo. */
+   se usa para autorellenar el campo Fecha Límite de un PCA nuevo, y la que sirve de respaldo en
+   Planes Semanales cuando la semana del plan no tiene una fecha propia. */
 function fechaLimiteVigente(categoria){
   var entradas = load(LS.FECHAS_LIMITE).filter(function(x){ return x.categoria===categoria; });
   if(!entradas.length) return '';
   entradas.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
   return entradas[entradas.length-1].fechaHoraLimite || '';
 }
-function fechaLimiteRowHtml(x){
+/* ---------- Fecha límite POR SEMANA (Planes Semanales) ----------
+   Cada entrega semanal tiene su propio plazo: el plan de la semana del 7 de septiembre se juzga
+   con la fecha de esa semana, y el de la semana siguiente con la suya. Por eso una entrada de
+   Fechas Límite de la categoría "semanal" lleva además "semanaInicio": el lunes de la semana que
+   gobierna. Se considera que cubre esa semana completa (7 días desde ese lunes), así que un plan
+   que empiece cualquier día de esa semana cae dentro.
+   Las entradas SIN semanaInicio son las registradas antes de esta función: siguen funcionando como
+   fecha general de respaldo, para no invalidar lo ya cargado. */
+function semanaFinDeLimite(semanaInicio){ return semanaInicio ? addDays(semanaInicio, 6) : ''; }
+function fechaLimiteParaSemana(fechaInicioPlan){
+  var entradas = load(LS.FECHAS_LIMITE).filter(function(x){ return x.categoria==='semanal'; });
+  if(!entradas.length) return '';
+  function masReciente(lista){
+    lista.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
+    return lista[lista.length-1].fechaHoraLimite || '';
+  }
+  if(fechaInicioPlan){
+    var deLaSemana = entradas.filter(function(x){
+      return x.semanaInicio && fechaInicioPlan >= x.semanaInicio && fechaInicioPlan <= semanaFinDeLimite(x.semanaInicio);
+    });
+    if(deLaSemana.length) return masReciente(deLaSemana);
+  }
+  var generales = entradas.filter(function(x){ return !x.semanaInicio; });
+  /* Si ya existen fechas por semana pero ninguna cubre la de este plan, se devuelve vacío a
+     propósito: es más honesto que aplicarle el plazo de otra semana. El plan aparecerá como
+     "Completado (sin fecha límite)" hasta que se registre la fecha de esa semana. */
+  return generales.length ? masReciente(generales) : '';
+}
+/* Texto de la semana que gobierna una entrada: "7 al 13 sept". Las entradas antiguas, sin semana
+   asignada, se muestran como fecha general de respaldo. */
+function semanaLimiteTexto(x){
+  if(!x.semanaInicio) return '<span class="pill pill-muted">General (todas las semanas)</span>';
+  return fmtDate(x.semanaInicio) + ' al ' + fmtDate(semanaFinDeLimite(x.semanaInicio));
+}
+function fechaLimiteRowHtml(x, porSemana){
   if(state.editingFechaLimiteId === x.id){
     return '<tr>'
+      + (porSemana ? '<td><input class="cell-input" type="date" id="fl-edit-semana-' + x.id + '" value="' + escapeHtml(x.semanaInicio||'') + '" /></td>' : '')
       + '<td><input class="cell-input" type="datetime-local" id="fl-edit-fecha-' + x.id + '" value="' + escapeHtml(x.fechaHoraLimite||'') + '" /></td>'
       + '<td><input class="cell-input" id="fl-edit-nota-' + x.id + '" value="' + escapeHtml(x.nota||'') + '" placeholder="p.ej. Trimestre 1" /></td>'
       + '<td>' + fmtDateTime(x.createdAt) + '</td>'
@@ -11426,6 +11532,7 @@ function fechaLimiteRowHtml(x){
       + '</tr>';
   }
   return '<tr>'
+    + (porSemana ? '<td>' + semanaLimiteTexto(x) + '</td>' : '')
     + '<td>' + fmtDateTimeLocal(x.fechaHoraLimite) + '</td>'
     + '<td>' + escapeHtml(x.nota||'—') + '</td>'
     + '<td>' + fmtDateTime(x.createdAt) + '</td>'
@@ -11435,7 +11542,8 @@ function fechaLimiteRowHtml(x){
 function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
   var entradas = load(LS.FECHAS_LIMITE).filter(function(x){ return x.categoria===categoria; });
   var vigente = fechaLimiteVigente(categoria);
-  var theadHtml = '<thead><tr><th>Fecha y hora límite</th><th>Nota</th><th>Registrada el</th><th></th></tr></thead>';
+  var porSemana = categoria === 'semanal';
+  var theadHtml = '<thead><tr>' + (porSemana ? '<th>Semana del plan</th>' : '') + '<th>Fecha y hora límite</th><th>Nota</th><th>Registrada el</th><th></th></tr></thead>';
 
   var tableHtml = '';
   if(!entradas.length){
@@ -11453,19 +11561,22 @@ function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
     ordenMeses.sort(function(a,b){ return porMes[a].ordenKey.localeCompare(porMes[b].ordenKey); });
     tableHtml = ordenMeses.map(function(mk){
       var g = porMes[mk];
-      var rows = g.items.slice().sort(function(a,b){ return (a.fechaHoraLimite||'').localeCompare(b.fechaHoraLimite||''); }).map(fechaLimiteRowHtml).join('');
+      var rows = g.items.slice().sort(function(a,b){ return (a.fechaHoraLimite||'').localeCompare(b.fechaHoraLimite||''); }).map(function(x){ return fechaLimiteRowHtml(x, porSemana); }).join('');
       return '<div style="margin-top:18px;"><h3 style="font-size:16px; font-weight:700; color:var(--blue-900); margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid var(--line-strong);">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table>' + theadHtml + '<tbody>' + rows + '</tbody></table></div></div>';
     }).join('');
   } else {
-    var rows = entradas.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).map(fechaLimiteRowHtml).join('');
+    var rows = entradas.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).map(function(x){ return fechaLimiteRowHtml(x, porSemana); }).join('');
     tableHtml = '<div class="table-wrap" style="margin-top:14px;"><table>' + theadHtml + '<tbody>' + rows + '</tbody></table></div>';
   }
 
   return ''
     + '<div class="card"'+pastelBorde('fechaslimite')+'>'
     + '  <h2>' + escapeHtml(titulo) + '</h2>'
-    + '  <div class="card-sub">' + (vigente ? 'Fecha vigente actual (se usa para autorellenar los nuevos ' + escapeHtml(titulo) + '): <strong>' + escapeHtml(fmtDateTimeLocal(vigente)) + '</strong>' : 'Todavía no hay ninguna fecha límite registrada para esta categoría.') + '</div>'
-    + '  <div class="grid-3" style="align-items:end;">'
+    + '  <div class="card-sub">' + (porSemana
+        ? 'Cada semana de clase tiene su propia fecha de entrega: registra una fila por semana y el plan de esa semana tomará automáticamente ese plazo. Las filas sin semana asignada quedan como fecha general de respaldo, para las semanas que todavía no tengan la suya.'
+        : (vigente ? 'Fecha vigente actual (se usa para autorellenar los nuevos ' + escapeHtml(titulo) + '): <strong>' + escapeHtml(fmtDateTimeLocal(vigente)) + '</strong>' : 'Todavía no hay ninguna fecha límite registrada para esta categoría.')) + '</div>'
+    + '  <div class="' + (porSemana ? 'grid-4' : 'grid-3') + '" style="align-items:end;">'
+    + (porSemana ? '    <div class="field"><label>Semana del plan <span class="hint">(lunes)</span></label><input class="cell-input" type="date" id="fl-semana-' + categoria + '" /></div>' : '')
     + '    <div class="field"><label>Fecha y hora límite</label><input class="cell-input" type="datetime-local" id="fl-fecha-' + categoria + '" /></div>'
     + '    <div class="field"><label>Nota (opcional)</label><input class="cell-input" id="fl-nota-' + categoria + '" placeholder="p.ej. Trimestre 1" /></div>'
     + '    <button class="btn btn-primary" data-add-fechalimite="' + categoria + '" style="height:41px;">+ Agregar</button>'
@@ -11478,7 +11589,7 @@ function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
 }
 function renderAdminFechasLimite(){
   return ''
-    + '<p class="hint" style="margin-bottom:14px;">La fecha más reciente de cada categoría se usa para autorellenar el campo Fecha Límite de los PCA y Planes Semanales nuevos. El docente no puede editar ese campo, solo verlo.</p>'
+    + '<p class="hint" style="margin-bottom:14px;">En <b>PCA</b> se usa la fecha más reciente para autorellenar los planes nuevos. En <b>Planes Semanales</b> cada semana lleva su propia fecha: el plan toma la de la semana que le corresponde según su Fecha de Inicio, y se ajusta solo si el docente cambia esa fecha. El docente no puede editar ese campo, solo verlo.</p>'
     + categoriaFechaLimiteCardHtml('pca', 'PCA', false)
     + categoriaFechaLimiteCardHtml('semanal', 'Planes Semanales', true);
 }
@@ -11494,9 +11605,17 @@ function bindAdminFechasLimiteEvents(){
          FS_CACHE, así que empujar directo a ese arreglo hacía que save() comparara el caché
          contra sí mismo (ya con la fila nueva adentro) y creyera que "nada cambió" — la fila
          se veía en pantalla pero nunca se escribía a Firestore. */
-      var entradas = load(LS.FECHAS_LIMITE).concat([{id: uid('fl'), categoria: categoria, fechaHoraLimite: fecha, nota: (notaInput.value||'').trim(), createdAt: nowISO()}]);
+      var semanaInput = document.getElementById('fl-semana-' + categoria);
+      var semanaInicio = semanaInput ? (semanaInput.value||'') : '';
+      /* Si ya existe una fecha para esa misma semana, se reemplaza en vez de acumular filas
+         duplicadas que después compiten entre sí. */
+      var entradas = load(LS.FECHAS_LIMITE).filter(function(x){
+        return !(semanaInicio && x.categoria===categoria && x.semanaInicio===semanaInicio);
+      }).concat([{id: uid('fl'), categoria: categoria, semanaInicio: semanaInicio, fechaHoraLimite: fecha, nota: (notaInput.value||'').trim(), createdAt: nowISO()}]);
       save(LS.FECHAS_LIMITE, entradas);
-      toast('Fecha límite agregada.', 'success');
+      toast(semanaInicio
+        ? 'Fecha límite registrada para la semana del ' + fmtDate(semanaInicio) + '.'
+        : 'Fecha límite general agregada.', 'success');
       render();
     };
   });
@@ -11546,8 +11665,12 @@ function bindAdminFechasLimiteEvents(){
       /* .map() para construir un objeto y un arreglo nuevos, por la misma razón que en
          "+ Agregar": mutar la entrada y el arreglo que devuelve load() en el sitio hacía que
          save() los comparara contra sí mismos y nunca detectara el cambio. */
+      var semanaInput = document.getElementById('fl-edit-semana-' + id);
       var entradas = load(LS.FECHAS_LIMITE).map(function(x){
-        return x.id===id ? Object.assign({}, x, {fechaHoraLimite: fecha, nota: (notaInput.value||'').trim()}) : x;
+        if(x.id!==id) return x;
+        var cambios = {fechaHoraLimite: fecha, nota: (notaInput.value||'').trim()};
+        if(semanaInput) cambios.semanaInicio = semanaInput.value||'';
+        return Object.assign({}, x, cambios);
       });
       save(LS.FECHAS_LIMITE, entradas);
       state.editingFechaLimiteId = null;
