@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260911001322">
+<meta name="app-build" content="20260911004217">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -279,8 +279,18 @@
   .action-card p{font-size:12.5px; color:var(--muted); margin:0;}
 
   table{width:100%; border-collapse:collapse; font-size:13.5px;}
-  .table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius-sm);}
+  /* Encabezados flotantes: al bajar por una tabla larga, los nombres de las columnas se quedan
+     fijos arriba, para no perder de vista a qué corresponde cada una.
+     El max-height es necesario, no decorativo: .table-wrap ya era contenedor de desplazamiento
+     (overflow-x:auto obliga al navegador a tratar también el eje vertical), así que el encabezado
+     se ancla a ESE contenedor y no a la página. Sin una altura tope el contenedor nunca se
+     desplaza por dentro y el "sticky" no tendría ningún efecto al bajar. Las tablas cortas no
+     llegan a ese tope y se siguen viendo completas, sin barra propia. */
+  .table-wrap{overflow:auto; max-height:78vh; border:1px solid var(--line); border-radius:var(--radius-sm);}
   table thead th{background:var(--blue-50); color:var(--blue-900); text-align:left; padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid var(--line); white-space:nowrap;}
+  /* Con border-collapse el borde inferior del encabezado se pierde al desplazar, porque pertenece
+     a la celda de abajo: se repone como sombra interior, que sí viaja con la celda fija. */
+  .table-wrap thead th{position:sticky; top:0; z-index:3; box-shadow:inset 0 -1px 0 var(--line);}
   .unit-block table thead th{text-align:center;}
   table td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
   table tbody tr:last-child td{border-bottom:none;}
@@ -543,6 +553,10 @@
        hoja se imprimía en blanco (la causa real de las tablas angostas al imprimir). */
     .shell{display:block;}
     main.content{padding:0; max-width:100%;}
+    /* Al imprimir no hay desplazamiento: el tope de altura recortaría la tabla a una pantalla y el
+       resto de las filas no saldría en el PDF. Se anulan el tope y el encabezado fijo. */
+    .table-wrap{max-height:none !important; overflow:visible !important;}
+    .table-wrap thead th{position:static !important; box-shadow:none !important;}
     .pca-doc{box-shadow:none; border:none;}
     .card{box-shadow:none;}
     *{-webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact;}
@@ -8599,7 +8613,7 @@ function estadoPresentacionSemanal(s){
   /* Planes anteriores a esta función no tienen completadoEn; para ellos se sigue usando createdAt,
      que es exactamente lo que comparaba el reporte de Presentación antes, para que ningún plan ya
      evaluado cambie de veredicto de forma retroactiva. */
-  return calcularEstadoPresentacion(v.completo, s.completadoEn || s.createdAt || s.updatedAt, s.fechaHoraLimite || '');
+  return calcularEstadoPresentacion(v.completo, s.completadoEn || s.createdAt || s.updatedAt, limiteVigenteDelPlan(s));
 }
 /* Celda "Observación" de la lista de planes. Puede mostrar DOS distintivos a la vez: el estado de
    presentación (Completo / Atrasado / Incompleto) y, si además el método o el enlace de
@@ -8776,7 +8790,7 @@ function historialRegistroHtml(s, v, estado){
     + '<div><strong>' + escapeHtml(etiquetaEstado) + '</strong>' + (v.requiereCorreccion ? ' · <span style="color:var(--gold-600); font-weight:700;">Corregir</span>' : '') + '</div>'
     + '<div class="ed-meta" style="margin-top:4px;">Creado el: ' + escapeHtml(s.createdAt ? fmtDateTime(s.createdAt) : '—') + '</div>'
     + '<div class="ed-meta">Completado el: ' + escapeHtml(s.completadoEn ? fmtDateTime(s.completadoEn) : '—') + '</div>'
-    + '<div class="ed-meta">Fecha límite: ' + escapeHtml(s.fechaHoraLimite ? fmtDateTimeLocal(s.fechaHoraLimite) : '—') + '</div>'
+    + '<div class="ed-meta">Fecha límite: ' + escapeHtml(limiteVigenteDelPlan(s) ? fmtDateTimeLocal(limiteVigenteDelPlan(s)) : '—') + '</div>'
     + '<div class="ed-meta">Sesiones de edición registradas: ' + sesiones + '</div>'
     + '</div>';
   if(!eventos.length) return resumen + '<div class="hint">Este registro todavía no se ha guardado, así que no tiene línea de tiempo.</div>';
@@ -9161,10 +9175,17 @@ function renderSemanalForm(d){
   + '  <div class="pca-band band-title">' + te('Plan Semanal de Clase', isIngles) + (s.numero ? te(' — N.º ', isIngles) + s.numero : '') + '</div>'
   + '  <div style="text-align:center; padding:10px 20px; background:var(--surface-2); border-bottom:1px solid var(--line-strong);">'
   + '    <div class="hint" style="margin-bottom:4px;">' + te('Fecha y hora límite de entrega', isIngles) + (isAdminViewer ? '' : te(' (definida por el administrador)', isIngles)) + '</div>'
-  + (isAdminViewer
-      ? '    <input class="cell-input no-print" type="datetime-local" id="sfFechaHoraLimite" style="max-width:260px; margin:0 auto; text-align:center;" value="' + escapeHtml(s.fechaHoraLimite||'') + '" />'
-        + '<div class="only-print" style="display:none; font-weight:700;">' + escapeHtml(fmtDateTimeLocal(s.fechaHoraLimite)) + '</div>'
-      : '    <strong>' + escapeHtml(fmtDateTimeLocal(s.fechaHoraLimite)) + '</strong>')
+  /* Se muestra el plazo VIGENTE: si Fechas Límite tiene una fecha para la semana de este plan, esa
+     es la que manda sobre la que el plan guardó al crearse. */
+  + (function(){
+      var limiteVigente = limiteVigenteDelPlan(s);
+      var vieneDeConfig = !!fechaLimiteExactaDeSemana(s.fechaInicio);
+      return (isAdminViewer
+        ? '    <input class="cell-input no-print" type="datetime-local" id="sfFechaHoraLimite" style="max-width:260px; margin:0 auto; text-align:center;" value="' + escapeHtml(limiteVigente) + '"' + (vieneDeConfig ? ' readonly title="Definida en Fechas Límite para la semana de este plan"' : '') + ' />'
+          + '<div class="only-print" style="display:none; font-weight:700;">' + escapeHtml(fmtDateTimeLocal(limiteVigente)) + '</div>'
+          + (vieneDeConfig ? '<div class="hint no-print" style="margin-top:4px;">' + te('Tomada de Fechas Límite para la semana del ', isIngles) + escapeHtml(fmtDate(s.fechaInicio)) + '. ' + te('Para cambiarla, edítala allí.', isIngles) + '</div>' : '')
+        : '    <strong>' + escapeHtml(fmtDateTimeLocal(limiteVigente)) + '</strong>');
+    })()
   + '  </div>'
   + '  <div class="pca-band band-section">' + te('Datos Informativos', isIngles) + '</div>'
   + '  <div class="pca-section">'
@@ -11350,7 +11371,7 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
     return {
       numero:s.numero, fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, asignatura:s.asignatura, curso:s.curso,
-      createdAt:s.completadoEn || s.createdAt || s.updatedAt, fechaHoraLimite:s.fechaHoraLimite, estado:estado,
+      createdAt:s.completadoEn || s.createdAt || s.updatedAt, fechaHoraLimite:limiteVigenteDelPlan(s), estado:estado,
       requiereCorreccion: v.requiereCorreccion, motivos: motivos,
       tareas: evalTexto.indexOf('tarea')!==-1,
       talleres: evalTexto.indexOf('taller')!==-1,
@@ -11579,6 +11600,25 @@ function fechaLimiteVigente(categoria){
    Las entradas SIN semanaInicio son las registradas antes de esta función: siguen funcionando como
    fecha general de respaldo, para no invalidar lo ya cargado. */
 function semanaFinDeLimite(semanaInicio){ return semanaInicio ? addDays(semanaInicio, 6) : ''; }
+/* Fecha registrada EXCLUSIVAMENTE para esa semana (sin caer a la general). Es la que manda sobre
+   lo que el plan tenga guardado: cuando el administrador corrige el plazo de una semana en Fechas
+   Límite, los planes de esa semana pasan a medirse con la fecha corregida, sin tener que abrirlos
+   ni reescribirlos uno por uno. */
+function fechaLimiteExactaDeSemana(fechaInicioPlan){
+  if(!fechaInicioPlan) return '';
+  var deLaSemana = load(LS.FECHAS_LIMITE).filter(function(x){
+    return x.categoria==='semanal' && x.semanaInicio
+      && fechaInicioPlan >= x.semanaInicio && fechaInicioPlan <= semanaFinDeLimite(x.semanaInicio);
+  });
+  if(!deLaSemana.length) return '';
+  deLaSemana.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
+  return deLaSemana[deLaSemana.length-1].fechaHoraLimite || '';
+}
+/* Plazo con el que se juzga un Plan Semanal concreto: manda la fecha configurada para su semana y,
+   si esa semana todavía no tiene una, la que el plan lleva guardada desde que se creó. */
+function limiteVigenteDelPlan(s){
+  return fechaLimiteExactaDeSemana(s && s.fechaInicio) || (s && s.fechaHoraLimite) || '';
+}
 function fechaLimiteParaSemana(fechaInicioPlan){
   var entradas = load(LS.FECHAS_LIMITE).filter(function(x){ return x.categoria==='semanal'; });
   if(!entradas.length) return '';
