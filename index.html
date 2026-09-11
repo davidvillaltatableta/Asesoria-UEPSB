@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260909205901">
+<meta name="app-build" content="20260911001322">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -2931,8 +2931,8 @@ function renderManualAdmin(){
     + '<p>Los momentos que se revisan dependen del instrumento y de la asignatura, y se aplican automáticamente:</p>'
     + '<ul><li><b>Plan Semanal, la mayoría de asignaturas:</b> el método que elige el docente, <b>ACC</b> o <b>ERCA</b>.</li>'
     + '<li><b>Plan Semanal de Inglés:</b> <b>PPP</b> — Presentation, Practice, Production. No se elige.</li>'
-    + '<li><b>Taller Práctico:</b> sus propios tres momentos — <b>Exploración de conocimientos previos</b>, <b>Desarrollo de la actividad</b> y <b>Retroalimentación</b>. Tampoco se eligen.</li></ul>'
-    + '<p>Una excepción más: a <b>Educación Física</b> no se le exige el enlace de diapositivas.</p>'
+    + '<li><b>Taller Práctico:</b> sus propios tres momentos — <b>Exploración de conocimientos previos</b>, <b>Desarrollo de la actividad</b> y <b>Retroalimentación</b>. Tampoco se eligen, y no se exigen los tres en cada semana: basta con que <b>cada semana desarrolle uno</b> y que el <b>taller completo cubra los tres</b> al menos una vez.</li></ul>'
+    + '<p>El <b>enlace de diapositivas</b> se exige en los Planes Semanales, salvo en <b>Educación Física</b>. En el <b>Taller Práctico</b> no se exige en ninguna asignatura: ahí se trabaja sobre el producto, no con diapositivas.</p>'
     + '<p>Elige un rango de fechas (por ejemplo, un mes completo) y verás, por cada docente y agrupado por mes, cada Plan Semanal con la fecha en que quedó completo, su Fecha Límite y su Observación — además de si en esa semana el docente registró Tareas en casa, Talleres en clase, o evaluó con Lecciones (detectado automáticamente del texto que escribió en el campo Evaluación de cada día).</p>'
     + '<h3>Presentación de PCA — ¿qué significa "completo"?</h3>'
     + '<p>Un PCA se considera completo cuando, en cada una de las primeras unidades hasta ' + corteTextoManual + ', <b>todas las semanas que el docente creó</b> tienen sus 4 casilleros llenos: <b>Destreza</b>, <b>Temas y Subtemas</b>, <b>Nivel de Logro Intermedio</b> y <b>Nivel de Logro Avanzado</b>. No basta con que una sola semana tenga algo escrito — si cualquier semana de esas primeras unidades le falta aunque sea uno de esos 4 campos, o si alguna de esas unidades no tiene ninguna semana creada, el PCA entero queda como <b>Incompleto</b>, sin importar qué tan avanzado esté el resto. Este corte de unidades lo define el administrador (ver el botón "¿A partir de cuántas unidades llenas se considera \'a tiempo\'?" en la propia pantalla de Presentación de PCA) y puede ser distinto para Escuela y para Colegio.</p>'
@@ -8338,7 +8338,12 @@ var METODOS_CLASE = [
     momentos:[] },
   /* Momentos propios del Taller Práctico: no es una opción entre otras, es el único método de ese
      instrumento (por eso su formulario no ofrece selector). */
+  /* coberturaMomentos: un taller no repite los tres momentos cada semana — una semana de pura
+     construcción no explora ni retroalimenta. Por eso se exige que CADA semana desarrolle al menos
+     uno de los tres, y que el taller COMPLETO los cubra todos al menos una vez. */
   { key:'TP', label:'Exploración de conocimientos previos, Desarrollo de la actividad, Retroalimentación',
+    coberturaMomentos: true,
+    descripcion:'cada semana desarrolla al menos uno de estos momentos y el taller completo debe cubrir los tres: Exploración de conocimientos previos · Desarrollo de la actividad · Retroalimentación',
     momentos:[
       {label:'Exploración de conocimientos previos', alias:['exploracion de conocimientos previos','conocimientos previos','exploracion']},
       {label:'Desarrollo de la actividad',           alias:['desarrollo de la actividad','desarrollo']},
@@ -8471,6 +8476,22 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
     if(!richTextToPlain(b.recursos || '').trim()) faltan.push('Recursos');
     if(!richTextToPlain(b.evaluacion || '').trim()) faltan.push(b.etiquetaEvaluacion || 'Instrumentos de evaluación');
     if(faltan.length){ faltanCasilleros.push(b.etiqueta + ': falta ' + faltan.join(', ')); return; }
+    /* Método por cobertura (Taller Práctico): basta con que el bloque desarrolle UNO de los
+       momentos; los que desarrolle se anotan para el control del conjunto, más abajo. */
+    if(metodo.coberturaMomentos){
+      var anTP = analizarMomentosMetodo(b.actividades, metodoKey);
+      var desarrollados = anTP.metodo.momentos.map(function(m){ return m.label; }).filter(function(l){
+        return anTP.faltantes.indexOf(l) === -1 && anTP.sinDesarrollar.indexOf(l) === -1;
+      });
+      desarrollados.forEach(function(l){ aplicadosEnPlan[l] = true; });
+      if(!desarrollados.length){
+        problemasMetodo.push(anTP.sinDesarrollar.length
+          ? b.etiqueta + ': ' + anTP.sinDesarrollar.join(', ') + ' sin desarrollar'
+          : b.etiqueta + ': no desarrolla ninguno de los momentos del taller');
+      }
+      if(exigirEnlace && !tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
+      return;
+    }
     var res = analizarMetodoBloque(b.actividades, metodoKey);
     res.aplicados.forEach(function(k){ aplicadosEnPlan[k] = true; });
     if(!res.ok){
@@ -8494,6 +8515,13 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
   if(metodo.combina && bloques.length && !faltanCasilleros.length){
     metodo.combina.forEach(function(k){
       if(!aplicadosEnPlan[k]) problemasMetodo.push('Ningún día desarrolla completo el método ' + k);
+    });
+  }
+  /* Cierre del método por cobertura: los tres momentos deben aparecer al menos una vez en todo el
+     taller, aunque ninguna semana los tenga los tres juntos. */
+  if(metodo.coberturaMomentos && bloques.length && !faltanCasilleros.length){
+    metodo.momentos.forEach(function(m){
+      if(!aplicadosEnPlan[m.label]) problemasMetodo.push('Ninguna semana desarrolla ' + m.label);
     });
   }
   return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
@@ -8530,7 +8558,9 @@ function validarTallerPractico(t){
   /* El Taller Práctico no usa ACC/ERCA/PPP: tiene sus propios momentos, iguales para todas sus
      asignaturas técnicas, así que el método no depende de lo guardado ni de la asignatura. */
   var metodoKey = METODO_TALLER;
-  var exigirEnlace = !asignaturaExentaDiapositivas(t.asignatura);
+  /* El Taller Práctico no se dicta con diapositivas: se trabaja sobre el producto. No se exige
+     enlace en ninguna de sus asignaturas. */
+  var exigirEnlace = false;
   var bloques = [];
   (t.fases || []).forEach(function(fase, fi){
     (fase.semanas || []).forEach(function(sem, si){
@@ -8670,7 +8700,7 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
     + ' · ' + escapeHtml(te(etiquetaCadaBloque, isIngles))
     + (v.exigeEnlace
         ? te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles)
-        : te(' necesita Actividades, Recursos e Instrumentos de evaluación. Esta asignatura no requiere enlace de diapositivas.', isIngles))
+        : te(' necesita Actividades, Recursos e Instrumentos de evaluación. Aquí no se exige enlace de diapositivas.', isIngles))
     + '</div>'
     + '</div>';
 }
@@ -9457,6 +9487,45 @@ function blankTallerFase(t){
   var n = (t.fases||[]).length;
   return { id: uid('fase'), nombre: TALLER_FASE_NOMBRES_DEFECTO[n] || ('Fase ' + (n+1)), semanas: [blankTallerSemana()] };
 }
+/* ---------- Fecha límite del Taller Práctico ----------
+   El plazo para entregar el SIGUIENTE taller es el sábado posterior a la última semana que el
+   docente alcanzó a planificar en el taller anterior de esa misma asignatura y curso: mientras el
+   proyecto en curso sigue corriendo hay tiempo, y apenas termina, esa misma semana cierra la
+   entrega del que viene. Siempre a las 23:59.
+   El primer taller de una asignatura no tiene anterior del cual calcularlo: en ese caso se usa la
+   fecha general de Planes Semanales, como hasta ahora. */
+function sabadoDespuesDe(fechaISO){
+  if(!fechaISO) return '';
+  var d = new Date(fechaISO + 'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  var faltan = (6 - d.getDay() + 7) % 7;   /* 6 = sábado */
+  if(faltan === 0) faltan = 7;             /* si ya cae sábado, el de la semana siguiente */
+  return addDays(fechaISO, faltan);
+}
+function ultimaSemanaPlanificadaTaller(t){
+  var fin = '';
+  (t.fases||[]).forEach(function(fase){
+    (fase.semanas||[]).forEach(function(sem){
+      var f = sem.fechaFin || sem.fechaInicio || '';
+      if(f > fin) fin = f;
+    });
+  });
+  return fin;
+}
+function fechaLimiteTallerSiguiente(docenteId, asignatura, curso){
+  var previos = load(LS.TALLER).filter(function(t){
+    return t.docenteId===docenteId && t.asignatura===asignatura
+      && (!curso || normCursoCmp(t.curso)===normCursoCmp(curso));
+  });
+  var ultimoFin = '';
+  previos.forEach(function(t){
+    var f = ultimaSemanaPlanificadaTaller(t);
+    if(f > ultimoFin) ultimoFin = f;
+  });
+  if(!ultimoFin) return fechaLimiteVigente('semanal');
+  var sabado = sabadoDespuesDe(ultimoFin);
+  return sabado ? sabado + 'T23:59' : fechaLimiteVigente('semanal');
+}
 function blankTaller(d){
   var niveles = misNivelesTallerPara(d.id);
   var nivel = niveles[0] || 'Bachillerato';
@@ -9469,7 +9538,7 @@ function blankTaller(d){
   var t = {
     id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, asignatura),
     nivel: nivel, especialidad: especialidad, curso: curso, asignatura: asignatura,
-    pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite: fechaLimiteTallerSiguiente(d.id, asignatura, curso),
     productoFinal:'', metodo: METODO_TALLER, completadoEn:'', historial:[], fases:[],
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lic. José Gómez',
     createdAt: nowISO(), updatedAt: nowISO()
@@ -9666,7 +9735,7 @@ function renderTallerForm(d){
   + '    <div class="field"><label>Producto final del taller práctico <span class="hint">(especifique qué producto se elaborará)</span></label>' + richEditorHtml('productoFinal', t.id, t.productoFinal, 'Describe el producto final…') + '</div>'
   + '    <div class="field" style="margin-top:14px; max-width:560px;"><label>Momentos de la clase</label>'
   + '      <input class="cell-input" value="' + escapeHtml(metodoDeClase(METODO_TALLER).momentos.map(function(m){ return m.label; }).join(' · ')) + '" readonly />'
-  + '      <div class="hint" style="margin-top:4px;">Las Actividades Académicas de cada semana deben desarrollar estos tres momentos. Son los propios del Taller Práctico: no se eligen.</div>'
+  + '      <div class="hint" style="margin-top:4px;">Cada semana debe desarrollar <b>al menos uno</b> de estos momentos en sus Actividades Académicas, y el taller completo debe cubrir <b>los tres</b> al menos una vez. Son los propios del Taller Práctico: no se eligen.</div>'
   + '    </div>'
   + '  </div>'
   + '  <div class="pca-section no-print" id="tallerChecklist">' + tallerChecklistHtml(t) + '</div>'
@@ -9698,12 +9767,24 @@ function bindTallerFormEvents(){
   document.getElementById('tfNivel').addEventListener('change', function(e){ t.nivel=e.target.value; t.especialidad=''; t.curso=''; t.asignatura=''; recomputeTallerPca(t); renderTallerFormAgain(); });
   var espSel = document.getElementById('tfEspecialidad');
   if(espSel) espSel.addEventListener('change', function(e){ t.especialidad=e.target.value; t.asignatura=''; t.curso=''; recomputeTallerPca(t); renderTallerFormAgain(); });
+  /* Mientras el taller todavía no se ha guardado, su N.º y su fecha límite dependen de la
+     asignatura y el curso elegidos: al cambiarlos hay que recalcular ambos, o quedarían los de la
+     combinación de partida. */
+  function recalcularNumeroYLimiteTaller(){
+    if(load(LS.TALLER).some(function(x){ return x.id===t.id; })) return;
+    t.numero = siguienteNumeroTaller(t.docenteId, t.asignatura);
+    t.fechaHoraLimite = fechaLimiteTallerSiguiente(t.docenteId, t.asignatura, t.curso);
+  }
   document.getElementById('tfAsignatura').addEventListener('change', function(e){
     t.asignatura=e.target.value; t.curso='';
-    if(!load(LS.TALLER).some(function(x){ return x.id===t.id; })) t.numero = siguienteNumeroTaller(t.docenteId, t.asignatura);
+    recalcularNumeroYLimiteTaller();
     recomputeTallerPca(t); renderTallerFormAgain();
   });
-  document.getElementById('tfCurso').addEventListener('change', function(e){ t.curso=e.target.value; recomputeTallerPca(t); renderTallerFormAgain(); });
+  document.getElementById('tfCurso').addEventListener('change', function(e){
+    t.curso=e.target.value;
+    recalcularNumeroYLimiteTaller();
+    recomputeTallerPca(t); renderTallerFormAgain();
+  });
   document.getElementById('tfFechaInicio').addEventListener('change', function(e){ t.fechaInicio=e.target.value; marcarAutoguardadoPendiente('taller'); });
   document.getElementById('tfFechaFin').addEventListener('change', function(e){ t.fechaFin=e.target.value; marcarAutoguardadoPendiente('taller'); });
   document.getElementById('tfRevisado').addEventListener('input', function(e){ t.revisadoPor=e.target.value; });
@@ -9895,7 +9976,9 @@ function replanificarTaller(tallerId){
   var nuevo = {
     id: uid('tp'), docenteId: t.docenteId, numero: nuevoNumero,
     nivel: t.nivel, especialidad: t.especialidad||'', curso: t.curso, asignatura: t.asignatura,
-    pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteVigente('semanal'),
+    /* El replanificado es un taller nuevo, así que su plazo se calcula igual que el de uno recién
+       creado: el sábado posterior a la última semana ya planificada. */
+    pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteTallerSiguiente(t.docenteId, t.asignatura, t.curso),
     productoFinal: t.productoFinal||'',
     metodo: METODO_TALLER, completadoEn:'', historial:[],
     fases: (t.fases||[]).map(function(fase){
@@ -11778,7 +11861,9 @@ function renderPapeleraLista(){
    el .json por compatibilidad con respaldos viejos; el resto se agregó después con el nombre de
    su propia clave LS. */
 var RESPALDO_CAMPOS = {
-  DOCENTES:'DOCENTES', CARGA:'CARGA_HORARIA', PCA:'PCA', CONT:'CONTENIDOS_ANUALES', SEMANAL:'PLAN_SEMANAL',
+  /* TALLER faltaba en esta lista: los Talleres Prácticos no se exportaban ni se restauraban, así
+     que un respaldo aparentemente completo los perdía. */
+  DOCENTES:'DOCENTES', CARGA:'CARGA_HORARIA', PCA:'PCA', CONT:'CONTENIDOS_ANUALES', SEMANAL:'PLAN_SEMANAL', TALLER:'TALLER_PRACTICO',
   ESTUDIANTES:'ESTUDIANTES', ASISTENCIA:'ASISTENCIA', INCIDENTES:'INCIDENTES', OBSERVACIONES:'OBSERVACIONES',
   DECE:'DECE', FICHA_DETECCION:'FICHA_DETECCION', FECHAS_LIMITE:'FECHAS_LIMITE', CONFIG:'CONFIG'
 };
