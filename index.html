@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260911004217">
+<meta name="app-build" content="20260911171013">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -10778,6 +10778,7 @@ var ADMIN_TABS = [
   {key:'semanal', label:'Planes Semanales (Escuela)'},
   {key:'semanalcolegio', label:'Planes Semanales (Colegio)'},
   {key:'taller', label:'Taller Práctico'},
+  {key:'diapositivas', label:'Diapositivas'},
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
   {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
@@ -10794,6 +10795,7 @@ var ADMIN_TAB_PASTEL = {
   semanal: 'var(--green-100)',
   semanalcolegio: 'var(--orange-100)',
   taller: 'var(--teal-100)',
+  diapositivas: 'var(--lime-100)',
   consultas: 'var(--lime-100)',
   presentacion: 'var(--blue-100)',
   presentacioncolegio: 'var(--gold-100)',
@@ -10810,9 +10812,206 @@ function pastelBorde(tabKey, mapa){
 /* Submenús del panel de Administración: agrupa las 12 pestañas (antes en una sola fila larga) en
    4 categorías temáticas. Es solo una agrupación VISUAL — state.adminTab sigue siendo la misma
    pestaña de siempre, cada key de ADMIN_GROUPS.tabs debe existir en ADMIN_TABS. */
+/* ============================= ADMIN: DIAPOSITIVAS (solo admin) =============================
+   Reporte de los enlaces de diapositivas que cada docente registró en sus planes, agrupado por
+   Docente → Asignatura → Curso. La base son las asignaciones de la Carga Horaria (lo que cada
+   docente REALMENTE dicta), no los planes: así la tabla también muestra las combinaciones que
+   todavía no tienen ningún enlace, que es justo lo que el administrador necesita detectar. */
+/* Un enlace pegado desde Drive queda como <a href="…">texto</a>, así que su dirección no aparece
+   en el texto plano. Se saca al lado del texto del vínculo para que, además de verse, quede EN LA
+   POSICIÓN donde el docente lo puso — que es lo que permite saber a qué momento pertenece. */
+function htmlConEnlacesVisibles(html){
+  return String(html||'').replace(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, function(m, url, txt){
+    return txt + ' ' + url + ' ';
+  });
+}
+function limpiarUrl(u){ return String(u||'').trim().replace(/[.,;:)\]]+$/, ''); }
+/* Enlaces de un día/semana indicando en QUÉ MOMENTO del método está cada uno: se ubican los
+   momentos dentro de Actividades y cada enlace se atribuye al último momento que empieza antes de
+   él. Los de Recursos van aparte, porque ahí no hay estructura de momentos. */
+function enlacesPorMomento(actividadesHtml, recursosHtml, metodoKey){
+  var metodo = metodoDeClase(metodoKey);
+  var salida = [];
+  var plano = richTextToPlain(htmlConEnlacesVisibles(actividadesHtml));
+  var norm = normalizarTextoPlan(plano);
+  var marcas = [];
+  metodo.momentos.forEach(function(mom){
+    var pos = -1;
+    mom.alias.forEach(function(a){ var p = norm.indexOf(a); if(p !== -1 && (pos === -1 || p < pos)) pos = p; });
+    if(pos !== -1) marcas.push({ label: mom.label, pos: pos });
+  });
+  marcas.sort(function(a,b){ return a.pos - b.pos; });
+  var re = /https?:\/\/[^\s"'<>]+/gi, m;
+  while((m = re.exec(plano)) !== null){
+    var momento = '';
+    marcas.forEach(function(mk){ if(mk.pos <= m.index) momento = mk.label; });
+    salida.push({ url: limpiarUrl(m[0]), momento: momento || 'Sin momento identificado' });
+  }
+  var planoRec = richTextToPlain(htmlConEnlacesVisibles(recursosHtml));
+  var re2 = /https?:\/\/[^\s"'<>]+/gi, m2;
+  while((m2 = re2.exec(planoRec)) !== null){
+    salida.push({ url: limpiarUrl(m2[0]), momento: 'Recursos' });
+  }
+  var vistos = {}, res = [];
+  salida.forEach(function(e){
+    var clave = e.url + '|' + e.momento;
+    if(!/^https?:\/\//i.test(e.url) || vistos[clave]) return;
+    vistos[clave] = 1; res.push(e);
+  });
+  return res;
+}
+/* Los momentos en los que la diapositiva hace el trabajo de enseñar: Construcción en ACC y
+   Conceptualización en ERCA. Son los que el administrador quiere poder distinguir de un vistazo. */
+function esMomentoDeEnsenanza(momento){
+  return /construcci|conceptualiza/i.test(momento||'');
+}
+/* Enlaces de UNA combinación docente + asignatura + curso, con la referencia del plan y la semana
+   de donde salió cada uno, para que el administrador pueda ubicarlo. */
+function enlacesDeDiapositivas(docenteId, asignatura, curso){
+  var filas = [];
+  function acumular(lista, e){
+    if(!lista.some(function(x){ return x.url===e.url && x.momento===e.momento; })) lista.push(e);
+  }
+  load(LS.SEMANAL).filter(function(s){
+    return s.docenteId===docenteId && (s.asignatura||'')===asignatura && normCursoCmp(s.curso)===normCursoCmp(curso);
+  }).forEach(function(s){
+    var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
+    var enlaces = [];
+    (s.dias||[]).forEach(function(dia){
+      enlacesPorMomento(dia.actividades, dia.recursos, metodoKey).forEach(function(e){ acumular(enlaces, e); });
+    });
+    if(enlaces.length) filas.push({ origen:'Plan Semanal N.º ' + (s.numero||'—'), semana:s.fechaInicio||'', metodo:metodoDeClase(metodoKey).key, enlaces:enlaces });
+  });
+  load(LS.TALLER).filter(function(t){
+    return t.docenteId===docenteId && (t.asignatura||'')===asignatura && normCursoCmp(t.curso)===normCursoCmp(curso);
+  }).forEach(function(t){
+    var enlaces = [];
+    (t.fases||[]).forEach(function(fase){
+      (fase.semanas||[]).forEach(function(sem){
+        enlacesPorMomento(sem.actividades, sem.recursos, METODO_TALLER).forEach(function(e){ acumular(enlaces, e); });
+      });
+    });
+    if(enlaces.length) filas.push({ origen:'Taller Práctico N.º ' + (t.numero||'—'), semana:t.fechaInicio||'', metodo:'TP', enlaces:enlaces });
+  });
+  filas.sort(function(a,b){ return (a.semana||'').localeCompare(b.semana||''); });
+  return filas;
+}
+function renderAdminDiapositivas(){
+  var filtro = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false});
+  var pastel = ADMIN_TAB_PASTEL.diapositivas;
+  var docentesById = {};
+  allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+
+  /* Docente → Asignatura → Curso, a partir de la Carga Horaria. */
+  var arbol = {};
+  load(LS.CARGA).forEach(function(r){
+    if(!r.docenteId || !r.asignatura || !r.curso) return;
+    var doc = arbol[r.docenteId] || (arbol[r.docenteId] = {});
+    var asig = doc[r.asignatura] || (doc[r.asignatura] = {});
+    asig[normCursoCmp(r.curso)] = r.curso;
+  });
+
+  var totalCombinaciones = 0, conEnlace = 0, totalEnlaces = 0, enEnsenanza = 0;
+  var bloques = Object.keys(arbol).map(function(docenteId){
+    var doc = docentesById[docenteId];
+    var nombre = doc ? nombreFormal(doc) : '(docente eliminado)';
+    var asignaturas = Object.keys(arbol[docenteId]).sort(function(a,b){ return a.localeCompare(b); });
+    var filasHtml = [];
+    asignaturas.forEach(function(asig){
+      var cursos = Object.keys(arbol[docenteId][asig]).map(function(k){ return arbol[docenteId][asig][k]; })
+        .sort(function(a,b){ return a.localeCompare(b); });
+      cursos.forEach(function(curso, i){
+        totalCombinaciones++;
+        var fuentes = enlacesDeDiapositivas(docenteId, asig, curso);
+        var n = fuentes.reduce(function(acc, f){ return acc + f.enlaces.length; }, 0);
+        var nEnsenanza = fuentes.reduce(function(acc, f){
+          return acc + f.enlaces.filter(function(e){ return esMomentoDeEnsenanza(e.momento); }).length;
+        }, 0);
+        if(n){ conEnlace++; totalEnlaces += n; enEnsenanza += nEnsenanza; }
+        if(filtro.soloSinEnlace && n) return;
+        var buscable = (nombre + ' ' + asig + ' ' + curso).toLowerCase();
+        var enlacesHtml = n
+          ? fuentes.map(function(f){
+              return '<div style="margin-bottom:8px;"><div class="hint" style="font-weight:700;">' + escapeHtml(f.origen)
+                + (f.semana ? ' · ' + escapeHtml(fmtDate(f.semana)) : '')
+                + (f.metodo ? ' · ' + escapeHtml(f.metodo) : '') + '</div>'
+                + f.enlaces.map(function(e){
+                    var destacado = esMomentoDeEnsenanza(e.momento);
+                    return '<div style="margin-top:3px;">'
+                      + '<span class="pill ' + (destacado ? 'pill-gold' : 'pill-muted') + '" style="margin-right:6px;">' + escapeHtml(e.momento) + '</span>'
+                      + '<a href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue-600); word-break:break-all;">' + escapeHtml(e.url) + '</a>'
+                      + '</div>';
+                  }).join('') + '</div>';
+            }).join('')
+          : '<span class="pill pill-red">Sin enlace registrado</span>';
+        filasHtml.push('<tr data-buscable="' + escapeHtml(buscable) + '">'
+          + '<td>' + (i===0 ? '<strong>' + escapeHtml(asig) + '</strong>' : '<span class="hint">' + escapeHtml(asig) + '</span>') + '</td>'
+          + '<td>' + escapeHtml(curso) + '</td>'
+          + '<td class="tabular" style="text-align:center;">' + (n || '—') + '</td>'
+          + '<td>' + enlacesHtml + '</td>'
+          + '</tr>');
+      });
+    });
+    if(!filasHtml.length) return null;
+    return { nombre: nombre, html: '<div class="card" style="border-top:4px solid '+pastel+';">'
+      + '<h2>' + escapeHtml(nombre) + '</h2>'
+      + '<div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Curso</th><th style="width:70px; text-align:center;">Enlaces</th><th>Diapositivas</th></tr></thead><tbody>'
+      + filasHtml.join('') + '</tbody></table></div></div>' };
+  }).filter(Boolean);
+
+  bloques.sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+
+  var cabecera = ''
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>Diapositivas por docente</h2>'
+    + '  <div class="card-sub">Cada asignatura y curso que dicta cada docente, según su Carga Horaria, con <b>todos</b> los enlaces que registró en sus Planes Semanales y Talleres Prácticos. Junto a cada enlace se indica <b>en qué momento del método</b> lo colocó; los que están en <b>Construcción</b> o <b>Conceptualización</b> —donde la diapositiva hace el trabajo de enseñar— van resaltados en dorado. Las combinaciones sin ningún enlace aparecen marcadas en rojo.</div>'
+    + '  <div class="grid-3" style="align-items:end;">'
+    + '    <div class="field"><label>Buscar</label><input class="cell-input" id="dpBuscar" value="' + escapeHtml(filtro.texto||'') + '" placeholder="Docente, asignatura o curso…" /></div>'
+    + '    <div class="field"><label>&nbsp;</label><label class="checkbox-pill" style="height:41px;"><input type="checkbox" id="dpSoloSin" ' + (filtro.soloSinEnlace?'checked':'') + ' /><span>Mostrar solo los que no tienen enlace</span></label></div>'
+    + '    <div class="field"><label>&nbsp;</label><button class="btn btn-gold no-print" id="btnPrintDiapositivas" style="height:41px;">Imprimir / PDF (A4)</button></div>'
+    + '  </div>'
+    + '  <div class="grid-4" style="margin-top:12px;">'
+    + '    <div class="field"><label>Asignaturas · curso</label><input class="cell-input tabular" readonly value="' + totalCombinaciones + '" /></div>'
+    + '    <div class="field"><label>Con al menos un enlace</label><input class="cell-input tabular" readonly value="' + conEnlace + '" /></div>'
+    + '    <div class="field"><label>Enlaces registrados</label><input class="cell-input tabular" readonly value="' + totalEnlaces + '" /></div>'
+    + '    <div class="field"><label>En Construcción o Conceptualización</label><input class="cell-input tabular" readonly value="' + enEnsenanza + '" /></div>'
+    + '  </div>'
+    + '</div>';
+
+  if(!bloques.length){
+    return cabecera + '<div class="card"><div class="empty-state"><div class="ic">🔗</div>' + (filtro.soloSinEnlace ? 'Todas las asignaturas registradas tienen al menos un enlace de diapositivas.' : 'Todavía no hay Carga Horaria registrada.') + '</div></div>';
+  }
+  return cabecera + '<div id="dpResultados">' + bloques.map(function(b){ return b.html; }).join('') + '</div>';
+}
+function bindAdminDiapositivasEvents(){
+  var f = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false});
+  var buscar = document.getElementById('dpBuscar');
+  var soloSin = document.getElementById('dpSoloSin');
+  var printBtn = document.getElementById('btnPrintDiapositivas');
+  if(printBtn) printBtn.onclick = printAsPdf;
+  if(soloSin) soloSin.onchange = function(e){ f.soloSinEnlace = e.target.checked; render(); };
+  /* El buscador filtra en pantalla, sin volver a dibujar, para no perder el foco al teclear. */
+  function aplicar(){
+    var q = (f.texto||'').trim().toLowerCase();
+    document.querySelectorAll('#dpResultados .card').forEach(function(card){
+      var visibles = 0;
+      card.querySelectorAll('tbody tr').forEach(function(tr){
+        var ok = !q || (card.querySelector('h2').textContent + ' ' + tr.getAttribute('data-buscable')).toLowerCase().indexOf(q) !== -1;
+        tr.hidden = !ok;
+        if(ok) visibles++;
+      });
+      card.hidden = visibles === 0;
+    });
+  }
+  if(buscar){
+    buscar.addEventListener('input', function(e){ f.texto = e.target.value; aplicar(); });
+    aplicar();
+  }
+}
+
 var ADMIN_GROUPS = [
   {key:'personal', label:'Personal', tabs:['docentes','carga']},
-  {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller']},
+  {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller','diapositivas']},
   {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentacionpca','presentacionpcacolegio']},
   {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
 ];
@@ -10846,6 +11045,7 @@ function renderAdmin(d){
   else if(tab === 'semanal') body = renderAdminSemanal('escuela');
   else if(tab === 'semanalcolegio') body = renderAdminSemanal('colegio');
   else if(tab === 'taller') body = renderTallerListInner(d, true);
+  else if(tab === 'diapositivas') body = renderAdminDiapositivas();
   else if(tab === 'consultas') body = renderAdminConsultas();
   else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
@@ -10881,6 +11081,7 @@ function bindAdminEvents(){
   else if(tab === 'semanal') bindSemanalListSharedEvents();
   else if(tab === 'semanalcolegio') bindSemanalListSharedEvents();
   else if(tab === 'taller') bindTallerListEvents();
+  else if(tab === 'diapositivas') bindAdminDiapositivasEvents();
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
