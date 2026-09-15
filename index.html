@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260915173439">
+<meta name="app-build" content="20260915195157">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -5138,6 +5138,7 @@ function blankFichaDatos(){
     antecedentesPatologicos:'',
     relacionPadre:'', motivoPadre:'', relacionMadre:'', motivoMadre:'', relacionHermanos:'', motivoHermanos:'', relacionOtros:'', motivoOtros:'', obsRelaciones:'',
     habitosSueno:'', habitosAlimenticios:'', actividadesTiempoLibre:['','','',''], tiempoTareas:'',
+    firmaRepNombre:'', firmaRepCedula:'', consentimientoAutoriza:'',
     estado:'Nueva', origen:'', docenteId:''
   };
 }
@@ -5311,6 +5312,99 @@ function fdiCuerpoHtml(e, editable){
   + fdiCampo('Que tiempo dedica para realizar sus tareas en el dia', 'tiempoTareas', e.tiempoTareas, editable)
   + '  </div>';
 }
+
+/* ---- Firma del representante + CONSENTIMIENTO INFORMADO PARA LA ATENCIÓN PSICOSOCIAL ----
+   Mapea el formato institucional "3. Consentimiento informado" (Word). Se usa igual en el formulario
+   interno del DECE y en el enlace público del representante, a continuación del Registro
+   Acumulativo. Los datos del consentimiento NO se vuelven a escribir: salen de lo ya llenado arriba
+   y se actualizan en vivo mientras se escribe (ver actualizarConsentimientoFdi). */
+var FDI_CONSENTIMIENTO_OPCIONES = ['AUTORIZO', 'NO AUTORIZO'];
+var FDI_PROFESIONAL_DECE_DEFECTO = 'Psc. Mgrt. Paul Herrera';
+function fdiProfesionalDece(){
+  var psicologo = load(LS.DOCENTES).find(function(x){ return x.role==='dece'; });
+  return psicologo ? nombreFormal(psicologo) : FDI_PROFESIONAL_DECE_DEFECTO;
+}
+/* Valores del consentimiento derivados de la ficha. El nombre de quien firma se toma de la línea de
+   firma; si todavía está vacía, del representante legal registrado en Datos familiares. */
+function fdiDatosConsentimiento(e){
+  var fecha = (e.createdAt || nowISO()).slice(0,10);
+  return {
+    estudiante: (e.estudianteNombre||'').trim(),
+    curso: (e.curso||'').trim(),
+    jornada: (e.jornada||'').trim(),
+    telefono: [e.repLegalTelefono, e.madreTelContacto, e.padreTelContacto, e.celular, e.telefonoConvencional]
+      .map(function(t){ return (t||'').trim(); }).filter(Boolean)[0] || '',
+    fecha: fmtDate(fecha),
+    representante: ((e.firmaRepNombre||'').trim() || (e.repLegalNombre||'').trim()),
+    cedula: (e.firmaRepCedula||'').trim(),
+    autoriza: e.consentimientoAutoriza || ''
+  };
+}
+function fdiDatoConsHtml(clave, valor, ancho){
+  return '<span class="fdi-cons-dato" data-cons="' + clave + '" style="display:inline-block; min-width:' + (ancho||160) + 'px; border-bottom:1px solid var(--ink); padding:0 4px; font-weight:700;">' + escapeHtml(valor) + '</span>';
+}
+function fdiMarcaAutoriza(opcion, actual){
+  return '<span data-cons-marca="' + opcion + '" style="font-weight:700;">(' + (actual===opcion ? ' X ' : '&nbsp;&nbsp;&nbsp;') + ')</span>';
+}
+function fdiFirmaYConsentimientoHtml(e, editable, notaOrigen){
+  var c = fdiDatosConsentimiento(e);
+  var lineaFirma = '<div style="height:70px;"></div><div style="border-top:1.5px solid var(--ink); margin:0 auto; width:85%;"></div>';
+  return ''
+  /* Firma del Registro Acumulativo: espacio amplio para firmar, luego nombre y cédula. */
+  + '  <div class="pca-band band-section">Firma</div>'
+  + '  <div class="pca-section" style="page-break-inside:avoid;">'
+  + '    <div style="max-width:460px; margin:0 auto; text-align:center;">'
+  +        lineaFirma
+  + '      <div style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; margin-top:6px;">Firma del Representante Legal</div>'
+  + '      <div class="grid-2" style="margin-top:12px; text-align:left;">'
+  +          fdiCampo('Nombre del representante legal', 'firmaRepNombre', e.firmaRepNombre, editable)
+  +          fdiCampo('Cédula de identidad', 'firmaRepCedula', e.firmaRepCedula, editable)
+  + '      </div>'
+  + (notaOrigen ? '      <div class="hint" style="margin-top:6px;">' + notaOrigen + '</div>' : '')
+  + '    </div>'
+  + '  </div>'
+  /* Consentimiento informado: arranca en hoja nueva al imprimir. */
+  + '  <div class="fdi-consentimiento" style="page-break-before:always; break-before:page;">'
+  +      deceFormLogoHeaderHtml('CONSENTIMIENTO INFORMADO PARA LA ATENCIÓN PSICOSOCIAL')
+  + '    <div class="pca-section" style="padding-bottom:0; text-align:right;"><span style="font-weight:700;">N.º</span> <span style="display:inline-block; min-width:90px; border-bottom:1px dotted var(--ink);">&nbsp;</span></div>'
+  + '    <div class="pca-band band-section">Datos informativos generales</div>'
+  + '    <div class="pca-section" style="line-height:2.1;">'
+  + '      <div><b>Nombre del/la estudiante:</b> ' + fdiDatoConsHtml('estudiante', c.estudiante, 320) + '</div>'
+  + '      <div class="grid-2" style="gap:10px;"><div><b>Curso y paralelo:</b> ' + fdiDatoConsHtml('curso', c.curso, 150) + '</div><div><b>Jornada:</b> ' + fdiDatoConsHtml('jornada', c.jornada, 150) + '</div></div>'
+  + '      <div class="grid-2" style="gap:10px;"><div><b>Teléfono de representante:</b> ' + fdiDatoConsHtml('telefono', c.telefono, 130) + '</div><div><b>Fecha:</b> ' + fdiDatoConsHtml('fecha', c.fecha, 130) + '</div></div>'
+  + '    </div>'
+  + '    <div class="pca-band band-section">Consentimiento informado</div>'
+  + '    <div class="pca-section" style="text-align:justify; line-height:2.1;">'
+  + '      <p>Yo, ' + fdiDatoConsHtml('representante', c.representante, 260) + ' en calidad de representante de el/la estudiante ' + fdiDatoConsHtml('estudiante', c.estudiante, 260)
+  +        ', una vez que he conocido en qué consiste el proceso de atención psicosocial que ejecuta el personal del Departamento de Consejería Estudiantil de la institución educativa, '
+  +        '<b>AUTORIZO</b> ' + fdiMarcaAutoriza('AUTORIZO', c.autoriza) + ' <b>NO AUTORIZO</b> ' + fdiMarcaAutoriza('NO AUTORIZO', c.autoriza) + ', que mi representado/a cuente con este servicio.</p>'
+  + '      <p style="margin-top:10px;">A su vez, declaro haber sido informado/a que el servicio de atención y acompañamiento psicosocial no consiste en un proceso de evaluación y/o terapia psicológica y que en caso de requerirlo mi representado/a podría ser derivado a un centro de atención externa a la institución educativa que brinde dicho servicio.</p>'
+  + (editable ? '      <div class="no-print" style="margin-top:12px; line-height:1.4;">' + fdiRadios('Marque su decisión', 'consentimientoAutoriza', FDI_CONSENTIMIENTO_OPCIONES, e.consentimientoAutoriza, editable) + '</div>' : '')
+  + '    </div>'
+  + '    <div class="pca-band band-section">Firmas</div>'
+  + '    <div class="grid-2" style="padding:20px; gap:28px; page-break-inside:avoid; text-align:center;">'
+  + '      <div>' + lineaFirma + '<div style="font-size:12px; font-weight:700; margin-top:6px;">Profesional del Departamento de Consejería Estudiantil que brindará la atención</div><div style="margin-top:4px;">Nombre: <b>' + escapeHtml(fdiProfesionalDece()) + '</b></div></div>'
+  + '      <div>' + lineaFirma + '<div style="font-size:12px; font-weight:700; margin-top:6px;">Padre/madre/representante legal</div><div style="margin-top:4px;">Nombre: ' + fdiDatoConsHtml('representante', c.representante, 180) + '</div><div style="margin-top:4px;">C.I.: ' + fdiDatoConsHtml('cedula', c.cedula, 140) + '</div></div>'
+  + '    </div>'
+  + '    <div class="pca-section" style="padding-top:0;"><div class="hint" style="font-style:italic;">*La información registrada en este documento es confidencial y de uso exclusivo del Departamento de Consejería Estudiantil.</div></div>'
+  + '  </div>';
+}
+/* Refresca en pantalla los datos del consentimiento sin redibujar todo el formulario (así no se
+   pierde el foco del campo que se está escribiendo). */
+function actualizarConsentimientoFdi(root, e){
+  if(!root) return;
+  var c = fdiDatosConsentimiento(e);
+  root.querySelectorAll('[data-cons]').forEach(function(el){ el.textContent = c[el.getAttribute('data-cons')] || ''; });
+  root.querySelectorAll('[data-cons-marca]').forEach(function(el){
+    el.innerHTML = '(' + (c.autoriza === el.getAttribute('data-cons-marca') ? ' X ' : '&nbsp;&nbsp;&nbsp;') + ')';
+  });
+}
+function bindConsentimientoFdi(root, e){
+  if(!root) return;
+  ['input','change'].forEach(function(evt){
+    root.addEventListener(evt, function(){ actualizarConsentimientoFdi(root, e); });
+  });
+}
 function bindFdiCamposGenericos(root, estudiante, editable, onCambioCondicional){
   if(!editable) return;
   root.querySelectorAll('[data-fdi-field]').forEach(function(el){
@@ -5479,10 +5573,7 @@ function renderDeceForm(){
   + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
   + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">Esta informaci&oacute;n es confidencial. Solo la puede ver personal de Administraci&oacute;n, Directivos y DECE.</div></div>'
   + fdiCuerpoHtml(e, true)
-  + '  <div class="pca-band band-section">Firma</div>'
-  + '  <div class="signature-grid" style="grid-template-columns:1fr;">'
-  + '    <div class="signature-box"><div class="role">Firma del Representante Legal</div><div class="hint">' + (e.origen==='publico' ? 'Recibido desde el formulario p&uacute;blico el ' + fmtDateTime(e.createdAt) : 'Registrado directamente por el DECE') + '</div></div>'
-  + '  </div>'
+  + fdiFirmaYConsentimientoHtml(e, true, '<span class="no-print">' + (e.origen==='publico' ? 'Recibido desde el formulario p&uacute;blico el ' + fmtDateTime(e.createdAt) : 'Registrado directamente por el DECE') + '</span>')
   + avisoRespaldoImpresionHtml()
   + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null) + '</select></div></div>'
   + (existsInDb ? '  <div class="no-print" style="padding:0 20px 20px;"><button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar ficha</button></div>' : '')
@@ -5500,6 +5591,7 @@ function bindDeceFormEvents(){
   });
 
   bindFdiCamposGenericos(document.getElementById('dcDoc'), e, true, function(){ state.editingDece = e; render(); });
+  bindConsentimientoFdi(document.getElementById('dcDoc'), e);
 
 
   var fotoInput = document.getElementById('fdiFotoInput');
@@ -5743,11 +5835,13 @@ function renderFormularioPublico(){
     + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
     + '      <div class="pca-section" style="padding-bottom:0;"><div class="hint">Formulario para el representante legal del/la estudiante. Complete la mayor cantidad de datos posible; esta información llegará de forma confidencial al Departamento de Consejería Estudiantil (DECE).</div></div>'
     + fdiCuerpoHtml(e, true)
+    + fdiFirmaYConsentimientoHtml(e, true, '')
     + '      <div class="pca-section" style="text-align:right;"><button class="btn btn-primary" id="btnEnviarFormularioPublico">Enviar al DECE</button></div>'
     + '    </div>'
     + '  </div>'
     + '</div>';
   bindFdiCamposGenericos(document.getElementById('fpDoc'), e, true, function(){ render(); });
+  bindConsentimientoFdi(document.getElementById('fpDoc'), e);
   var fotoInput = document.getElementById('fdiFotoInput');
   if(fotoInput) fotoInput.onchange = function(ev){
     var file = ev.target.files[0];
@@ -5765,6 +5859,9 @@ function doEnviarFormularioPublico(){
   function fail(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
   errEl.classList.remove('show');
   if(!(e.estudianteNombre||'').trim()) return fail('Escribe los apellidos y nombres del/la estudiante.');
+  /* El consentimiento necesita saber quién lo otorga y qué decidió. */
+  if(!(e.firmaRepNombre||'').trim() || !(e.firmaRepCedula||'').trim()) return fail('Escribe el nombre y la cédula del representante legal, junto a la firma.');
+  if(!e.consentimientoAutoriza) return fail('En el Consentimiento Informado, marque si AUTORIZA o NO AUTORIZA la atención psicosocial.');
   var btn = document.getElementById('btnEnviarFormularioPublico');
   btn.disabled = true; btn.textContent = 'Enviando…';
   e.origen = 'publico';
