@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260915203539">
+<meta name="app-build" content="20260915205531">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -5606,6 +5606,7 @@ function renderDeceForm(){
   + fdiCuerpoHtml(e, true)
   + fdiFirmaYConsentimientoHtml(e, true, '<span class="no-print">' + (e.origen==='publico' ? 'Recibido desde el formulario p&uacute;blico el ' + fmtDateTime(e.createdAt) : 'Registrado directamente por el DECE') + '</span>')
   + avisoRespaldoImpresionHtml()
+  + '  <div class="pca-section no-print" style="text-align:center;"><button class="btn btn-gold" id="btnDecePrintFinal" title="Imprime o guarda en PDF (A4 vertical) el Registro Acumulativo y el Consentimiento Informado">🖨️ Imprimir ficha</button></div>'
   + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null) + '</select></div></div>'
   + (existsInDb ? '  <div class="no-print" style="padding:0 20px 20px;"><button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar ficha</button></div>' : '')
   + '</div>'
@@ -5615,6 +5616,7 @@ function bindDeceFormEvents(){
   var e = state.editingDece;
   document.getElementById('btnDeceVolver').onclick = function(){ state.editingDece=null; state.deceView='lista'; render(); };
   document.getElementById('btnDecePrint').onclick = printAsPdf;
+  document.getElementById('btnDecePrintFinal').onclick = printAsPdf;
   document.getElementById('btnDeceGuardar').onclick = doSaveFichaDatos;
   document.getElementById('dcEstado').onchange = function(ev){ e.estado = ev.target.value; };
   document.querySelectorAll('[data-dece-nav]').forEach(function(btn){
@@ -5867,7 +5869,7 @@ function renderFormularioPublico(){
     + '      <div class="pca-section" style="padding-bottom:0;"><div class="hint">Formulario para el representante legal del/la estudiante. Complete la mayor cantidad de datos posible; esta información llegará de forma confidencial al Departamento de Consejería Estudiantil (DECE).</div></div>'
     + fdiCuerpoHtml(e, true)
     + fdiFirmaYConsentimientoHtml(e, true, '')
-    + '      <div class="pca-section" style="text-align:right;"><button class="btn btn-primary" id="btnEnviarFormularioPublico">Enviar al DECE</button></div>'
+    + '      <div class="pca-section no-print" style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;"><button class="btn btn-gold" id="btnImprimirFormularioPublico" title="Imprime o guarda en PDF una copia de la ficha y del consentimiento">🖨️ Imprimir ficha</button><button class="btn btn-primary" id="btnEnviarFormularioPublico">Enviar al DECE</button></div>'
     + '    </div>'
     + '  </div>'
     + '</div>';
@@ -5883,6 +5885,7 @@ function renderFormularioPublico(){
   var btnQuitarFoto = document.getElementById('btnFdiFotoQuitar');
   if(btnQuitarFoto) btnQuitarFoto.onclick = function(){ e.fotoEstudiante = ''; render(); };
   document.getElementById('btnEnviarFormularioPublico').onclick = doEnviarFormularioPublico;
+  document.getElementById('btnImprimirFormularioPublico').onclick = printAsPdf;
 }
 function doEnviarFormularioPublico(){
   var e = state.formularioPublico;
