@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260915195157">
+<meta name="app-build" content="20260915203539">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -448,6 +448,12 @@
      ancho de la página sin importar cuántas firmas haya ni si la última fila queda incompleta. */
   .signature-grid-center{display:flex; flex-wrap:wrap; justify-content:center; gap:18px; padding:20px;}
   .signature-grid-center .signature-box{flex:0 1 240px; min-width:200px;}
+  .sem-plegable{display:flex; align-items:center; gap:6px; background:none; border:0; padding:2px 0; margin-bottom:6px; cursor:pointer; font-family:inherit; font-weight:700; text-align:left;}
+  .sem-plegable:hover{text-decoration:underline;}
+  .sem-plegable-mes{font-size:13.5px; color:var(--blue-700);}
+  .sem-plegable-semana{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .sem-plegable-flecha{display:inline-block; width:12px; transition:transform .15s;}
+  .sem-plegable-cuenta{text-transform:none; letter-spacing:0; font-weight:600;}
   .signature-box{border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px; background:var(--surface-2);}
   .signature-box .role{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; margin-bottom:8px;}
 
@@ -5138,7 +5144,7 @@ function blankFichaDatos(){
     antecedentesPatologicos:'',
     relacionPadre:'', motivoPadre:'', relacionMadre:'', motivoMadre:'', relacionHermanos:'', motivoHermanos:'', relacionOtros:'', motivoOtros:'', obsRelaciones:'',
     habitosSueno:'', habitosAlimenticios:'', actividadesTiempoLibre:['','','',''], tiempoTareas:'',
-    firmaRepNombre:'', firmaRepCedula:'', consentimientoAutoriza:'',
+    firmaRepNombre:'', firmaRepNombreManual:false, firmaRepCedula:'', consentimientoAutoriza:'',
     estado:'Nueva', origen:'', docenteId:''
   };
 }
@@ -5340,13 +5346,32 @@ function fdiDatosConsentimiento(e){
     autoriza: e.consentimientoAutoriza || ''
   };
 }
-function fdiDatoConsHtml(clave, valor, ancho){
-  return '<span class="fdi-cons-dato" data-cons="' + clave + '" style="display:inline-block; min-width:' + (ancho||160) + 'px; border-bottom:1px solid var(--ink); padding:0 4px; font-weight:700;">' + escapeHtml(valor) + '</span>';
+function fdiDatoConsHtml(clave, valor, ancho, sinNegrita){
+  return '<span class="fdi-cons-dato" data-cons="' + clave + '" style="display:inline-block; min-width:' + (ancho||160) + 'px; border-bottom:1px solid var(--ink); padding:0 4px; font-weight:' + (sinNegrita ? 400 : 700) + ';">' + escapeHtml(valor) + '</span>';
+}
+/* Nombre sugerido para la línea de firma: lo que ya se escribió arriba en Datos familiares — el
+   representante legal si lo hay; si no, la madre y luego el padre. */
+function fdiNombreRepresentanteSugerido(e){
+  return [e.repLegalNombre, e.madreNombre, e.padreNombre].map(function(t){ return (t||'').trim(); }).filter(Boolean)[0] || '';
+}
+/* Mientras nadie escriba a mano en "Nombre del representante legal" de la firma, ese campo copia
+   automáticamente el nombre de arriba. Si se edita a mano, se respeta; si se borra, vuelve a copiarse. */
+function sincronizarNombreFirmaFdi(root, e){
+  var sugerido = fdiNombreRepresentanteSugerido(e);
+  /* Fichas guardadas antes de existir el autorrelleno: si ya traen un nombre distinto, era manual. */
+  if(e.firmaRepNombreManual === undefined && (e.firmaRepNombre||'').trim() && e.firmaRepNombre !== sugerido) e.firmaRepNombreManual = true;
+  if(e.firmaRepNombreManual) return;
+  e.firmaRepNombreManual = false;
+  if(e.firmaRepNombre === sugerido) return;
+  e.firmaRepNombre = sugerido;
+  var input = root && root.querySelector('[data-fdi-field="firmaRepNombre"]');
+  if(input && document.activeElement !== input) input.value = sugerido;
 }
 function fdiMarcaAutoriza(opcion, actual){
   return '<span data-cons-marca="' + opcion + '" style="font-weight:700;">(' + (actual===opcion ? ' X ' : '&nbsp;&nbsp;&nbsp;') + ')</span>';
 }
 function fdiFirmaYConsentimientoHtml(e, editable, notaOrigen){
+  if(editable) sincronizarNombreFirmaFdi(null, e);
   var c = fdiDatosConsentimiento(e);
   var lineaFirma = '<div style="height:70px;"></div><div style="border-top:1.5px solid var(--ink); margin:0 auto; width:85%;"></div>';
   return ''
@@ -5369,9 +5394,9 @@ function fdiFirmaYConsentimientoHtml(e, editable, notaOrigen){
   + '    <div class="pca-section" style="padding-bottom:0; text-align:right;"><span style="font-weight:700;">N.º</span> <span style="display:inline-block; min-width:90px; border-bottom:1px dotted var(--ink);">&nbsp;</span></div>'
   + '    <div class="pca-band band-section">Datos informativos generales</div>'
   + '    <div class="pca-section" style="line-height:2.1;">'
-  + '      <div><b>Nombre del/la estudiante:</b> ' + fdiDatoConsHtml('estudiante', c.estudiante, 320) + '</div>'
-  + '      <div class="grid-2" style="gap:10px;"><div><b>Curso y paralelo:</b> ' + fdiDatoConsHtml('curso', c.curso, 150) + '</div><div><b>Jornada:</b> ' + fdiDatoConsHtml('jornada', c.jornada, 150) + '</div></div>'
-  + '      <div class="grid-2" style="gap:10px;"><div><b>Teléfono de representante:</b> ' + fdiDatoConsHtml('telefono', c.telefono, 130) + '</div><div><b>Fecha:</b> ' + fdiDatoConsHtml('fecha', c.fecha, 130) + '</div></div>'
+  + '      <div><b>Nombre del/la estudiante:</b> ' + fdiDatoConsHtml('estudiante', c.estudiante, 320, true) + '</div>'
+  + '      <div class="grid-2" style="gap:10px;"><div><b>Curso y paralelo:</b> ' + fdiDatoConsHtml('curso', c.curso, 150, true) + '</div><div><b>Jornada:</b> ' + fdiDatoConsHtml('jornada', c.jornada, 150, true) + '</div></div>'
+  + '      <div class="grid-2" style="gap:10px;"><div><b>Teléfono de representante:</b> ' + fdiDatoConsHtml('telefono', c.telefono, 130, true) + '</div><div><b>Fecha:</b> ' + fdiDatoConsHtml('fecha', c.fecha, 130, true) + '</div></div>'
   + '    </div>'
   + '    <div class="pca-band band-section">Consentimiento informado</div>'
   + '    <div class="pca-section" style="text-align:justify; line-height:2.1;">'
@@ -5402,7 +5427,13 @@ function actualizarConsentimientoFdi(root, e){
 function bindConsentimientoFdi(root, e){
   if(!root) return;
   ['input','change'].forEach(function(evt){
-    root.addEventListener(evt, function(){ actualizarConsentimientoFdi(root, e); });
+    root.addEventListener(evt, function(ev){
+      var campo = ev.target && ev.target.getAttribute && ev.target.getAttribute('data-fdi-field');
+      /* Escribir a mano en el nombre de la firma lo "suelta" del autorrelleno; vaciarlo lo reengancha. */
+      if(campo === 'firmaRepNombre') e.firmaRepNombreManual = !!(e.firmaRepNombre||'').trim();
+      sincronizarNombreFirmaFdi(root, e);
+      actualizarConsentimientoFdi(root, e);
+    });
   });
 }
 function bindFdiCamposGenericos(root, estudiante, editable, onCambioCondicional){
@@ -5559,7 +5590,7 @@ function deceNavegar(dir){
    General y Ficha de Detección): a propósito SIN "no-print", para que también salga en la hoja
    impresa como recordatorio de que esa es la copia que debe firmarse. */
 function avisoRespaldoImpresionHtml(){
-  return '<div class="lock-banner">📌 Esta información guardada en el sistema es solo un <b>respaldo digital</b>. Para garantizar que la información oficial sea la impresa, <b>imprime y firma este documento</b> (la firma puede ser física o electrónica).</div>';
+  return '<div class="lock-banner">📌 Esta información guardada en el sistema es solo un <b>respaldo digital</b>. Para garantizar que la información oficial sea la impresa, <b>por favor, imprime y firma este documento</b> (la firma puede ser física o electrónica).</div>';
 }
 function renderDeceForm(){
   var e = state.editingDece || blankFichaDatos();
@@ -8362,34 +8393,51 @@ function renderSemanalListInner(d, scopeAll, banda){
     trimestres[info.trimestre][info.mesKey].planes.push(s);
   });
 
+  /* Cada mes y cada semana se pueden ocultar/mostrar. El estado se guarda en memoria por clave
+     (vista + trimestre + mes [+ semana]) para que sobreviva a los redibujados en tiempo real. Las
+     claves de las semanas se registran aunque su mes esté oculto, para que "Ocultar todo" también
+     las cierre. */
+  var prefijoClave = (scopeAll ? ('todos-' + (banda||'')) : 'mios') + '|';
+  var clavesVisibles = [];
+  function bloquePlegable(clave, nivel, titulo, cuenta, cuerpo){
+    clavesVisibles.push(clave);
+    var cerrado = semanalBloqueColapsado(clave);
+    return '<div style="margin-top:' + (nivel==='mes' ? 14 : 10) + 'px;">'
+      + '<button type="button" class="sem-plegable sem-plegable-' + nivel + '" data-sem-toggle="' + escapeHtml(clave) + '" aria-expanded="' + (!cerrado) + '" title="' + (cerrado ? 'Mostrar' : 'Ocultar') + ' estos planes">'
+      + '<span class="sem-plegable-flecha" style="transform:rotate(' + (cerrado ? 0 : 90) + 'deg);">▸</span>'
+      + '<span>' + escapeHtml(titulo) + '</span>'
+      + '<span class="hint sem-plegable-cuenta">(' + cuenta + (cuenta===1 ? ' plan' : ' planes') + ')</span>'
+      + '</button>'
+      + (cerrado ? '' : cuerpo)
+      + '</div>';
+  }
+
   var gruposHtml = [1,2,3].map(function(t){
     var meses = trimestres[t];
     var mesKeys = Object.keys(meses).sort();
     if(!mesKeys.length) return '';
     var mesesHtml = mesKeys.map(function(mk){
       var grupo = meses[mk];
-      var cuerpoMes;
-      if(scopeAll && banda){
-        // Dentro del mes, agrupa por docente (criterio de orden según la banda).
-        cuerpoMes = semanalDocenteGruposHtml(grupo.planes, docentesById, banda, theadHtml, rowHtml);
-      } else {
-        // Comportamiento original: agrupa dentro del mes por semana (mismo rango de fechas), para
-        // que los planes de una misma semana (p.ej. varias asignaturas) queden juntos.
-        var semanas = {}; var semanaOrder = [];
-        grupo.planes.forEach(function(s){
-          var key = (s.fechaInicio||'') + '|' + (s.fechaFin||'');
-          if(!semanas[key]){ semanas[key] = {fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, planes:[]}; semanaOrder.push(key); }
-          semanas[key].planes.push(s);
-        });
-        semanaOrder.sort();
-        cuerpoMes = semanaOrder.map(function(sk){
-          var g = semanas[sk];
-          var filas = g.planes.slice().sort(function(a,b){ return (a.asignatura||'').localeCompare(b.asignatura||''); }).map(rowHtml).join('');
-          var label = g.fechaInicio ? ('Semana del ' + fmtDate(g.fechaInicio) + ' al ' + fmtDate(g.fechaFin)) : 'Sin fecha de inicio';
-          return '<div style="margin-top:10px;"><h4 style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; font-weight:700;">' + escapeHtml(label) + '</h4><div class="table-wrap"><table>' + theadHtml + '<tbody>' + filas + '</tbody></table></div></div>';
-        }).join('');
-      }
-      return '<div style="margin-top:14px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(grupo.label) + '</h3>' + cuerpoMes + '</div>';
+      var claveMes = prefijoClave + t + '|' + mk;
+      /* Dentro del mes, los planes se agrupan por semana (lunes a viernes). En Administración, dentro
+         de cada semana se mantiene la agrupación por docente según la banda; en la lista propia del
+         docente se ordenan por asignatura. */
+      var semanas = {}; var semanaOrder = [];
+      grupo.planes.forEach(function(s){
+        var lunes = s.fechaInicio ? lunesDeSemanaIso(s.fechaInicio) : '';
+        if(!semanas[lunes]){ semanas[lunes] = {lunes:lunes, planes:[]}; semanaOrder.push(lunes); }
+        semanas[lunes].planes.push(s);
+      });
+      semanaOrder.sort();
+      var cuerpoMes = semanaOrder.map(function(sk){
+        var g = semanas[sk];
+        var cuerpoSemana = (scopeAll && banda)
+          ? semanalDocenteGruposHtml(g.planes, docentesById, banda, theadHtml, rowHtml)
+          : '<div class="table-wrap"><table>' + theadHtml + '<tbody>' + g.planes.slice().sort(function(a,b){ return (a.asignatura||'').localeCompare(b.asignatura||''); }).map(rowHtml).join('') + '</tbody></table></div>';
+        var label = g.lunes ? ('Semana del ' + fmtDate(g.lunes) + ' al ' + fmtDate(addDays(g.lunes, 4))) : 'Sin fecha de inicio';
+        return bloquePlegable(claveMes + '|' + sk, 'semana', label, g.planes.length, cuerpoSemana);
+      }).join('');
+      return bloquePlegable(claveMes, 'mes', grupo.label, grupo.planes.length, cuerpoMes);
     }).join('');
     return '<div class="card"'+cardEstiloAdmin+'><h2>' + TRIMESTRE_LABELS[t] + '</h2>' + mesesHtml + '</div>';
   }).join('');
@@ -8398,7 +8446,42 @@ function renderSemanalListInner(d, scopeAll, banda){
     ? '<div class="card"'+cardEstiloAdmin+'><h2>Sin fecha asignada</h2><div class="table-wrap"><table>' + theadHtml + '<tbody>' + sinFecha.map(rowHtml).join('') + '</tbody></table></div></div>'
     : '';
 
-  return head + filtroHtml + gruposHtml + sinFechaHtml;
+  state.semanalClavesVisibles = clavesVisibles;
+  var plegarTodoHtml = clavesVisibles.length
+    ? '<div class="pca-toolbar no-print" style="margin-bottom:10px;"><span class="hint">Pulsa el nombre de un mes o de una semana para ocultar o mostrar sus planes.</span><div class="spacer"></div>'
+      + '<button class="btn btn-ghost btn-sm" id="btnSemMostrarTodo">▾ Mostrar todo</button>'
+      + '<button class="btn btn-ghost btn-sm" id="btnSemOcultarTodo">▸ Ocultar todo</button></div>'
+    : '';
+
+  return head + filtroHtml + plegarTodoHtml + gruposHtml + sinFechaHtml;
+}
+function semanalBloqueColapsado(clave){ return !!(state.semanalColapsados && state.semanalColapsados[clave]); }
+/* Lunes de la semana a la que pertenece una fecha AAAA-MM-DD (los planes van de lunes a viernes). */
+function lunesDeSemanaIso(fechaISO){
+  var dia = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
+  if(isNaN(dia)) return fechaISO;
+  return addDays(fechaISO, -((dia + 6) % 7));
+}
+function bindSemanalPlegablesEvents(){
+  state.semanalColapsados = state.semanalColapsados || {};
+  document.querySelectorAll('[data-sem-toggle]').forEach(function(btn){
+    btn.onclick = function(){
+      var clave = btn.getAttribute('data-sem-toggle');
+      if(state.semanalColapsados[clave]) delete state.semanalColapsados[clave];
+      else state.semanalColapsados[clave] = true;
+      render();
+    };
+  });
+  var mostrar = document.getElementById('btnSemMostrarTodo');
+  if(mostrar) mostrar.onclick = function(){
+    (state.semanalClavesVisibles||[]).forEach(function(k){ delete state.semanalColapsados[k]; });
+    render();
+  };
+  var ocultar = document.getElementById('btnSemOcultarTodo');
+  if(ocultar) ocultar.onclick = function(){
+    (state.semanalClavesVisibles||[]).forEach(function(k){ state.semanalColapsados[k] = true; });
+    render();
+  };
 }
 function bindSemanalListEvents(){
   if(state.semanalImportando){ bindSemanalImportarPickerEvents(currentDocente()); return; }
@@ -8497,6 +8580,7 @@ function importarSemanal(semId){
 }
 function bindSemanalListSharedEvents(){
   if(document.getElementById('asfDocente')) bindAdminFiltroBarraEvents(state.adminSemanalFilter, 'asf');
+  bindSemanalPlegablesEvents();
   document.querySelectorAll('[data-historial-semanal]').forEach(function(btn){
     btn.onclick = function(){ abrirHistorialSemanal(btn.getAttribute('data-historial-semanal')); };
   });
