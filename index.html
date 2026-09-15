@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260911171013">
+<meta name="app-build" content="20260915173439">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1912,8 +1912,49 @@ function isStaffRole(role){ return STAFF_ROLES.indexOf(role) !== -1; }
    reportes e incidentes de disciplina). La única restricción que queda dentro del módulo es la
    subpestaña "Personal" de Disciplina, ver renderInspDisciplina. */
 function puedeVerInspeccion(role){ return true; }
-var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', inspector:'Inspector General', docente:'Docente' };
+/* Jefe de Área de Inglés: sigue siendo un docente (sus propios planes, asistencia, etc.) y además
+   gestiona el área: ve y EDITA los PCA y Planes Semanales de Inglés de TODOS los docentes (sección
+   "Área de Inglés") y crea/edita Observaciones de Clase, pero únicamente de asignaturas de Inglés.
+   No elimina, duplica ni bloquea planes ajenos. No es "staff": no entra a Administración, DECE ni
+   Base de Datos. El alcance se decide por ASIGNATURA, no por docente — de una docente que dicta
+   Química e Inglés solo ve y edita lo de Inglés. */
+var ROL_JEFE_INGLES = 'jefeingles';
+function esJefeIngles(role){ return role === ROL_JEFE_INGLES; }
+function asignaturaRealDe(r){ return r ? ((r.asignatura==='Otra…' ? r.asignaturaManual : r.asignatura) || '') : ''; }
+function registroDeAreaIngles(r){ return asignaturaEsIngles(asignaturaRealDe(r)); }
+/* Docentes que dictan al menos una asignatura de Inglés según su Carga Horaria. */
+function docentesDeIngles(){
+  var ids = {};
+  load(LS.CARGA).forEach(function(c){ if(c.docenteId && asignaturaEsIngles(c.asignatura)) ids[c.docenteId] = 1; });
+  return allDocentes().filter(function(x){ return ids[x.id]; })
+    .sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+}
+/* El Jefe de Área editando el plan de Inglés de OTRO docente (no el suyo propio). */
+function jefeEditandoPlanAjeno(r){
+  var d = currentDocente();
+  return !!(r && d && esJefeIngles(d.role) && r.docenteId && r.docenteId !== d.id && registroDeAreaIngles(r));
+}
+/* PCA o Plan Semanal abierto por alguien que no es su dueño, ni personal administrativo, ni el Jefe
+   de Área sobre un plan de Inglés — el formulario se muestra sin poder editarse y sin autoguardado,
+   porque Firestore rechazaría igual cualquier escritura sobre ese plan. */
+function planAjenoSoloLectura(r){
+  var d = currentDocente();
+  if(jefeEditandoPlanAjeno(r)) return false;
+  return !!(r && r.docenteId && d && r.docenteId !== d.id && !isStaffRole(d.role));
+}
+/* El bloqueo de PCA que pone un administrador frena al DOCENTE dueño; el personal administrativo y
+   el Jefe de Área (sobre planes de Inglés ajenos) pueden seguir corrigiéndolo. */
+function bloqueoPcaAplica(p){
+  return !!p.locked && !isStaffRole(currentDocente().role) && !jefeEditandoPlanAjeno(p);
+}
+function avisoJefeEditandoHtml(r, tipo){
+  if(!jefeEditandoPlanAjeno(r)) return '';
+  var dueno = allDocentes().find(function(x){ return x.id===r.docenteId; });
+  return '<div class="lock-banner no-print" style="background:var(--teal-100); border-color:var(--blue-600); color:var(--blue-700);">✏️ Estás editando ' + tipo + ' de <strong>' + escapeHtml(dueno ? nombreFormal(dueno) : 'otro docente') + '</strong> como Jefe de Área de Inglés. Los cambios se guardan en su plan y quedan registrados con tu nombre en el historial.</div>';
+}
+var ROLE_LABELS = { admin:'Administrador', directivo:'Directivo', dece:'DECE', inspector:'Inspector General', jefeingles:'Jefe de Área de Inglés', docente:'Docente' };
 function rolePillHtml(role){
+  if(role==='jefeingles') return '<span class="pill pill-blue" style="background:var(--teal-100); color:var(--blue-700);">Jefe de Área de Inglés</span>';
   if(role==='admin') return '<span class="pill pill-gold">Administrador</span>';
   if(role==='directivo') return '<span class="pill pill-blue">Directivo</span>';
   if(role==='dece') return '<span class="pill pill-green">DECE</span>';
@@ -1932,6 +1973,7 @@ var NAV_GROUPS = [
     {key:'pcalist', label:'Planes Curriculares (PCA)', ic:'📘'},
     {key:'semanallist', label:'Planes Semanales', ic:'📅'},
     {key:'tallerlist', label:'Taller Práctico', ic:'🛠️', showIf:function(d, isAdmin){ return isAdmin || tieneAsignaturaTallerPractico(d.id); }},
+    {key:'areaingles', label:'Área de Inglés', ic:'🌐', showIf:function(d){ return esJefeIngles(d.role); }},
     {key:'observacion', label:'Observación de Clases', ic:'📋'},
     {key:'misasistencia', label:'Asistencia', ic:'✅'}
   ]},
@@ -1967,6 +2009,7 @@ function renderShell(){
   var esInspector = d.role === 'inspector';
   if(!isAdmin && (state.subview === 'admin' || state.subview === 'adminEditDocente' || state.subview === 'adminNewDocente' || state.subview === 'manualadmin' || state.subview === 'dece' || state.subview === 'dececonsultas')) state.subview = 'dashboard';
   if(!puedeVerInspeccion(d.role) && state.subview === 'inspeccion') state.subview = 'dashboard';
+  if(!esJefeIngles(d.role) && state.subview === 'areaingles') state.subview = 'dashboard';
   /* El editor del Cronograma Escolar es exclusivo de 'admin' y 'directivo': para el resto (incluido
      DECE, Inspector y cualquier docente) el calendario de la página de inicio es de solo lectura. */
   if(!puedeEditarCronograma(d.role) && state.subview === 'cronograma') state.subview = 'dashboard';
@@ -1981,9 +2024,10 @@ function renderShell(){
         || ((state.subview==='pcaform'||state.subview==='semanalform'||state.subview==='tallerform') && grupoKey==='curricular' && (state.pcaReturnTo==='admin'||state.semanalReturnTo==='admin'||state.tallerReturnTo==='admin'))
         || ((state.subview==='adminEditDocente'||state.subview==='adminNewDocente') && grupoKey==='personal');
     }
+    if(item.key==='areaingles' && ((state.subview==='pcaform' && state.pcaReturnTo==='areaingles') || (state.subview==='semanalform' && state.semanalReturnTo==='areaingles'))) return true;
     return (state.subview === item.key
-      || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin')
-      || (state.subview==='semanalform' && item.key==='semanallist' && state.semanalReturnTo!=='admin')
+      || (state.subview==='pcaform' && item.key==='pcalist' && state.pcaReturnTo!=='admin' && state.pcaReturnTo!=='areaingles')
+      || (state.subview==='semanalform' && item.key==='semanallist' && state.semanalReturnTo!=='admin' && state.semanalReturnTo!=='areaingles')
       || (state.subview==='tallerform' && item.key==='tallerlist' && state.tallerReturnTo!=='admin'));
   }
   var navHtml = NAV_GROUPS.filter(function(group){
@@ -2023,6 +2067,7 @@ function renderShell(){
   else if(state.subview === 'semanalform') sub = renderSemanalForm(d);
   else if(state.subview === 'tallerlist') sub = renderTallerList(d);
   else if(state.subview === 'tallerform') sub = renderTallerForm(d);
+  else if(state.subview === 'areaingles') sub = renderAreaIngles(d);
   else if(state.subview === 'perfil') sub = renderPerfil(d);
   else if(state.subview === 'database') sub = renderDatabase(d);
   else if(state.subview === 'admin') sub = renderAdmin(d);
@@ -2083,6 +2128,7 @@ function bindSubviewEvents(){
   else if(state.subview === 'semanalform') bindSemanalFormEvents();
   else if(state.subview === 'tallerlist') bindTallerListEvents();
   else if(state.subview === 'tallerform') bindTallerFormEvents();
+  else if(state.subview === 'areaingles') bindAreaInglesEvents();
   else if(state.subview === 'perfil') bindPerfilEvents();
   else if(state.subview === 'database') bindDatabaseEvents();
   else if(state.subview === 'admin') bindAdminEvents();
@@ -4839,30 +4885,51 @@ function bindObservacionEvents(){
   if(state.obsView === 'form') bindObsFormEvents();
   else bindObsListaEvents();
 }
+/* Quién puede crear/editar una observación: el personal administrativo, cualquiera; el Jefe de Área
+   de Inglés, solo las de asignaturas de Inglés y nunca una en la que él mismo es el observado. */
+var AREA_OBS_INGLES = 'ingles';
+function puedeEditarObservacion(o, d){
+  d = d || currentDocente();
+  if(isStaffRole(d.role)) return true;
+  if(!esJefeIngles(d.role) || !o) return false;
+  if(o.docenteId && o.docenteId === d.id) return false;
+  var esNueva = !load(LS.OBSERVACIONES).some(function(x){ return x.id===o.id; });
+  return esNueva || o.area === AREA_OBS_INGLES;
+}
 function renderObsLista(d){
   var isAdmin = isStaffRole(d.role);
+  var esJefe = esJefeIngles(d.role);
   var docentes = allDocentes();
   var todos = load(LS.OBSERVACIONES).slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
   var rows = todos.map(function(o){
     var doc = docentes.find(function(x){ return x.id===o.docenteId; });
+    var editable = puedeEditarObservacion(o, d);
+    var borrable = isAdmin || (esJefe && editable && o.registradoPor === d.id);
     return '<tr>'
       + '<td class="tabular">' + fmtDate(o.fecha) + '</td>'
       + '<td>' + (doc ? escapeHtml(nombreFormal(doc)) : '—') + '</td>'
       + '<td>' + escapeHtml(o.asignatura||'—') + '</td>'
       + '<td>' + escapeHtml(o.observador||'—') + '</td>'
-      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-obs-open="'+o.id+'">' + (isAdmin?'Abrir':'Ver') + '</button>' + (isAdmin ? ' <button class="btn btn-danger btn-sm" data-obs-delete="'+o.id+'">Eliminar</button>' : '') + '</td>'
+      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-obs-open="'+o.id+'">' + (editable?'Abrir':'Ver') + '</button>' + (borrable ? ' <button class="btn btn-danger btn-sm" data-obs-delete="'+o.id+'">Eliminar</button>' : '') + '</td>'
       + '</tr>';
-  }).join('') || '<tr><td colspan="5" class="hint">Todavía no hay observaciones registradas' + (isAdmin?'.':' para ti.') + '</td></tr>';
+  }).join('') || '<tr><td colspan="5" class="hint">Todavía no hay observaciones registradas' + ((isAdmin||esJefe)?'.':' para ti.') + '</td></tr>';
+  var titulo = isAdmin ? 'Observaciones de clase' : (esJefe ? 'Observaciones de clase · Área de Inglés' : 'Mi historial de observaciones');
+  var subtitulo = isAdmin ? '' : (esJefe ? ' Puedes registrar y revisar observaciones de las clases de Inglés; aquí también ves las que te hayan hecho a ti.' : ' Solo el Asesor Pedagógico puede registrar o modificar observaciones.');
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Observación de Clases</div><h1>' + (isAdmin ? 'Observaciones de clase' : 'Mi historial de observaciones') + '</h1><p>Formato para observar y valorar clases inspiradoras — enfoque DUA.' + (isAdmin ? '' : ' Solo el Asesor Pedagógico puede registrar o modificar observaciones.') + '</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Observación de Clases</div><h1>' + titulo + '</h1><p>Formato para observar y valorar clases inspiradoras — enfoque DUA.' + subtitulo + '</p></div></div>'
   + '<div class="card">'
-  + (isAdmin ? '  <button class="btn btn-primary btn-sm" id="btnObsNueva" style="margin-bottom:14px;">+ Nueva observación</button>' : '')
+  + ((isAdmin || esJefe) ? '  <button class="btn btn-primary btn-sm" id="btnObsNueva" style="margin-bottom:14px;">+ Nueva observación</button>' : '')
   + '  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Docente</th><th>Asignatura</th><th>Observador</th><th>Acciones</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
   + '</div>';
 }
 function bindObsListaEvents(){
   var nuevaBtn = document.getElementById('btnObsNueva');
-  if(nuevaBtn) nuevaBtn.onclick = function(){ state.editingObservacion = blankObservacion(); state.obsView='form'; render(); };
+  if(nuevaBtn) nuevaBtn.onclick = function(){
+    var nueva = blankObservacion();
+    var d = currentDocente();
+    if(esJefeIngles(d.role)){ nueva.observador = nombreFormal(d); nueva.observadorCargo = ROLE_LABELS.jefeingles; nueva.area = AREA_OBS_INGLES; }
+    state.editingObservacion = nueva; state.obsView='form'; render();
+  };
   document.querySelectorAll('[data-obs-open]').forEach(function(btn){
     btn.onclick = function(){
       var target = load(LS.OBSERVACIONES).find(function(x){ return x.id===btn.getAttribute('data-obs-open'); });
@@ -4899,13 +4966,20 @@ function obsGrupoRowsHtml(grupo, o){
 }
 function renderObsForm(d){
   var o = state.editingObservacion;
-  var editable = isStaffRole(d.role);
+  var editable = puedeEditarObservacion(o, d);
+  var soloIngles = esJefeIngles(d.role);
   var docentesDelNivel = o.nivel ? docentesPorNivel(o.nivel) : [];
+  if(soloIngles){
+    docentesDelNivel = docentesDelNivel.filter(function(x){
+      return x.id !== d.id && asignaturasDeDocentePorNivel(x.id, o.nivel).some(asignaturaEsIngles);
+    });
+  }
   var docOpts = '<option value="">' + (o.nivel ? 'Elija un elemento…' : 'Elija primero el nivel educativo') + '</option>' + docentesDelNivel.map(function(x){
     return '<option value="'+x.id+'" '+(o.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
   }).join('');
   var docenteSel = allDocentes().find(function(x){ return x.id===o.docenteId; });
   var asigOpts = (o.docenteId && o.nivel) ? asignaturasDeDocentePorNivel(o.docenteId, o.nivel) : [];
+  if(soloIngles) asigOpts = asigOpts.filter(asignaturaEsIngles);
   var asigOptsHtml = '<option value="">' + (asigOpts.length ? 'Elija un elemento…' : 'Elija primero el docente') + '</option>' + asigOpts.map(function(a){
     return '<option value="'+escapeHtml(a)+'" '+(o.asignatura===a?'selected':'')+'>'+escapeHtml(a)+'</option>';
   }).join('');
@@ -4922,7 +4996,7 @@ function renderObsForm(d){
 
   return ''
   + '<div class="pca-toolbar no-print"><button class="btn btn-ghost btn-sm" id="btnObsVolver">← Volver</button><div class="spacer"></div><button class="btn btn-gold btn-sm" id="btnObsPrint">Imprimir / PDF (A4)</button>' + (editable ? '<button class="btn btn-primary btn-sm" id="btnObsGuardar">Guardar</button>' : '') + '</div>'
-  + (editable ? '<div class="form-error no-print" id="obsError" style="margin-bottom:10px;"></div>' : '<div class="lock-banner no-print">🔒 Solo el Asesor Pedagógico puede editar esta observación. Esta es tu copia de solo lectura.</div>')
+  + (editable ? '<div class="form-error no-print" id="obsError" style="margin-bottom:10px;"></div>' : '<div class="lock-banner no-print">🔒 ' + (soloIngles && o.docenteId !== d.id ? 'Esta observación no es de una clase de Inglés: solo el Asesor Pedagógico puede editarla.' : 'Solo quien registró la observación puede editarla. Esta es tu copia de solo lectura.') + '</div>')
   + '<div class="pca-doc obs-doc" id="obsDoc">'
   + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
   + '  <div style="background:var(--blue-700); color:#fff; text-align:center; padding:6px; font-weight:700; font-size:12px; letter-spacing:.05em;">CLASE CON ENFOQUE DUA</div>'
@@ -4942,14 +5016,14 @@ function renderObsForm(d){
   + '  </div>'
   + perspectivasHtml
   + '  <div class="signature-grid">'
-  + '    <div class="signature-box"><div class="role">Observador</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(o.observador||'—') + '</div><div class="hint">Asesor Pedagógico</div></div>'
+  + '    <div class="signature-box"><div class="role">Observador</div><div style="font-weight:700; font-size:14px;">' + escapeHtml(o.observador||'—') + '</div><div class="hint">' + escapeHtml(o.observadorCargo || 'Asesor Pedagógico') + '</div></div>'
   + '    <div class="signature-box"><div class="role">Docente de la Asignatura</div><div style="font-weight:700; font-size:14px;">' + (docenteSel ? escapeHtml(nombreFormal(docenteSel)) : '—') + '</div></div>'
   + '  </div>'
   + '</div>';
 }
 function bindObsFormEvents(){
   var o = state.editingObservacion;
-  var editable = isStaffRole(currentDocente().role);
+  var editable = puedeEditarObservacion(o);
 
   document.getElementById('btnObsVolver').onclick = function(){ state.editingObservacion=null; state.obsView='lista'; render(); };
   document.getElementById('btnObsPrint').onclick = printAsPdf;
@@ -4993,7 +5067,11 @@ function doSaveObservacion(){
   errEl.classList.remove('show');
   if(!o.fecha || !o.docenteId){ return fail('Elige la fecha y el docente observado.'); }
   var d = currentDocente();
+  if(esJefeIngles(d.role) && !asignaturaEsIngles(o.asignatura)){ return fail('Elige la asignatura de Inglés que observaste.'); }
   var toSave = Object.assign({}, o, {
+    /* Marca de área: permite que el Jefe de Área de Inglés lea/edite en Firestore solo las
+       observaciones de Inglés (la regla de seguridad y la consulta se basan en este campo). */
+    area: asignaturaEsIngles(o.asignatura) ? AREA_OBS_INGLES : '',
     comentarios_p1: sanitizeRte(o.comentarios_p1), comentarios_p2: sanitizeRte(o.comentarios_p2),
     registradoPor: o.registradoPor || d.id, createdAt: o.createdAt || nowISO(), updatedAt: nowISO()
   });
@@ -6369,11 +6447,13 @@ function renderCargaBodyOnly(){
    El campo Curso solo tiene efecto sobre los PCA/Planes de niveles 7.º EGB a 3.º BGU — para
    Iniciales a 6.º EGB, ver nivelEsBandaA(), el filtro de curso se ignora. */
 function adminFiltroBarraHtml(filtro, idPrefix, tituloCurso){
-  var docentes = allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
+  var soloIngles = esJefeIngles(currentDocente().role);
+  var docentes = soloIngles ? docentesDeIngles() : allDocentes().sort(function(a,b){ return (a.nombres||'').localeCompare(b.nombres||''); });
   var docOpts = '<option value="">Todos los docentes</option>' + docentes.map(function(x){
     return '<option value="'+x.id+'" '+(filtro.docenteId===x.id?'selected':'')+'>'+escapeHtml(nombreFormal(x))+'</option>';
   }).join('');
   var asigOpts = filtro.docenteId ? misAsignaturas(filtro.docenteId) : [];
+  if(soloIngles) asigOpts = asigOpts.filter(asignaturaEsIngles);
   var cursoOpts = filtro.docenteId ? misCursosTodos(filtro.docenteId) : [];
   return ''
     + '<div class="card" style="margin-bottom:16px;">'
@@ -6427,6 +6507,7 @@ function groupByDocente(records, docentesById){
 function pcasAdminFiltrados(){
   var filtro = state.adminPcaFilter;
   var pcas = load(LS.PCA).slice();
+  if(esJefeIngles(currentDocente().role)) pcas = pcas.filter(registroDeAreaIngles);
   if(filtro.docenteId) pcas = pcas.filter(function(p){ return p.docenteId===filtro.docenteId; });
   if(filtro.fechaInicio) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) >= filtro.fechaInicio; });
   if(filtro.fechaFin) pcas = pcas.filter(function(p){ return (p.updatedAt||'').slice(0,10) <= filtro.fechaFin; });
@@ -6443,6 +6524,9 @@ function renderPcaListInner(d, scopeAll){
   pcas.sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+  /* El Jefe de Área usa esta misma lista (sección "Área de Inglés"): puede abrir y editar, pero sin
+     duplicar, eliminar ni bloquear. */
+  var soloRevision = scopeAll && esJefeIngles(d.role);
 
   var filtroHtml = '';
   if(scopeAll){
@@ -6465,8 +6549,8 @@ function renderPcaListInner(d, scopeAll){
     + '    <button class="btn btn-gold btn-sm" data-export-pca-pdf="' + p.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-word="' + p.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-pca-excel="' + p.id + '">Excel</button> '
-    + '    <button class="btn btn-ghost btn-sm" data-duplicate-pca="' + p.id + '" title="Crea una copia editable de este PCA">Duplicar</button> '
-    + '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>'
+    + (soloRevision ? '' : '    <button class="btn btn-ghost btn-sm" data-duplicate-pca="' + p.id + '" title="Crea una copia editable de este PCA">Duplicar</button> '
+    + '    <button class="btn btn-danger btn-sm" data-delete-pca="' + p.id + '">Eliminar</button>')
     + '  </td>'
     + '</tr>';
   }
@@ -6483,7 +6567,7 @@ function renderPcaListInner(d, scopeAll){
   }
 
   var bulkLockHtml = '';
-  if(scopeAll && pcas.length){
+  if(scopeAll && pcas.length && !soloRevision){
     var filtroActivo = state.adminPcaFilter.docenteId;
     var alcance = filtroActivo ? 'del docente filtrado' : 'de TODOS los docentes';
     bulkLockHtml = '<div class="pca-toolbar no-print" style="margin-bottom:10px;">'
@@ -6494,7 +6578,7 @@ function renderPcaListInner(d, scopeAll){
       + '</div>';
   }
   var head = scopeAll
-    ? '<p class="hint" style="margin-bottom:14px;">Agrupados por docente. Puedes ver, editar y eliminar cualquier plan.</p>'
+    ? '<p class="hint" style="margin-bottom:14px;">' + (soloRevision ? 'PCA de Inglés agrupados por docente. Puedes revisarlos, editarlos y exportarlos (no eliminarlos ni duplicarlos).' : 'Agrupados por docente. Puedes ver, editar y eliminar cualquier plan.') + '</p>'
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarPca">Importar de otro docente</button><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div></div>';
 
   var cardEstiloAdmin = scopeAll ? pastelBorde('pca') : '';
@@ -6640,7 +6724,7 @@ function bindPcaListSharedEvents(){
   var btnDesbloq = document.getElementById('btnDesbloquearTodosPca');
   if(btnDesbloq) btnDesbloq.onclick = function(){ bloquearMasivoPca(false); };
   document.querySelectorAll('[data-edit-pca]').forEach(function(btn){
-    btn.onclick = function(){ openPcaForm(btn.getAttribute('data-edit-pca'), state.subview==='admin' ? 'admin' : 'pcalist'); };
+    btn.onclick = function(){ openPcaForm(btn.getAttribute('data-edit-pca'), vistaDeRetornoLista('pcalist')); };
   });
   document.querySelectorAll('[data-delete-pca]').forEach(function(btn){
     btn.onclick = function(){
@@ -6661,7 +6745,48 @@ function bindPcaListSharedEvents(){
   });
   document.querySelectorAll('[data-export-pca-word]').forEach(function(btn){ btn.onclick = function(){ exportPcaWord(btn.getAttribute('data-export-pca-word')); }; });
   document.querySelectorAll('[data-export-pca-excel]').forEach(function(btn){ btn.onclick = function(){ exportPcaExcel(btn.getAttribute('data-export-pca-excel')); }; });
-  document.querySelectorAll('[data-export-pca-pdf]').forEach(function(btn){ btn.onclick = function(){ openPcaForm(btn.getAttribute('data-export-pca-pdf'), state.subview==='admin' ? 'admin' : 'pcalist'); setTimeout(printAsPdf, 250); }; });
+  document.querySelectorAll('[data-export-pca-pdf]').forEach(function(btn){ btn.onclick = function(){ openPcaForm(btn.getAttribute('data-export-pca-pdf'), vistaDeRetornoLista('pcalist')); setTimeout(printAsPdf, 250); }; });
+}
+/* A qué pantalla vuelve "← Volver a la lista" según desde dónde se abrió el plan: el panel de
+   Administración, la sección "Área de Inglés" del Jefe de Área, o la lista propia del docente. */
+function vistaDeRetornoLista(propia){
+  if(state.subview==='admin') return 'admin';
+  if(state.subview==='areaingles') return 'areaingles';
+  return propia;
+}
+
+/* ============================= ÁREA DE INGLÉS (Jefe de Área) =============================
+   Reusa las mismas listas del panel de Administración (renderPcaListInner/renderSemanalListInner
+   con scopeAll), que ya se acotan solas a asignaturas de Inglés y ocultan las acciones de gestión
+   cuando quien mira es el Jefe de Área. Las Observaciones de Clase siguen en su propio menú. */
+var AREA_INGLES_TABS = [
+  {key:'pca', label:'Planes (PCA)'},
+  {key:'semanal', label:'Planes Semanales (Escuela)'},
+  {key:'semanalcolegio', label:'Planes Semanales (Colegio)'}
+];
+function renderAreaIngles(d){
+  if(!esJefeIngles(d.role)) return renderDashboard(d);
+  var tab = state.areaInglesTab || 'pca';
+  var tabsHtml = AREA_INGLES_TABS.map(function(t){
+    var pastel = ADMIN_TAB_PASTEL[t.key];
+    return '<button class="' + (tab===t.key?'active':'') + '" style="background:' + pastel + '; border-radius:8px 8px 0 0;" data-areaingles-tab="' + t.key + '">' + t.label + '</button>';
+  }).join('');
+  var body;
+  if(tab === 'semanal') body = renderSemanalListInner(d, true, 'escuela');
+  else if(tab === 'semanalcolegio') body = renderSemanalListInner(d, true, 'colegio');
+  else body = renderPcaListInner(d, true);
+  var nDocentes = docentesDeIngles().length;
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Jefe de Área de Inglés</div><h1>Área de Inglés</h1><p>Revisión y edición de los planes de Inglés de los ' + nDocentes + ' docente(s) del área. Para registrar observaciones de clase usa el menú <b>Observación de Clases</b>.</p></div></div>'
+  + '<div class="admin-groups"><div class="admin-group open has-active"><div class="admin-tabs">' + tabsHtml + '</div></div></div>'
+  + body;
+}
+function bindAreaInglesEvents(){
+  document.querySelectorAll('[data-areaingles-tab]').forEach(function(btn){
+    btn.onclick = function(){ state.areaInglesTab = btn.getAttribute('data-areaingles-tab'); render(); };
+  });
+  if((state.areaInglesTab || 'pca') === 'pca') bindPcaListSharedEvents();
+  else bindSemanalListSharedEvents();
 }
 
 /* ============================= PCA FORM ============================= */
@@ -6907,7 +7032,8 @@ var PCA_EN = {
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
   var isIngles = pcaEsIngles(p);
-  var locked = !!p.locked && !isStaffRole(currentDocente().role);
+  var ajeno = planAjenoSoloLectura(p);
+  var locked = ajeno || bloqueoPcaAplica(p);
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToList">' + te('← Volver a la lista', isIngles) + '</button>'
@@ -6918,7 +7044,9 @@ function pcaToolbarHtml(p){
     + '  <button class="btn btn-ghost btn-sm" id="btnExportExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
     + (locked ? '' : '  <button class="btn btn-primary btn-sm" id="btnSavePca">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
-    + (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : '')
+    + (ajeno ? '<div class="lock-banner no-print">👁️ Vista de revisión (solo lectura): este PCA pertenece a otro docente. Solo él puede modificarlo.</div>'
+      : (locked ? '<div class="lock-banner no-print">🔒 ' + te('Este plan fue bloqueado por un administrador y no puede editarse. Si necesitas una corrección, contacta a un administrador.', isIngles) + '</div>' : ''))
+    + avisoJefeEditandoHtml(p, 'el PCA')
     + (p.importadoDeDocente ? '<div class="lock-banner no-print">📥 Importado del plan de <strong>' + escapeHtml(p.importadoDeDocente) + '</strong> el ' + escapeHtml(fmtDateTime(p.importadoFecha)) + '. Revisa y ajusta el contenido antes de guardar.</div>' : '');
 }
 
@@ -7061,7 +7189,12 @@ function unitBlockHtml(u, ui, pcaId, isIngles, esTecnico){
   var rows = u.filas.map(function(f, fi){
     return '<tr data-wkrow="'+f.id+'">'
     + '<td class="tabular" style="text-align:center;">' + (fi+1) + '</td>'
-    + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" /></td>'
+    + '<td><input type="date" class="cell-input" data-wf="fechaInicio" value="'+escapeHtml(f.fechaInicio)+'" /><div class="hint" style="text-align:center; margin:2px 0;">' + te('al', isIngles) + '</div><input type="date" class="cell-input" data-wf="fechaFin" value="'+escapeHtml(f.fechaFin)+'" />'
+    /* Aviso de fecha de fin anterior a la de inicio: casi siempre es un mes mal escrito, y deja la
+       semana sin poder enlazarse con ningún Plan Semanal. */
+    + (finSemanaPcaValido(f) || !f.fechaInicio || !f.fechaFin ? ''
+        : '<div class="hint no-print" style="margin-top:4px; color:var(--red-600); font-weight:700;">⚠ ' + te('La fecha de fin es anterior a la de inicio. Corrígela: revisa el mes.', isIngles) + '</div>')
+    + '</td>'
     + '<td style="min-width:640px;">'
     +   '<div class="grid-3" style="align-items:start;">'
     +     '<div><div class="hint" style="font-weight:700; margin-bottom:2px; text-align:center;">' + te('Básico', isIngles) + '</div>' + richEditorHtml('destreza', f.id, f.destreza, te('Nivel de logro básico', isIngles)) + '</div>'
@@ -7094,7 +7227,7 @@ function unitBlockHtml(u, ui, pcaId, isIngles, esTecnico){
 
 function bindPcaFormEvents(){
   var p = state.editingPca;
-  var locked = !!p.locked && !isStaffRole(currentDocente().role);
+  var locked = planAjenoSoloLectura(p) || bloqueoPcaAplica(p);
 
   document.getElementById('btnBackToList').onclick = function(){ go(state.pcaReturnTo || 'pcalist'); };
   var saveBtn = document.getElementById('btnSavePca');
@@ -8062,6 +8195,8 @@ function renderSemanalListInner(d, scopeAll, banda){
   var isAdmin = isStaffRole(currentDocente().role);
   var all = load(LS.SEMANAL);
   var planes = scopeAll ? all : all.filter(function(s){ return s.docenteId===d.id; });
+  var soloRevision = scopeAll && esJefeIngles(currentDocente().role);
+  if(soloRevision) planes = planes.filter(registroDeAreaIngles);
   var docentesById = {};
   if(scopeAll) allDocentes().forEach(function(x){ docentesById[x.id] = x; });
 
@@ -8098,11 +8233,11 @@ function renderSemanalListInner(d, scopeAll, banda){
     + '  <td style="white-space:nowrap;">'
     + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">Ver / Editar</button> '
     + '    <button class="btn btn-ghost btn-sm" data-historial-semanal="' + s.id + '" title="Ver el historial de edición de este plan">🕓</button> '
-    + '    <button class="btn btn-ghost btn-sm" data-replanificar-semanal="' + s.id + '" title="Crea un nuevo plan duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA para reforzar">Replanificar</button> '
+    + (soloRevision ? '' : '    <button class="btn btn-ghost btn-sm" data-replanificar-semanal="' + s.id + '" title="Crea un nuevo plan duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA para reforzar">Replanificar</button> ')
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-excel="' + s.id + '">Excel</button> '
-    + '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>'
+    + (soloRevision ? '' : '    <button class="btn btn-danger btn-sm" data-delete-semanal="' + s.id + '">Eliminar</button>')
     + '  </td>'
     + '</tr>';
   }
@@ -8111,7 +8246,7 @@ function renderSemanalListInner(d, scopeAll, banda){
   var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Días</th><th>Observación</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
 
   var head = scopeAll
-    ? '<p class="hint" style="margin-bottom:14px;">Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.</p>'
+    ? '<p class="hint" style="margin-bottom:14px;">' + (soloRevision ? 'Planes semanales de Inglés de todos los docentes. Puedes revisarlos, editarlos, ver su historial y exportarlos (no eliminarlos).' : 'Puedes ver, editar y eliminar cualquier plan semanal. Los planes ya no se bloquean: siempre quedan abiertos para el docente.') + '</p>'
     : '<div class="page-head"><div><div class="eyebrow">Plan Semanal</div><h1>Planes Semanales de Clase</h1><p>Un plan por cada semana de clase, enlazado con tu Plan Curricular Anual.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarSemanal">Importar de otro docente</button><button class="btn btn-primary" id="btnNewSemanal">+ Nuevo Plan Semanal</button></div></div>';
 
   var cardEstiloAdmin = (scopeAll && banda) ? pastelBorde(banda==='colegio' ? 'semanalcolegio' : 'semanal') : '';
@@ -8269,7 +8404,7 @@ function bindSemanalListSharedEvents(){
     btn.onclick = function(){ abrirHistorialSemanal(btn.getAttribute('data-historial-semanal')); };
   });
   document.querySelectorAll('[data-edit-semanal]').forEach(function(btn){
-    btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-edit-semanal'), state.subview==='admin' ? 'admin' : 'semanallist'); };
+    btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-edit-semanal'), vistaDeRetornoLista('semanallist')); };
   });
   document.querySelectorAll('[data-delete-semanal]').forEach(function(btn){
     btn.onclick = function(){
@@ -8289,7 +8424,7 @@ function bindSemanalListSharedEvents(){
   });
   document.querySelectorAll('[data-export-semanal-word]').forEach(function(btn){ btn.onclick = function(){ exportSemanalWord(btn.getAttribute('data-export-semanal-word')); }; });
   document.querySelectorAll('[data-export-semanal-excel]').forEach(function(btn){ btn.onclick = function(){ exportSemanalExcel(btn.getAttribute('data-export-semanal-excel')); }; });
-  document.querySelectorAll('[data-export-semanal-pdf]').forEach(function(btn){ btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-export-semanal-pdf'), state.subview==='admin' ? 'admin' : 'semanallist'); setTimeout(printAsPdf, 250); }; });
+  document.querySelectorAll('[data-export-semanal-pdf]').forEach(function(btn){ btn.onclick = function(){ openSemanalForm(btn.getAttribute('data-export-semanal-pdf'), vistaDeRetornoLista('semanallist')); setTimeout(printAsPdf, 250); }; });
 }
 
 /* ============================= PLAN SEMANAL — FORM ============================= */
@@ -8919,17 +9054,35 @@ function applySemanaSelection(s, pcaId, rowId){
 function aplicarFechaLimiteDeSemana(s){
   s.fechaHoraLimite = fechaLimiteParaSemana(s.fechaInicio);
 }
+/* ---------- Semanas del PCA con la fecha de fin mal escrita ----------
+   Al escribir las semanas es fácil equivocarse de mes en la fecha de fin y dejarla ANTES de la de
+   inicio ("14 sept → 18 ago"). Esa semana se volvía inalcanzable: ningún Plan Semanal calzaba con
+   ella, así que no se completaba la fecha de fin y los Niveles de Logro y Contenidos de esa semana
+   no aparecían nunca. La fecha de INICIO sí es confiable, así que cuando el fin es inválido se
+   asume la semana completa a partir del inicio y el plan vuelve a enlazarse.
+   No corrige el PCA — solo evita que un error de tipeo bloquee al docente; la semana queda además
+   señalada en el formulario del PCA para que se arregle en el origen. */
+function finSemanaPcaValido(r){
+  return !!(r && r.fechaInicio && r.fechaFin && r.fechaFin >= r.fechaInicio);
+}
+function finSemanaPcaEfectivo(r){
+  if(finSemanaPcaValido(r)) return r.fechaFin;
+  return r && r.fechaInicio ? addDays(r.fechaInicio, 4) : '';   /* lunes a viernes */
+}
+function fechaCaeEnSemanaPca(fecha, r){
+  if(!fecha || !r || !r.fechaInicio) return false;
+  var fin = finSemanaPcaValido(r) ? r.fechaFin : addDays(r.fechaInicio, 6);
+  return fecha >= r.fechaInicio && fecha <= fin;
+}
 function applyFechaSelection(s){
   aplicarFechaLimiteDeSemana(s);
   if(!s.pcaId){ return; }
   if(!s.fechaInicio){ s.semanaRowId = ''; return; }
   var semanas = semanasDePca(s.pcaId);
-  var match = semanas.find(function(r){
-    return r.fechaInicio && r.fechaFin && s.fechaInicio >= r.fechaInicio && s.fechaInicio <= r.fechaFin;
-  });
+  var match = semanas.find(function(r){ return fechaCaeEnSemanaPca(s.fechaInicio, r); });
   if(match){
     s.semanaRowId = match.id;
-    s.fechaFin = match.fechaFin || s.fechaFin;
+    s.fechaFin = finSemanaPcaEfectivo(match) || s.fechaFin;
     s.unidadDidactica = unidadDidacticaConNombre(s.pcaId, match.unidad);
     return;
   }
@@ -8964,17 +9117,20 @@ function openSemanalForm(semId, returnTo){
 
 function semanalToolbarHtml(s){
   var isIngles = semanalEsIngles(s);
+  var ajeno = planAjenoSoloLectura(s);
   return ''
     + '<div class="pca-toolbar no-print">'
     + '  <button class="btn btn-ghost btn-sm" id="btnBackToSemanalList">' + te('← Volver a la lista', isIngles) + '</button>'
-    + '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>'
+    + (ajeno ? '' : '  <span class="hint" id="semanalAutosaveHint">' + escapeHtml(autoguardadoHintTexto('semanal')) + '</span>')
     + '  <div class="spacer"></div>'
     + '  <button class="btn btn-ghost btn-sm" id="btnHistorialSemanal" title="Ver todas las veces que se editó este plan, desde la primera hasta la última">🕓 ' + te('Historial', isIngles) + '</button>'
     + '  <button class="btn btn-gold btn-sm" id="btnExportSemanalPdfNow" title="Genera un PDF real con formato completo, sin restricciones de tu vista">PDF ✓</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalWordNow" title="Intenta .docx real; si tu vista lo bloquea, cae a .html o .md con formato">' + te('Exportar Word', isIngles) + '</button>'
     + '  <button class="btn btn-ghost btn-sm" id="btnExportSemanalExcelNow">' + te('Exportar Excel', isIngles) + '</button>'
-    + '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>'
+    + (ajeno ? '' : '  <button class="btn btn-primary btn-sm" id="btnSaveSemanal">' + te('Guardar plan', isIngles) + '</button>')
     + '</div>'
+    + (ajeno ? '<div class="lock-banner no-print">👁️ Vista de revisión (solo lectura): este plan pertenece a otro docente. Solo él puede modificarlo.</div>' : '')
+    + avisoJefeEditandoHtml(s, 'el Plan Semanal')
     + (s.importadoDeDocente ? '<div class="lock-banner no-print">📥 Importado del plan de <strong>' + escapeHtml(s.importadoDeDocente) + '</strong> el ' + escapeHtml(fmtDateTime(s.importadoFecha)) + '. Revisa y ajusta el contenido antes de guardar.</div>' : '');
 }
 
@@ -9240,9 +9396,15 @@ function bindSemanalFormEvents(){
   };
   var histBtn = document.getElementById('btnHistorialSemanal');
   if(histBtn) histBtn.onclick = function(){ abrirHistorialSemanal(s.id); };
-  document.getElementById('btnExportSemanalWordNow').onclick = function(){ saveSemanal(s, true); exportSemanalWord(s.id); };
-  document.getElementById('btnExportSemanalExcelNow').onclick = function(){ saveSemanal(s, true); exportSemanalExcel(s.id); };
+  var ajeno = planAjenoSoloLectura(s);
+  document.getElementById('btnExportSemanalWordNow').onclick = function(){ if(!ajeno) saveSemanal(s, true); exportSemanalWord(s.id); };
+  document.getElementById('btnExportSemanalExcelNow').onclick = function(){ if(!ajeno) saveSemanal(s, true); exportSemanalExcel(s.id); };
   document.getElementById('btnExportSemanalPdfNow').onclick = printAsPdf;
+  if(ajeno){
+    document.querySelectorAll('#semanalDoc input, #semanalDoc select, #semanalDoc textarea, #semanalDoc button').forEach(function(el){ el.disabled = true; });
+    document.querySelectorAll('#semanalDoc [contenteditable]').forEach(function(el){ el.setAttribute('contenteditable','false'); });
+    return;
+  }
   bindAutoguardadoDelegado('semanalDoc', 'semanal');
 
   document.getElementById('sfNivel').addEventListener('change', function(e){ s.nivel=e.target.value; s.especialidad=''; s.curso=''; s.asignatura=''; recomputeSemanalPca(s); renderSemanalFormAgain(); });
@@ -9582,8 +9744,8 @@ function aplicarFechaSemanaTaller(sem, pcaId){
   if(!pcaId){ sem.semanaRowId=''; return; }
   if(!sem.fechaInicio){ sem.semanaRowId=''; return; }
   var semanas = semanasDePca(pcaId);
-  var match = semanas.find(function(r){ return r.fechaInicio && r.fechaFin && sem.fechaInicio >= r.fechaInicio && sem.fechaInicio <= r.fechaFin; });
-  if(match){ sem.semanaRowId = match.id; sem.fechaFin = sem.fechaFin || match.fechaFin; return; }
+  var match = semanas.find(function(r){ return fechaCaeEnSemanaPca(sem.fechaInicio, r); });
+  if(match){ sem.semanaRowId = match.id; sem.fechaFin = sem.fechaFin || finSemanaPcaEfectivo(match); return; }
   if(!sem.semanaRowId && semanas.length){ sem.semanaRowId = semanas[0].id; }
 }
 function openTallerForm(id, returnTo){
@@ -11160,7 +11322,7 @@ function renderAdminEditDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="adTCI" maxlength="10" value="' + escapeHtml(target.ci) + '" /></div><div class="field"><label>Teléfono</label><input type="text" id="adTTelefono" value="' + escapeHtml(target.telefono||'') + '" /></div></div>'
   + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" disabled /><div class="hint">El correo de acceso no se puede cambiar desde aquí una vez creada la cuenta.</div></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="adTUserId" value="' + escapeHtml(target.usuarioId) + '" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','admin','directivo','dece','inspector'], target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','jefeingles','admin','directivo','dece','inspector'],target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña</label><button type="button" class="btn btn-ghost btn-sm" id="btnResetPwAdminDocente">Enviar correo para restablecer contraseña</button></div>'
   + '  <div style="display:flex; gap:10px; margin-top:10px;">'
   + '    <button class="btn btn-primary" id="btnSaveAdminDocente">Guardar cambios</button>'
@@ -11263,7 +11425,7 @@ function renderAdminNewDocente(){
   + '  <div class="field-row"><div class="field"><label>Cédula (CI) <span class="required">*</span></label><input type="text" id="anCI" maxlength="10" placeholder="10 dígitos" /></div><div class="field"><label>Teléfono</label><input type="text" id="anTelefono" placeholder="09xxxxxxxx" /></div></div>'
   + '  <div class="field"><label>E-mail institucional <span class="required">*</span></label><input type="email" id="anEmail" placeholder="nombre.apellido@simonbolivar-ec.com" /></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="anUserId" placeholder="ID de acceso" /></div>'
-  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol">' + optionsHtml(['docente','admin','directivo','dece','inspector'], 'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
+  + '  <div class="field"><label>Rol</label><select class="cell-select" id="anRol">' + optionsHtml(['docente','jefeingles','admin','directivo','dece','inspector'],'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
   + '  <div class="field"><label>Contraseña <span class="required">*</span></label><input type="password" id="anPw" /></div>'
   + '  <button class="btn btn-primary" id="btnCreateAdminDocente">Crear usuario</button>'
   + '</div>';
@@ -12231,12 +12393,14 @@ async function attachRealtimeListeners(){
   detachRealtimeListeners();
   var soyAdmin = false;
   var soyInspector = false;
+  var soyJefeIngles = false;
   try{
     var docentesSnap = await window.FB.getDocs(window.FB.collection(window.FB.db, FS_COLLECTION.DOCENTES));
     docentesSnap.forEach(function(d){
       if(d.id !== CURRENT_UID) return;
       if(isStaffRole(d.data().role)) soyAdmin = true;
       else if(d.data().role === 'inspector') soyInspector = true;
+      else if(esJefeIngles(d.data().role)) soyJefeIngles = true;
     });
   }catch(e){ console.error('No se pudo determinar el rol antes de sincronizar', e); }
 
@@ -12255,7 +12419,32 @@ async function attachRealtimeListeners(){
        evalúan la completitud de todos los docentes (ver unidadesParaCompletitud).
        Único caso que sí necesita semanas ajenas: "Importar PCA de otro docente" — resuelto con una
        lectura puntual dentro de importarPca(), no manteniendo toda la colección en memoria. */
-    var acotarAPropio = !soyAdmin && (key === 'OBSERVACIONES' || key === 'FICHA_DETECCION' || key === 'CONT');
+    /* Jefe de Área de Inglés: necesita las semanas de los PCA de Inglés de todo el colegio para
+       abrirlos en revisión (CONTENIDOS se lee completa, como el personal administrativo) y, en
+       Observaciones, dos consultas unidas: las que le hicieron a él y las marcadas como área de
+       Inglés (la regla de Firestore solo le permite leer esas dos). */
+    if(soyJefeIngles && key === 'OBSERVACIONES'){
+      var parciales = { propias: [], area: [] };
+      var unirObservaciones = function(){
+        var porId = {};
+        parciales.propias.concat(parciales.area).forEach(function(r){ porId[r.id] = r; });
+        FS_CACHE[key] = Object.keys(porId).map(function(id){ return porId[id]; });
+        if(!debeOmitirRenderPorEdicionActiva(key)) render();
+      };
+      [['propias', window.FB.where('docenteId', '==', CURRENT_UID)], ['area', window.FB.where('area', '==', AREA_OBS_INGLES)]].forEach(function(par){
+        FS_UNSUBS.push(window.FB.onSnapshot(window.FB.query(colRef, par[1]), function(snap){
+          var arr = [];
+          snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
+          parciales[par[0]] = arr;
+          unirObservaciones();
+        }, function(err){
+          console.error('Error de sincronización en tiempo real (' + key + ')', err);
+          toast('Se perdió la sincronización en tiempo real: ' + (err.message||err.code), 'error');
+        }));
+      });
+      return;
+    }
+    var acotarAPropio = !soyAdmin && (key === 'OBSERVACIONES' || key === 'FICHA_DETECCION' || (key === 'CONT' && !soyJefeIngles));
     var queryRef = acotarAPropio
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
       : colRef;
