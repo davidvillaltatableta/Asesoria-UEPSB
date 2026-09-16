@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260915205531">
+<meta name="app-build" content="20260916161746">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -5106,8 +5106,6 @@ var FDI_SERVICIOS = ['Luz electrica','Agua potable','SSHH','Pozo septico','Inter
 var FDI_VIVIENDA = ['Propia','Arrendada','Con prestamo','Prestada','Anticresis'];
 var FDI_CALIDAD = ['Buena','Regular','Mala'];
 var FDI_SINO = ['Si','No'];
-var FDI_ATENCION_MEDICA = ['Centro de salud','Subcentro de salud','Hospital publico','Hospital privado'];
-var FDI_TERMINO_EMBARAZO = ['Prematuro','Cesarea','Parto Normal'];
 var FDI_APRENDIZAJE_TIPO = ['Teorico','Practico','Reflexivo'];
 var FDI_DIFICULTADES_APRENDIZAJE = ['Atencion','Concentracion','Memoria','Razonamiento'];
 var FDI_RESPONSABILIDAD = ['Responsable','Poco responsable','Nada responsable'];
@@ -5125,22 +5123,17 @@ function blankFichaDatos(){
     personasConvive:'', tieneHermanos:'', cuantosHermanos:'', padresMigrantes:'', lugarMigracion:'',
     hermanosEdades:['','','','',''], hermanosLugar:['','','','',''],
     hermanosInstNombre:['','',''], hermanosInstCurso:['','',''], hermanosInstParalelo:['','',''],
-    estructuraFamiliar:'', familiaresDiscapacidad:'', familiaresDiscapacidadQuien:'', obsReferenciasFamiliares:'',
-    ingresosEgresos:'', condicionVivienda:'', descripcionVivienda:'', servicios:'', obsSocioeconomicas:'',
+    familiaresDiscapacidad:'', familiaresDiscapacidadQuien:'', obsReferenciasFamiliares:'',
+    condicionVivienda:'', descripcionVivienda:'', servicios:'', obsSocioeconomicas:'',
     discapacidad:'', carnetConadis:'', queDiscapacidad:'', condicionMedica:'', condicionMedicaCual:'',
     alergiasSalud:'', alergiasCuales:'', medicamentos:'', enfermedadCatastrofica:'',
-    embarazada:'', mesesEmbarazo:'', padreMadreAdolescente:'', tieneConQuienDejarHijo:'', quienCuidaHijo:'',
-    atencionMedica:'', nombreMedico:'', obsSalud:'',
+    obsSalud:'',
     fechaIngresoInstitucion:'', institucionProcedencia:'', repitioAnios:'', anioRepitio:'',
-    asignaturasPreferencia:['','','',''], asignaturasDificultad:['','','',''], dignidades:['','','',''],
+    asignaturasPreferencia:['','','',''], asignaturasDificultad:['','','',''],
     logrosAcademicos:['','','',''], logrosAnios:['','','',''],
     participacion:['','','',''], participacionAnios:['','','',''],
-    clubesProyectos:['','','',''],
     extracurricularNivel:'', extracurricularParticipa:'', extracurricularCual:'',
     aprendizajeTipo:'', dificultadesAprendizaje:'', cumplimientoTareas:'', seConsidera:'',
-    edadMadreEmbarazo:'', accidentesEmbarazo:'', medicamentosEmbarazo:'', terminoEmbarazo:'', otraDificultadEmbarazo:'',
-    pesoNacer:'', tallaNacer:'', edadCaminar:'', edadHablo:'', periodoLactancia:'', edadBiberon:'', edadEsfinteres:'',
-    enfermedadesInfancia:'', accidentesInfancia:'', alergiasInfancia:'', cirugias:'', perdidasConocimiento:'', otrosSalud:'',
     antecedentesPatologicos:'',
     relacionPadre:'', motivoPadre:'', relacionMadre:'', motivoMadre:'', relacionHermanos:'', motivoHermanos:'', relacionOtros:'', motivoOtros:'', obsRelaciones:'',
     habitosSueno:'', habitosAlimenticios:'', actividadesTiempoLibre:['','','',''], tiempoTareas:'',
@@ -5247,13 +5240,11 @@ function fdiCuerpoHtml(e, editable){
   + fdiHermanosEdadesHtml(e.hermanosEdades, e.hermanosLugar, editable)
   + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Hermanos/as que estudian en la institucion</div>'
   + fdiHermanosInstitucionHtml(e.hermanosInstNombre, e.hermanosInstCurso, e.hermanosInstParalelo, editable)
-  + fdiArea('Descripcion de la estructura familiar', 'estructuraFamiliar', e.estructuraFamiliar, editable, 3)
   + '    <div class="grid-2">' + fdiRadios('Familiares con algun tipo de discapacidad?', 'familiaresDiscapacidad', FDI_SINO, e.familiaresDiscapacidad, editable) + (e.familiaresDiscapacidad==='Si' ? fdiCampo('Determinar quien', 'familiaresDiscapacidadQuien', e.familiaresDiscapacidadQuien, editable) : '') + '</div>'
   + fdiArea('Observaciones', 'obsReferenciasFamiliares', e.obsReferenciasFamiliares, editable)
   + '  </div>'
   + '  <div class="pca-band band-section">3.1 Referencias socioeconomicas generales</div>'
   + '  <div class="pca-section">'
-  + fdiRadios('Ingresos/egresos de los miembros de la familia', 'ingresosEgresos', FDI_CALIDAD, e.ingresosEgresos, editable)
   + fdiRadios('Condiciones de vivienda', 'condicionVivienda', FDI_VIVIENDA, e.condicionVivienda, editable)
   + fdiArea('Breve descripcion de la vivienda (casa, departamento, cuarto, etc.)', 'descripcionVivienda', e.descripcionVivienda, editable)
   + fdiChecks('Servicios', 'servicios', FDI_SERVICIOS, e.servicios, editable)
@@ -5267,21 +5258,15 @@ function fdiCuerpoHtml(e, editable){
   + '    <div class="grid-2">' + fdiRadios('Padece de alergias?', 'alergiasSalud', FDI_SINO, e.alergiasSalud, editable) + (e.alergiasSalud==='Si' ? fdiCampo('Determinar cuales', 'alergiasCuales', e.alergiasCuales, editable) : '') + '</div>'
   + fdiArea('Especificar medicamentos que utiliza', 'medicamentos', e.medicamentos, editable)
   + fdiCampo('Sufre de alguna enfermedad catastrofica? Especifique', 'enfermedadCatastrofica', e.enfermedadCatastrofica, editable)
-  + '    <div class="grid-2">' + fdiRadios('Embarazada', 'embarazada', FDI_SINO, e.embarazada, editable) + (e.embarazada==='Si' ? fdiCampo('Meses', 'mesesEmbarazo', e.mesesEmbarazo, editable) : '') + '</div>'
-  + '    <div class="grid-3">' + fdiRadios('Es padre o madre adolescente?', 'padreMadreAdolescente', FDI_SINO, e.padreMadreAdolescente, editable) + fdiRadios('Tiene con quien dejar a su hijo?', 'tieneConQuienDejarHijo', FDI_SINO, e.tieneConQuienDejarHijo, editable) + (e.tieneConQuienDejarHijo==='Si' ? fdiCampo('Quien', 'quienCuidaHijo', e.quienCuidaHijo, editable) : '') + '</div>'
-  + fdiRadios('El/la estudiante recibe atencion medica en', 'atencionMedica', FDI_ATENCION_MEDICA, e.atencionMedica, editable)
-  + fdiArea('Nombre del medico que atiende regularmente al estudiante', 'nombreMedico', e.nombreMedico, editable)
   + fdiArea('Observaciones', 'obsSalud', e.obsSalud, editable)
   + '  </div>'
   + '  <div class="pca-band band-section">5. Datos academicos / rendimiento escolar</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-2">' + fdiCampo('Fecha de ingreso a la institucion', 'fechaIngresoInstitucion', e.fechaIngresoInstitucion, editable, 'date') + fdiCampo('Institucion educativa de la que procede', 'institucionProcedencia', e.institucionProcedencia, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('El estudiante ha repetido anios?', 'repitioAnios', FDI_SINO, e.repitioAnios, editable) + (e.repitioAnios==='Si' ? fdiCampo('Cual/es?', 'anioRepitio', e.anioRepitio, editable) : '') + '</div>'
-  + '    <div class="grid-4" style="align-items:start;">'
+  + '    <div class="grid-2" style="align-items:start;">'
   + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas de preferencia</div>' + fdiListaCorta('asignaturasPreferencia', e.asignaturasPreferencia, 4, editable) + '</div>'
   + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas con dificultad</div>' + fdiListaCorta('asignaturasDificultad', e.asignaturasDificultad, 4, editable) + '</div>'
-  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Dignidades alcanzadas</div>' + fdiListaCorta('dignidades', e.dignidades, 4, editable) + '</div>'
-  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Clubes / Proyectos</div>' + fdiListaCorta('clubesProyectos', e.clubesProyectos, 4, editable) + '</div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:10px;">'
   + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Logros academicos</div>' + fdiListaConAnio('logrosAcademicos', 'logrosAnios', e.logrosAcademicos, e.logrosAnios, 4, editable) + '</div>'
@@ -5295,24 +5280,15 @@ function fdiCuerpoHtml(e, editable){
   + '  </div>'
   + '  <div class="pca-band band-section">6. Historia vital</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-3">' + fdiCampo('Edad de la madre en el embarazo', 'edadMadreEmbarazo', e.edadMadreEmbarazo, editable) + fdiRadios('Accidentes en el embarazo', 'accidentesEmbarazo', FDI_SINO, e.accidentesEmbarazo, editable) + fdiRadios('Al termino', 'terminoEmbarazo', FDI_TERMINO_EMBARAZO, e.terminoEmbarazo, editable) + '</div>'
-  + fdiArea('Medicamentos durante el embarazo', 'medicamentosEmbarazo', e.medicamentosEmbarazo, editable)
-  + fdiArea('Especificar cualquier otra dificultad en el embarazo (preeclampsia, hipoxia, etc.)', 'otraDificultadEmbarazo', e.otraDificultadEmbarazo, editable)
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.1 Datos del/la nino/a recien nacido</div>'
-  + '    <div class="grid-4">' + fdiCampo('Peso al nacer', 'pesoNacer', e.pesoNacer, editable) + fdiCampo('Talla al nacer', 'tallaNacer', e.tallaNacer, editable) + fdiCampo('Edad en que empezo a caminar', 'edadCaminar', e.edadCaminar, editable) + fdiCampo('Edad a la que hablo por primera vez', 'edadHablo', e.edadHablo, editable) + '</div>'
-  + '    <div class="grid-3">' + fdiCampo('Periodo de lactancia', 'periodoLactancia', e.periodoLactancia, editable) + fdiCampo('Edad hasta la cual utilizo biberon', 'edadBiberon', e.edadBiberon, editable) + fdiCampo('Edad en que aprendio a controlar esfinteres', 'edadEsfinteres', e.edadEsfinteres, editable) + '</div>'
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.2 Enfermedades (desde la infancia hasta la actualidad)</div>'
-  + '    <div class="grid-3">' + fdiArea('Enfermedades', 'enfermedadesInfancia', e.enfermedadesInfancia, editable) + fdiArea('Accidentes', 'accidentesInfancia', e.accidentesInfancia, editable) + fdiArea('Alergias', 'alergiasInfancia', e.alergiasInfancia, editable) + '</div>'
-  + '    <div class="grid-3">' + fdiArea('Cirugias', 'cirugias', e.cirugias, editable) + fdiArea('Perdidas de conocimiento', 'perdidasConocimiento', e.perdidasConocimiento, editable) + fdiArea('Otros', 'otrosSalud', e.otrosSalud, editable) + '</div>'
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.3 Antecedentes patologicos familiares</div>'
+  + '    <div class="hint" style="font-weight:700; margin:0 0 6px;">6.1 Antecedentes patologicos familiares</div>'
   + fdiChecks('', 'antecedentesPatologicos', FDI_ANTECEDENTES_PATOLOGICOS, e.antecedentesPatologicos, editable)
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.4 Como describiria la relacion del/la estudiante con...?</div>'
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.2 Como describiria la relacion del/la estudiante con...?</div>'
   + '    <div class="grid-2">' + fdiRadios('Padre', 'relacionPadre', FDI_CALIDAD, e.relacionPadre, editable) + fdiCampo('Motivo', 'motivoPadre', e.motivoPadre, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Madre', 'relacionMadre', FDI_CALIDAD, e.relacionMadre, editable) + fdiCampo('Motivo', 'motivoMadre', e.motivoMadre, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Hermanos/as', 'relacionHermanos', FDI_CALIDAD, e.relacionHermanos, editable) + fdiCampo('Motivo', 'motivoHermanos', e.motivoHermanos, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Otros', 'relacionOtros', FDI_CALIDAD, e.relacionOtros, editable) + fdiCampo('Motivo', 'motivoOtros', e.motivoOtros, editable) + '</div>'
   + fdiArea('Observaciones', 'obsRelaciones', e.obsRelaciones, editable)
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.5 Costumbres, habitos</div>'
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.3 Costumbres, habitos</div>'
   + '    <div class="grid-2">' + fdiCampo('Habitos de sueno', 'habitosSueno', e.habitosSueno, editable) + fdiCampo('Habitos alimenticios', 'habitosAlimenticios', e.habitosAlimenticios, editable) + '</div>'
   + '    <div><div class="hint" style="font-weight:700; margin-bottom:4px;">A que actividades en el tiempo libre se dedica con frecuencia</div>' + fdiListaCorta('actividadesTiempoLibre', e.actividadesTiempoLibre, 4, editable) + '</div>'
   + fdiCampo('Que tiempo dedica para realizar sus tareas en el dia', 'tiempoTareas', e.tiempoTareas, editable)
@@ -5456,7 +5432,7 @@ function bindFdiCamposGenericos(root, estudiante, editable, onCambioCondicional)
   });
   var grupos = {};
   root.querySelectorAll('[data-fdi-group]').forEach(function(el){ grupos[el.getAttribute('data-fdi-group')] = el.type; });
-  var condicionales = ['padresMigrantes','familiaresDiscapacidad','discapacidad','condicionMedica','alergiasSalud','embarazada','tieneConQuienDejarHijo','repitioAnios','extracurricularParticipa'];
+  var condicionales = ['padresMigrantes','familiaresDiscapacidad','discapacidad','condicionMedica','alergiasSalud','repitioAnios','extracurricularParticipa'];
   Object.keys(grupos).forEach(function(key){
     var esCondicional = condicionales.indexOf(key)!==-1;
     root.querySelectorAll('[data-fdi-group="'+key+'"]').forEach(function(el){
