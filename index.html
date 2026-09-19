@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260918231901">
+<meta name="app-build" content="20260919194420">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -2178,8 +2178,15 @@ function llamarFuncionIA(nombre, datos){
    función ni siquiera existe (todavía no se publicó), conviene decirlo con claridad. */
 function mensajeErrorIA(err){
   var codigo = (err && err.code) || '';
-  if(codigo === 'functions/not-found' || codigo === 'functions/internal') return 'No se pudo contactar al asistente. Puede que las funciones de IA todavía no estén publicadas.';
-  return (err && err.message) || 'No se pudo completar la operación.';
+  var detalle = (err && err.message) || '';
+  var base;
+  if(codigo === 'functions/not-found') base = 'No se encontró la función en el servidor. Revisa que las funciones de IA estén publicadas.';
+  else if(codigo === 'functions/internal') base = 'No se pudo contactar al asistente. Suele ser una extensión del navegador, un antivirus o la red del colegio bloqueando cloudfunctions.net; prueba en una ventana de incógnito o con otra conexión.';
+  else if(codigo === 'functions/unauthenticated') base = 'Tu sesión expiró. Cierra sesión, vuelve a entrar e inténtalo otra vez.';
+  else base = detalle || 'No se pudo completar la operación.';
+  /* El código técnico se muestra siempre: es lo único que permite distinguir un bloqueo de red de
+     un problema de permisos cuando el docente reporta el fallo. */
+  return base + (codigo ? '  [' + codigo + (detalle && detalle !== base ? ': ' + detalle : '') + ']' : '');
 }
 function cargarEstadoIA(forzar){
   if(!iaDisponible()) return;
@@ -2626,53 +2633,58 @@ function evalTablaHtml(encabezados, filas){
       }).join('')
     + '</tbody></table></div>';
 }
+/* La IA devuelve el contenido del ítem como filas de celdas (ver functions/formatos.js); aquí cada
+   tipo decide cómo se dibuja esa misma información en la hoja. */
+function evalCelda(fila, i){ return (fila && fila.celdas && fila.celdas[i]) || ''; }
 function evalItemCuerpoHtml(it, verRespuestas){
   var h = '';
-  if(it.fuente) h += '<div class="hint" style="font-weight:700;">' + escapeHtml(it.fuente) + '</div>';
-  if(it.enunciado) h += '<div style="margin-top:4px; white-space:pre-wrap;">' + escapeHtml(it.enunciado) + '</div>';
+  var filas = it.filas || [];
+  var esMapa = it.tipo === 'mapa_conceptual';
+  if(it.enunciado && !esMapa) h += '<div style="margin-top:4px; white-space:pre-wrap;">' + escapeHtml(it.enunciado) + '</div>';
+
   if(it.tipo==='verdadero_falso'){
-    h += evalTablaHtml(['Enunciado','V / F'], (it.enunciados||[]).map(function(e){ return {celdas:[e.texto, verRespuestas ? e.respuesta : '(        )']}; }));
+    h += evalTablaHtml(['Enunciado','V / F'], filas.map(function(f, i){ return {celdas:[(i+1) + '. ' + evalCelda(f,0), '(        )']}; }));
   } else if(it.tipo==='emparejar'){
-    var columnaB = (it.pares||[]).map(function(p, i){ return {b:p.b, n:i}; });
-    /* La columna B se imprime desordenada para que el emparejamiento tenga sentido. */
-    var desordenada = columnaB.slice().sort(function(a,b){ return (a.b||'').localeCompare(b.b||''); });
+    /* La columna B se imprime desordenada (alfabéticamente) para que el emparejamiento tenga sentido. */
     var letras = 'abcdefghij';
-    h += evalTablaHtml(['Columna A','Respuesta','Columna B'], (it.pares||[]).map(function(p, i){
-      var letraCorrecta = letras[desordenada.findIndex(function(x){ return x.n===i; })];
-      return {celdas:[(i+1)+'. '+p.a, verRespuestas ? '( ' + letraCorrecta + ' )' : '(        )', desordenada[i] ? letras[i]+') '+desordenada[i].b : '']};
+    var columnaB = filas.map(function(f){ return evalCelda(f,1); }).sort(function(a,b){ return a.localeCompare(b); });
+    h += evalTablaHtml(['Columna A','Respuesta','Columna B'], filas.map(function(f, i){
+      return {celdas:[(i+1) + '. ' + evalCelda(f,0), '(        )', columnaB[i] ? letras[i] + ') ' + columnaB[i] : '']};
     }));
   } else if(it.tipo==='opcion_multiple'){
-    h += '<div style="margin-top:6px;">' + (it.opciones||[]).map(function(op){
-      return '<div style="margin:2px 0;">' + escapeHtml(op.letra) + ') ' + escapeHtml(op.texto) + (verRespuestas && op.correcta ? ' <span class="pill pill-green">correcta</span>' : '') + '</div>';
+    h += '<div style="margin-top:6px;">' + (it.opciones||[]).map(function(op, i){
+      return '<div style="margin:2px 0;">' + 'abcd'.charAt(i) + ')  ' + escapeHtml(op) + '</div>';
     }).join('') + '</div>';
   } else if(it.tipo==='completar'){
-    h += '<div style="margin-top:6px;">' + (it.elementos||[]).map(function(el, i){
-      return '<div style="margin:3px 0;">' + (i+1) + '. ' + escapeHtml(el) + '</div>';
+    h += '<div style="margin-top:6px;">' + filas.map(function(f, i){
+      return '<div style="margin:4px 0;">' + (i+1) + '. ' + escapeHtml(evalCelda(f,0)) + '</div>';
     }).join('') + '</div>';
   } else if(it.tipo==='tabla'){
-    h += evalTablaHtml(it.encabezados, it.filas);
-  } else if(it.tipo==='mapa_conceptual'){
-    var m = it.mapa || {centro:'', ramas:[]};
+    h += evalTablaHtml(it.encabezados, filas);
+  } else if(esMapa){
     h += '<div style="margin-top:8px; text-align:center;">'
-      + '<div style="border:1.5px solid var(--ink); padding:8px; display:inline-block; font-weight:700;">' + escapeHtml(m.centro||'TEMA CENTRAL') + '</div>'
+      + '<div style="border:1.5px solid var(--ink); padding:8px; display:inline-block; font-weight:700;">' + escapeHtml(it.enunciado || 'TEMA CENTRAL') + '</div>'
       + '<div style="display:flex; gap:12px; justify-content:center; margin-top:10px; flex-wrap:wrap;">'
-      + (m.ramas||[]).map(function(r){
-          return '<div style="min-width:150px;"><div style="border:1px solid var(--line-strong); padding:6px; min-height:32px;">' + escapeHtml(verRespuestas ? r.subtema : '') + '</div>'
-            + '<div style="margin-top:6px; border:1px solid var(--line-strong); padding:6px; min-height:32px;">' + escapeHtml(verRespuestas ? r.idea : '') + '</div></div>';
+      + filas.map(function(f){
+          return '<div style="min-width:150px;">'
+            + '<div style="border:1px solid var(--line-strong); padding:6px; min-height:32px;">' + escapeHtml(verRespuestas ? evalCelda(f,0) : '') + '</div>'
+            + '<div style="margin-top:6px; border:1px solid var(--line-strong); padding:6px; min-height:32px;">' + escapeHtml(verRespuestas ? evalCelda(f,1) : '') + '</div></div>';
         }).join('')
       + '</div></div>';
   } else if(it.tipo==='linea_tiempo'){
-    h += evalTablaHtml(['Año','Acontecimiento'], (it.hitos||[]).map(function(x){ return {celdas:[x.anio, verRespuestas ? x.hecho : '']}; }));
+    h += evalTablaHtml(['Año','Acontecimiento'], filas.map(function(f){ return {celdas:[evalCelda(f,0), verRespuestas ? evalCelda(f,1) : '']}; }));
   } else if(it.tipo==='argumentacion'){
-    h += evalTablaHtml(['Estructura','Respuesta del estudiante'], ['Postura o tesis','Argumento 1','Argumento 2','Evidencia o fuente','Conclusión'].map(function(e){ return {celdas:[e, '']}; }));
+    var estructura = filas.length ? filas.map(function(f){ return evalCelda(f,0) || evalCelda(f,1); })
+      : ['Postura o tesis','Argumento 1','Argumento 2','Evidencia o fuente','Conclusión'];
+    h += evalTablaHtml(['Estructura','Respuesta del estudiante'], estructura.map(function(e){ return {celdas:[e, '']}; }));
   } else if(it.tipo==='diagrama'){
     h += '<div style="margin-top:6px; border:1px dashed var(--line-strong); height:150px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px;">Espacio para el diagrama</div>';
-    if((it.elementos||[]).length) h += evalTablaHtml(['N.º','Nombre de la parte'], it.elementos.map(function(el, i){ return {celdas:[String(i+1), verRespuestas ? el : '']}; }));
+    if(filas.length) h += evalTablaHtml(['N.º','Nombre de la parte'], filas.map(function(f, i){ return {celdas:[String(i+1), verRespuestas ? evalCelda(f,0) : '']}; }));
   } else if(it.tipo==='experimento' || it.tipo==='lectura'){
-    h += (it.subpreguntas||[]).map(function(sp){
-      return '<div style="margin-top:8px;"><div style="font-weight:700; font-size:12.5px;">' + escapeHtml(sp.etiqueta) + '</div>'
-        + '<div>' + escapeHtml(sp.texto) + '</div>'
-        + (verRespuestas && sp.respuesta ? '<div class="hint" style="color:var(--blue-700);">Respuesta esperada: ' + escapeHtml(sp.respuesta) + '</div>' : evalLineasHtml(2))
+    h += filas.map(function(f){
+      return '<div style="margin-top:8px;"><div style="font-weight:700; font-size:12.5px;">' + escapeHtml(evalCelda(f,0)) + '</div>'
+        + '<div>' + escapeHtml(evalCelda(f,1)) + '</div>'
+        + evalLineasHtml(2)
         + '</div>';
     }).join('');
   } else if(it.tipo==='calculo' || it.tipo==='problema'){
