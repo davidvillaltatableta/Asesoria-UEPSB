@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260919210303">
+<meta name="app-build" content="20260920050813">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -2170,9 +2170,14 @@ function bindSubviewEvents(){
    cuántas generaciones hizo cada uno. */
 var IA_CONSOLA_URL = 'https://console.anthropic.com';
 function iaDisponible(){ return !!(window.FB && window.FB.functions && window.FB.httpsCallable); }
-function llamarFuncionIA(nombre, datos){
+/* `timeoutMs`: el cliente de Firebase corta la llamada a los 70 segundos por defecto. Generar un
+   taller o una prueba con IA tarda varios minutos, así que esa espera se amplía a 9 minutos (lo
+   mismo que aguanta la función en el servidor). Sin esto la generación termina bien en la nube pero
+   el navegador la da por perdida con "deadline-exceeded" — y el docente igual paga ese consumo. */
+function llamarFuncionIA(nombre, datos, timeoutMs){
   if(!iaDisponible()) return Promise.reject(new Error('El asistente de IA todavía no está configurado en este sistema.'));
-  return window.FB.httpsCallable(window.FB.functions, nombre)(datos || {}).then(function(res){ return res.data; });
+  var opciones = timeoutMs ? {timeout: timeoutMs} : undefined;
+  return window.FB.httpsCallable(window.FB.functions, nombre, opciones)(datos || {}).then(function(res){ return res.data; });
 }
 /* Los errores de una Cloud Function llegan con el texto que definimos en el servidor; cuando la
    función ni siquiera existe (todavía no se publicó), conviene decirlo con claridad. */
@@ -2183,6 +2188,7 @@ function mensajeErrorIA(err){
   if(codigo === 'functions/not-found') base = 'No se encontró la función en el servidor. Revisa que las funciones de IA estén publicadas.';
   else if(codigo === 'functions/internal') base = 'No se pudo contactar al asistente. Suele ser una extensión del navegador, un antivirus o la red del colegio bloqueando cloudfunctions.net; prueba en una ventana de incógnito o con otra conexión.';
   else if(codigo === 'functions/unauthenticated') base = 'Tu sesión expiró. Cierra sesión, vuelve a entrar e inténtalo otra vez.';
+  else if(codigo === 'functions/deadline-exceeded') base = 'La generación tardó más de lo permitido. Vuelve a intentarlo eligiendo menos semanas o menos ítems por sección.';
   else base = detalle || 'No se pudo completar la operación.';
   /* El código técnico se muestra siempre: es lo único que permite distinguir un bloqueo de red de
      un problema de permisos cuando el docente reporta el fallo. */
@@ -2589,7 +2595,7 @@ function bindEvalConfigEvents(){
         duracionMinutos: c.duracionMinutos, puntajeTotal: c.puntajeTotal, instrumento: c.instrumento,
         agrupacion: c.agrupacion, indicacionesExtra: c.indicacionesExtra
       }
-    }).then(function(res){
+    }, 9 * 60 * 1000).then(function(res){
       var registro = {
         id: uid('ev'), docenteId: d.id, tipo: c.tipo, asignatura: c.asignatura, curso: c.curso, nivel: c.nivel,
         plantilla: plantilla.clave, trimestre: c.trimestre, parcial: c.parcial,
