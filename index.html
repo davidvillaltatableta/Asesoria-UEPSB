@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260920050813">
+<meta name="app-build" content="20260921012723">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -452,6 +452,9 @@
   .sem-plegable:hover{text-decoration:underline;}
   .sem-plegable-mes{font-size:13.5px; color:var(--blue-700);}
   .sem-plegable-semana{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .sem-plegable-docente{font-size:15px; color:var(--ink);}
+  .grupo-nivel-docente{margin-bottom:6px;}
+  .grupo-nivel-mes, .grupo-nivel-semana{margin-top:10px;}
   .sem-plegable-flecha{display:inline-block; width:12px; transition:transform .15s;}
   .sem-plegable-cuenta{text-transform:none; letter-spacing:0; font-weight:600;}
   .signature-box{border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px; background:var(--surface-2);}
@@ -1109,6 +1112,20 @@ function calificacionConductaSugerida(conteo){
 function asistenciaDocId(nivel, especialidad, curso, fecha){
   return ['asis', nivel, especialidad||'x', curso, fecha].join('|').replace(/[^\w|.-]/g, '_');
 }
+/* La hoja de asistencia de un día se guardó con el id construido a partir de CÓMO estaba escrito el
+   curso en ese momento. Si el mismo curso se escribió de otra forma ("1.º" y "1°."), el id cambia y
+   la hoja parecería vacía. Por eso se busca primero por id exacto y, si no aparece, por sus campos
+   comparando el curso normalizado: así se recupera la hoja que ya existe en vez de crear otra. */
+function buscarAsistenciaDoc(nivel, especialidad, curso, fecha){
+  var docId = asistenciaDocId(nivel, especialidad, curso, fecha);
+  var todas = load(LS.ASISTENCIA);
+  return todas.find(function(x){ return x.id === docId; })
+    || todas.find(function(x){
+         return x.nivel===nivel && (x.especialidad||'')===(especialidad||'')
+           && x.fecha===fecha && normCursoCmp(x.curso)===normCursoCmp(curso);
+       })
+    || null;
+}
 /* El curso real de un estudiante: si se registró eligiendo "Otro…", el valor que cuenta es el que
    escribió a mano (cursoManual), no el literal "Otro…" que quedó guardado en el campo curso. */
 function cursoRealDe(e){ return e.curso==='Otro…' ? (e.cursoManual||'') : (e.curso||''); }
@@ -1145,7 +1162,12 @@ function cursosDeEstudiantesRegistrados(nivel, especialidad){
     if(!variantes[k]) variantes[k] = {};
     variantes[k][c] = (variantes[k][c]||0) + 1;
   });
+  /* Entre las escrituras encontradas se prefiere la del catálogo oficial del sistema (la que usan
+     los desplegables del PCA y la carga horaria); si ninguna coincide, la más frecuente. */
+  var delCatalogo = {};
+  (cursosFor(nivel)||[]).forEach(function(c){ delCatalogo[normCursoCmp(c)] = c; });
   return Object.keys(variantes).map(function(k){
+    if(delCatalogo[k]) return delCatalogo[k];
     var v = variantes[k];
     return Object.keys(v).sort(function(a,b){ return v[b]-v[a] || a.localeCompare(b); })[0];
   }).sort();
@@ -1623,6 +1645,8 @@ var state = {
   /* Asistente de IA: estado de la clave del docente y del cupo del mes (lo devuelve la Cloud
      Function estadoIA; se consulta al abrir "Mi Perfil"). */
   iaEstado: null, iaCargando: false, iaReemplazando: false,
+  /* Grupos ocultos (docentes, meses, cursos…) en cualquier lista del sistema. */
+  gruposColapsados: {}, gruposClavesVisibles: [],
   /* Talleres, lecciones y pruebas generados con IA. */
   evalView: 'lista', evalConfig: null, editingEval: null, evalVerRespuestas: false, evalHojaRespuestas: false,
   /* Meses y semanas ocultos en la lista de Planes Semanales. */
@@ -1632,6 +1656,8 @@ var state = {
   adminTallerFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
+  presentacionTallerForm: {fechaInicio:'', fechaFin:''},
+  presentacionResumenForm: {fechaInicio:'', fechaFin:'', incluir:{semanal:true, taller:true, pca:false}},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
   editingFechaLimiteId: null,
   cargaEditing: false,
@@ -1721,6 +1747,9 @@ function intentarRestaurarUltimaVista(d){
 /* ============================= RENDER ROOT ============================= */
 function render(){
   if(ES_FORMULARIO_PUBLICO){ renderFormularioPublico(); return; }
+  /* Las claves de los grupos plegables se recogen mientras se arma el HTML de la pantalla; se
+     vacían en cada dibujado para que "Ocultar todo" solo afecte a lo que está a la vista. */
+  state.gruposClavesVisibles = [];
   var root = document.getElementById('app');
   if(!FB_READY){
     root.innerHTML = '<div class="center-screen"><div class="hint">Conectando…</div></div>';
@@ -2161,6 +2190,8 @@ function bindSubviewEvents(){
   else if(state.subview === 'fichadeteccion') bindFichaDeteccionEvents();
   else if(state.subview === 'dececonsultas') bindDeceConsultasEvents();
   else bindDashboardEvents();
+  /* Los grupos plegables existen en varias pantallas: se enganchan siempre, al final. */
+  bindGruposPlegables();
 }
 
 /* ============================= ASISTENTE DE IA (CLAUDE) =============================
@@ -2624,6 +2655,31 @@ function bindEvalConfigEvents(){
    indicaciones, secciones numeradas en romanos, valoración y firmas). Con "Ver respuestas" se
    imprime la hoja del docente. */
 var EVAL_ROMANOS = ['I','II','III','IV','V','VI','VII','VIII'];
+/* Paleta sobria, la misma familia de azules que usan las tablas con estilo de Word: azul oscuro
+   para el encabezado del documento, azul medio para las cabeceras de tabla y azul muy claro para
+   las franjas de sección. Sustituye al dorado, que se veía más de pantalla que de documento. */
+var EVAL_COLOR = { titulo:'1F3864', banda:'2F5496', cabecera:'D9E2F3', texto:'1F3864', respuestas:'7B1F1F' };
+/* Una respuesta como "1. V, 2. F, 3. V" se parte en renglones para que quede encolumnada y no como
+   un párrafo corrido. Se respetan los saltos de línea, los puntos y coma y la numeración. */
+function evalRespuestaLineas(texto){
+  var t = String(texto || '').trim();
+  if(!t) return [];
+  var partes = t.split(/\r?\n|;\s*/);
+  if(partes.length === 1){
+    /* "1. algo 2. algo" o "1) algo, 2) algo": se corta ANTES de cada número. */
+    var conSaltos = t.replace(/(^|[\s,])(\d{1,2})[.)]\s+/g, '\n$2. ');
+    partes = conSaltos.split('\n');
+  }
+  return partes.map(function(x){ return x.replace(/^[,\s]+|[,\s]+$/g, ''); }).filter(Boolean);
+}
+function evalRespuestaHtml(texto){
+  var lineas = evalRespuestaLineas(texto);
+  if(!lineas.length) return '—';
+  if(lineas.length === 1) return escapeHtml(lineas[0]);
+  return '<ol style="margin:0; padding-left:18px;">' + lineas.map(function(l){
+    return '<li style="margin:1px 0;">' + escapeHtml(l.replace(/^\d{1,2}[.)]\s*/, '')) + '</li>';
+  }).join('') + '</ol>';
+}
 function evalLineasHtml(n){
   var filas = '';
   for(var i=0;i<(n||0);i++) filas += '<div style="border-bottom:1px solid var(--line-strong); height:22px;"></div>';
@@ -2890,20 +2946,20 @@ function evalDocxXml(reg){
   var doc = reg.documento || {};
   var docente = allDocentes().find(function(x){ return x.id===reg.docenteId; });
   var body = '';
-  body += docxPara('UNIDAD EDUCATIVA PARTICULAR "SIMÓN BOLÍVAR"   ·   Año lectivo 2026-2027', {bold:true, color:'FFFFFF', size:12, shd:'0A2A5E', align:'center'});
-  body += docxPara(doc.titulo || 'EVALUACIÓN', {bold:true, color:'FFFFFF', size:15, shd:'123E8C', align:'center'});
+  body += docxPara('UNIDAD EDUCATIVA PARTICULAR "SIMÓN BOLÍVAR"   ·   Año lectivo 2026-2027', {bold:true, color:'FFFFFF', size:12, shd:EVAL_COLOR.titulo, align:'center'});
+  body += docxPara(doc.titulo || 'EVALUACIÓN', {bold:true, color:'FFFFFF', size:15, shd:EVAL_COLOR.banda, align:'center'});
   body += docxPara([reg.trimestre||'', reg.parcial||'', (reg.asignatura||'').toUpperCase()].filter(Boolean).join('   ·   '), {bold:true, align:'center', size:11});
-  body += docxPara('DATOS INFORMATIVOS', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+  body += docxPara('DATOS INFORMATIVOS', {bold:true, color:EVAL_COLOR.texto, size:11, shd:EVAL_COLOR.cabecera});
   body += docxTable([
     docxRow([docxCell('Nombre y apellido:', {pct:1200, bold:true}), docxCell('', {pct:1800}), docxCell('Curso y paralelo:', {pct:1000, bold:true}), docxCell(reg.curso||'', {pct:1000})]),
     docxRow([docxCell('Fecha:', {pct:1200, bold:true}), docxCell('', {pct:1800}), docxCell('Docente:', {pct:1000, bold:true}), docxCell(docente ? nombreFormal(docente) : '', {pct:1000})]),
     docxRow([docxCell('Duración:', {pct:1200, bold:true}), docxCell((doc.duracionMinutos||reg.duracionMinutos||'') + ' minutos', {pct:1800}), docxCell('Calificación:', {pct:1000, bold:true}), docxCell('______ / ' + (doc.puntajeTotal||reg.puntajeTotal||10), {pct:1000})])
   ], [1200,1800,1000,1000], 9600);
-  body += docxPara('INDICACIONES GENERALES', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+  body += docxPara('INDICACIONES GENERALES', {bold:true, color:EVAL_COLOR.texto, size:11, shd:EVAL_COLOR.cabecera});
   body += docxPara(doc.indicacionesGenerales||'', {});
 
   (doc.momentos||[]).forEach(function(m){
-    body += docxPara(m.nombre.toUpperCase() + '   ·   ' + (m.tiempoMinutos||0) + ' min', {bold:true, color:'FFFFFF', size:11, shd:'1848A0'});
+    body += docxPara(m.nombre.toUpperCase() + '   ·   ' + (m.tiempoMinutos||0) + ' min', {bold:true, color:'FFFFFF', size:11, shd:EVAL_COLOR.banda});
     body += docxPara(m.consigna||'', {});
     (m.actividades||[]).forEach(function(a){ body += docxPara('•  ' + a, {}); });
   });
@@ -2911,12 +2967,12 @@ function evalDocxXml(reg){
   if((doc.materiales||[]).length) body += docxPara('Materiales: ' + doc.materiales.join(', '), {});
 
   (doc.secciones||[]).forEach(function(sec, si){
-    body += docxPara((EVAL_ROMANOS[si]||(si+1)) + '.   ' + (sec.titulo||'').toUpperCase(), {bold:true, color:'FFFFFF', size:12, shd:'1848A0'});
+    body += docxPara((EVAL_ROMANOS[si]||(si+1)) + '.   ' + (sec.titulo||'').toUpperCase(), {bold:true, color:'FFFFFF', size:12, shd:EVAL_COLOR.banda});
     body += docxPara('Puntaje:  ______ / ' + (sec.puntaje||0) + '        ' + (sec.descripcion||''), {size:9});
     var filas = [docxRow([
-      docxCell('N.º', {pct:400, bold:true, fill:'EEF2FA', align:'center'}),
-      docxCell('Pregunta o actividad', {pct:3900, bold:true, fill:'EEF2FA'}),
-      docxCell('Valor', {pct:700, bold:true, fill:'EEF2FA', align:'center'})
+      docxCell('N.º', {pct:400, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'}),
+      docxCell('Pregunta o actividad', {pct:3900, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Valor', {pct:700, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'})
     ])];
     (sec.items||[]).forEach(function(it, ii){
       filas.push(docxRow([
@@ -2928,7 +2984,7 @@ function evalDocxXml(reg){
     body += docxTable(filas, [400,3900,700], 9600);
   });
 
-  body += docxPara('VALORACIÓN', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+  body += docxPara('VALORACIÓN', {bold:true, color:EVAL_COLOR.texto, size:11, shd:EVAL_COLOR.cabecera});
   body += docxTable([
     docxRow([docxCell('Puntaje total obtenido:', {pct:2500, bold:true}), docxCell('______ / ' + (doc.puntajeTotal||reg.puntajeTotal||10), {pct:2500})]),
     docxRow([docxCell('Calificación:', {pct:2500, bold:true}), docxCell('______ / 10', {pct:2500})]),
@@ -2950,23 +3006,28 @@ function evalDocxXml(reg){
 function evalRespuestasDocxXml(reg){
   var doc = reg.documento || {};
   var body = '';
-  body += docxPara('UNIDAD EDUCATIVA PARTICULAR "SIMÓN BOLÍVAR"   ·   Año lectivo 2026-2027', {bold:true, color:'FFFFFF', size:12, shd:'0A2A5E', align:'center'});
-  body += docxPara('HOJA DE RESPUESTAS — USO EXCLUSIVO DEL DOCENTE', {bold:true, color:'FFFFFF', size:14, shd:'8A1C1C', align:'center'});
+  body += docxPara('UNIDAD EDUCATIVA PARTICULAR "SIMÓN BOLÍVAR"   ·   Año lectivo 2026-2027', {bold:true, color:'FFFFFF', size:12, shd:EVAL_COLOR.titulo, align:'center'});
+  body += docxPara('HOJA DE RESPUESTAS — USO EXCLUSIVO DEL DOCENTE', {bold:true, color:'FFFFFF', size:14, shd:EVAL_COLOR.respuestas, align:'center'});
   body += docxPara((doc.titulo||'') + '   ·   ' + (reg.asignatura||'') + '   ·   ' + (reg.curso||''), {bold:true, align:'center', size:11});
   body += docxPara([reg.trimestre||'', reg.parcial||''].filter(Boolean).join('   ·   ') + '     Puntaje total: ' + (doc.puntajeTotal||reg.puntajeTotal||10), {align:'center', size:10});
 
   (doc.secciones||[]).forEach(function(sec, si){
-    body += docxPara((EVAL_ROMANOS[si]||(si+1)) + '.   ' + (sec.titulo||'').toUpperCase() + '   (' + (sec.puntaje||0) + ' pts)', {bold:true, color:'FFFFFF', size:11, shd:'1848A0'});
+    body += docxPara((EVAL_ROMANOS[si]||(si+1)) + '.   ' + (sec.titulo||'').toUpperCase() + '   (' + (sec.puntaje||0) + ' pts)', {bold:true, color:'FFFFFF', size:11, shd:EVAL_COLOR.banda});
     var filas = [docxRow([
-      docxCell('N.º', {pct:400, bold:true, fill:'EEF2FA', align:'center'}),
-      docxCell('Respuesta correcta / criterio de corrección', {pct:3400, bold:true, fill:'EEF2FA'}),
-      docxCell('Nivel', {pct:600, bold:true, fill:'EEF2FA', align:'center'}),
-      docxCell('Valor', {pct:600, bold:true, fill:'EEF2FA', align:'center'})
+      docxCell('N.º', {pct:400, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'}),
+      docxCell('Respuesta correcta / criterio de corrección', {pct:3400, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Nivel', {pct:600, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'}),
+      docxCell('Valor', {pct:600, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'})
     ])];
     (sec.items||[]).forEach(function(it, ii){
+      /* Cada respuesta se escribe encolumnada: un renglón por ítem, no un párrafo corrido. */
+      var lineas = evalRespuestaLineas(it.respuesta);
+      var texto = lineas.length > 1
+        ? lineas.map(function(l, n){ return /^\d{1,2}[.)]/.test(l) ? l : (n+1) + '. ' + l; }).join('\n')
+        : (lineas[0] || '—');
       filas.push(docxRow([
         docxCell(String(ii+1), {pct:400, align:'center'}),
-        docxCell(it.respuesta || '—', {pct:3400}),
+        docxCell(texto, {pct:3400}),
         docxCell(it.nivel||'', {pct:600, align:'center'}),
         docxCell(String(it.puntaje||0), {pct:600, align:'center'})
       ]));
@@ -2975,13 +3036,13 @@ function evalRespuestasDocxXml(reg){
   });
 
   if(doc.instrumento && (doc.instrumento.criterios||[]).length){
-    body += docxPara('INSTRUMENTO DE CALIFICACIÓN', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+    body += docxPara('INSTRUMENTO DE CALIFICACIÓN', {bold:true, color:EVAL_COLOR.texto, size:11, shd:EVAL_COLOR.cabecera});
     var rub = [docxRow([
-      docxCell('Criterio', {pct:1400, bold:true, fill:'EEF2FA'}),
-      docxCell('Básico', {pct:1100, bold:true, fill:'EEF2FA'}),
-      docxCell('Intermedio', {pct:1100, bold:true, fill:'EEF2FA'}),
-      docxCell('Avanzado', {pct:1100, bold:true, fill:'EEF2FA'}),
-      docxCell('Pts', {pct:300, bold:true, fill:'EEF2FA', align:'center'})
+      docxCell('Criterio', {pct:1400, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Básico', {pct:1100, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Intermedio', {pct:1100, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Avanzado', {pct:1100, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera}),
+      docxCell('Pts', {pct:300, bold:true, color:EVAL_COLOR.texto, fill:EVAL_COLOR.cabecera, align:'center'})
     ])];
     doc.instrumento.criterios.forEach(function(cr){
       rub.push(docxRow([
@@ -2993,7 +3054,7 @@ function evalRespuestasDocxXml(reg){
     body += docxTable(rub, [1400,1100,1100,1100,300], 9600);
   }
   if((doc.adaptacionesDua||[]).length){
-    body += docxPara('ADAPTACIONES (DUA)', {bold:true, color:'3A2A00', size:11, shd:'F2B705'});
+    body += docxPara('ADAPTACIONES (DUA)', {bold:true, color:EVAL_COLOR.texto, size:11, shd:EVAL_COLOR.cabecera});
     doc.adaptacionesDua.forEach(function(a){ body += docxPara('•  ' + a, {}); });
   }
 
@@ -3020,17 +3081,17 @@ function evalHojaRespuestasHtml(reg){
   var seccionesHtml = (doc.secciones||[]).map(function(sec, si){
     var filas = (sec.items||[]).map(function(it, ii){
       return '<tr><td class="tabular" style="text-align:center; width:40px;">' + (ii+1) + '</td>'
-        + '<td>' + escapeHtml(it.respuesta || '—') + '</td>'
+        + '<td>' + evalRespuestaHtml(it.respuesta) + '</td>'
         + '<td style="width:90px;">' + escapeHtml(it.nivel||'') + '</td>'
         + '<td class="tabular" style="text-align:center; width:60px;">' + escapeHtml(String(it.puntaje||0)) + '</td></tr>';
     }).join('');
-    return '<div class="pca-band band-section">' + (EVAL_ROMANOS[si]||(si+1)) + '.   ' + escapeHtml((sec.titulo||'').toUpperCase()) + '   (' + escapeHtml(String(sec.puntaje||0)) + ' pts)</div>'
+    return '<div class="pca-band band-section" style="background:#' + EVAL_COLOR.cabecera + '; color:#' + EVAL_COLOR.texto + ';">' + (EVAL_ROMANOS[si]||(si+1)) + '.   ' + escapeHtml((sec.titulo||'').toUpperCase()) + '   (' + escapeHtml(String(sec.puntaje||0)) + ' pts)</div>'
       + '<div class="pca-section"><div class="table-wrap"><table><thead><tr><th>N.º</th><th>Respuesta correcta / criterio</th><th>Nivel</th><th>Valor</th></tr></thead><tbody>' + filas + '</tbody></table></div></div>';
   }).join('');
   return ''
   + '<div class="pca-doc dece-doc" id="evalDoc">'
-  + '  <div class="pca-band band-top"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
-  + '  <div class="pca-band band-title" style="background:#8A1C1C;">HOJA DE RESPUESTAS — USO EXCLUSIVO DEL DOCENTE</div>'
+  + '  <div class="pca-band band-top" style="background:#' + EVAL_COLOR.titulo + ';"><div class="inst">UNIDAD EDUCATIVA PARTICULAR “SIMÓN BOLÍVAR”</div><div>Año lectivo 2026-2027</div></div>'
+  + '  <div class="pca-band band-title" style="background:#' + EVAL_COLOR.respuestas + ';">HOJA DE RESPUESTAS — USO EXCLUSIVO DEL DOCENTE</div>'
   + '  <div class="pca-section" style="text-align:center;"><b>' + escapeHtml(doc.titulo||'') + '</b><br/>' + escapeHtml(reg.asignatura||'') + ' · ' + escapeHtml(reg.curso||'') + ' · ' + escapeHtml(reg.trimestre||'') + ' · ' + escapeHtml(reg.parcial||'') + '</div>'
   +    seccionesHtml
   + '</div>';
@@ -4686,7 +4747,7 @@ function asistenciaResultHtml(){
   if(!estudiantes.length) return '<div class="hint" style="margin-top:14px;">No hay estudiantes activos registrados en este curso. Ve a la pestaña "Estudiantes" para registrarlos.</div>';
   var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, f.fecha);
   if(!state.editingAsistencia || state.editingAsistencia.id !== docId){
-    var existing = load(LS.ASISTENCIA).find(function(x){ return x.id === docId; });
+    var existing = buscarAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
     state.editingAsistencia = existing
       ? Object.assign({}, existing, {periodos: JSON.parse(JSON.stringify(existing.periodos||{})), justificativos: JSON.parse(JSON.stringify(existing.justificativos||{})), novedades: JSON.parse(JSON.stringify(existing.novedades||{}))})
       : blankAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
@@ -4879,7 +4940,7 @@ function miAsistenciaResultHtml(){
   if(!estudiantes.length) return '<div class="hint" style="margin-top:14px;">No hay estudiantes activos registrados en este curso todavía (los registra Inspección General).</div>';
   var docId = asistenciaDocId(f.nivel, f.especialidad, f.curso, f.fecha);
   if(!state.editingMiAsistencia || state.editingMiAsistencia.id !== docId){
-    var existing = load(LS.ASISTENCIA).find(function(x){ return x.id === docId; });
+    var existing = buscarAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
     state.editingMiAsistencia = existing
       ? Object.assign({}, existing, {periodos: JSON.parse(JSON.stringify(existing.periodos||{}))})
       : blankAsistenciaDoc(f.nivel, f.especialidad, f.curso, f.fecha);
@@ -5284,7 +5345,12 @@ function repFirmaInspeccion(){
 /* Algunos cursos ("Diseño") quedaron guardados con el símbolo de grado "°" en Estudiantes pero con
    el ordinal "º" en Carga Horaria (error de tipeo antiguo, no de esta función) — se normalizan
    ambos antes de comparar para que la lista de firmas no salga vacía por esa sola diferencia. */
-function normCursoCmp(c){ return (c||'').replace(/[°º]/g, 'º'); }
+/* Clave para COMPARAR cursos (nunca para mostrarlos). Un mismo curso se escribió de varias formas
+   al registrar estudiantes: "1.º EGB", "1° EGB", "1°. EGB"… Se ignoran el símbolo de grado/ordinal,
+   los puntos, los espacios de más y las mayúsculas, así que todas esas variantes son el mismo curso. */
+function normCursoCmp(c){
+  return (c||'').replace(/[°º]/g, '').replace(/\./g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+}
 /* De Inicial a 6.º EGB un solo "docente de grado" dicta casi todas las asignaturas del curso, así
    que mostrar cada materia por separado es redundante — solo se indica el nombre y el título
    genérico "Docente de Grado". Desde 7.º EGB (inicio de Básica Media avanzada) hasta 3.º BGU cada
@@ -6396,9 +6462,9 @@ function renderDeceLista(){
         + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-dece-open="'+c.id+'">Abrir</button> <button class="btn btn-danger btn-sm" data-dece-delete="'+c.id+'">Eliminar</button></td>'
         + '</tr>';
     }).join('');
+    var tabla = '<div class="table-wrap"><table><thead><tr><th>Actualizado</th><th>Estudiante</th><th>Cedula</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + filas + '</tbody></table></div>';
     return '<div style="margin-bottom:18px;">'
-      + '<div class="pill pill-blue" style="margin-bottom:8px;">' + escapeHtml(clave) + ' — ' + grupos[clave].length + '</div>'
-      + '<div class="table-wrap"><table><thead><tr><th>Actualizado</th><th>Estudiante</th><th>Cedula</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+      + grupoPlegableHtml('dece|' + clave, 'mes', clave, grupos[clave].length + (grupos[clave].length===1?' ficha':' fichas'), tabla)
       + '</div>';
   }).join('') || '<div class="hint">Todavia no hay fichas registradas con este filtro.</div>';
   return ''
@@ -6409,6 +6475,7 @@ function renderDeceLista(){
   + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido..." /></div>'
   + '  </div>'
   + '  <button class="btn btn-primary btn-sm" id="btnDeceNuevo" style="margin-bottom:14px;">+ Nueva ficha</button>'
+  +    grupoBotonesTodoHtml('Pulsa el nombre de un curso para mostrar u ocultar sus fichas.')
   + '  <div id="dcGroupsWrap">' + gruposHtml + '</div>'
   + '</div>';
 }
@@ -7583,10 +7650,20 @@ function renderPcaListInner(d, scopeAll){
 
   var rows;
   if(scopeAll){
+    /* Cada docente es un grupo que se puede ocultar: la fila de encabezado hace de botón y, si está
+       cerrado, simplemente no se dibujan sus planes. */
     rows = groupByDocente(pcas, docentesById).map(function(g){
-      var nombre = g.docente ? (escapeHtml(g.docente.nombres) + ' ' + escapeHtml(g.docente.apellidos)) : '(docente eliminado)';
-      return '<tr class="group-head-row"><td colspan="6">' + nombre + ' <span class="hint">(' + g.items.length + (g.items.length===1?' plan':' planes') + ')</span></td></tr>'
-        + g.items.map(pcaRowHtml).join('');
+      var nombre = g.docente ? (g.docente.nombres + ' ' + g.docente.apellidos) : '(docente eliminado)';
+      var clave = 'pca|' + (g.docenteId||'sin');
+      state.gruposClavesVisibles.push(clave);
+      var cerrado = grupoColapsado(clave);
+      return '<tr class="group-head-row"><td colspan="6">'
+        + '<button type="button" class="sem-plegable sem-plegable-docente" data-grupo-toggle="' + escapeHtml(clave) + '" aria-expanded="' + (!cerrado) + '">'
+        + '<span class="sem-plegable-flecha" style="transform:rotate(' + (cerrado?0:90) + 'deg);">▸</span>'
+        + '<span>' + escapeHtml(nombre) + '</span>'
+        + '<span class="hint sem-plegable-cuenta">(' + g.items.length + (g.items.length===1?' plan':' planes') + ')</span>'
+        + '</button></td></tr>'
+        + (cerrado ? '' : g.items.map(pcaRowHtml).join(''));
     }).join('');
   } else {
     rows = pcas.map(pcaRowHtml).join('');
@@ -7608,6 +7685,7 @@ function renderPcaListInner(d, scopeAll){
     : '<div class="page-head"><div><div class="eyebrow">PCA</div><h1>Planes Curriculares Anuales</h1><p>Un plan por cada asignatura que impartes, siguiendo el formato institucional 2026-2027.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarPca">Importar de otro docente</button><button class="btn btn-primary" id="btnNewPca">+ Nuevo Plan Curricular Anual</button></div></div>';
 
   var cardEstiloAdmin = scopeAll ? pastelBorde('pca') : '';
+  if(scopeAll && pcas.length) bulkLockHtml = grupoBotonesTodoHtml('Pulsa el nombre de un docente para mostrar u ocultar sus planes.') + bulkLockHtml;
   return head + filtroHtml + bulkLockHtml
   + (pcas.length === 0
       ? '<div class="card"'+cardEstiloAdmin+'><div class="empty-state"><div class="ic">📘</div>' + (scopeAll ? 'No hay planes curriculares que coincidan con el filtro.' : 'Todavía no has creado ningún plan curricular anual.<br/><button class="btn btn-primary" id="btnNewPca2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>'
@@ -7867,6 +7945,99 @@ function pcaEstaCompleto(p, unidadCorte){
         && richTextToPlain(f.nivelLogroAvanzado||'').trim();
     });
   });
+}
+
+/* ---------- Revisión del PCA ----------
+   Tres cosas que el asesor pedagógico revisa siempre y que antes había que mirar a mano:
+   1. Que la Temporalización cuadre con lo planificado: tantas unidades como filas de
+      temporalización, y las semanas declaradas en cada unidad iguales a las semanas creadas.
+   2. Que no queden casilleros en blanco (destreza, temas, niveles de logro y página).
+   3. Que no se repitan temas ni niveles de logro entre semanas: copiar la misma destreza en varias
+      semanas es señal de planificación por trámite.
+   "N/A" cuenta como casillero lleno: es una respuesta válida del docente. */
+function textoPcaVacio(v){ return !richTextToPlain(v||'').trim(); }
+function clavePcaTexto(v){
+  return normalizarTextoPlan(richTextToPlain(v||'')).replace(/[^a-z0-9ñ\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+function validarPca(p){
+  var unidades = p.unidades || [];
+  var temporalizacion = p.temporalizacion || [];
+  var problemas = [];
+
+  /* 1. Temporalización contra unidades reales. */
+  if(temporalizacion.length && unidades.length && temporalizacion.length !== unidades.length){
+    problemas.push('La Temporalización declara ' + temporalizacion.length + ' unidad(es) y en Contenidos hay ' + unidades.length + '.');
+  }
+  var totalDeclaradas = 0, totalCreadas = 0;
+  temporalizacion.forEach(function(t, i){
+    var declaradas = parseInt(t.semanas, 10);
+    var u = unidades[i];
+    var creadas = u ? (u.filas||[]).length : 0;
+    if(u) totalCreadas += creadas;
+    if(!isNaN(declaradas)){
+      totalDeclaradas += declaradas;
+      if(u && declaradas !== creadas){
+        problemas.push((t.unidad || ('Unidad ' + (i+1))) + ': declaraste ' + declaradas + ' semana(s) en la Temporalización y creaste ' + creadas + '.');
+      }
+    }
+  });
+  var totalTrimestres = (parseInt(p.semanasT1,10)||0) + (parseInt(p.semanasT2,10)||0) + (parseInt(p.semanasT3,10)||0);
+  if(totalDeclaradas && totalTrimestres && totalDeclaradas !== totalTrimestres){
+    problemas.push('Las semanas de la Temporalización suman ' + totalDeclaradas + ' y los trimestres suman ' + totalTrimestres + '.');
+  }
+
+  /* 2. Casilleros en blanco. */
+  var CAMPOS = [
+    {campo:'destreza', etiqueta:'Nivel de logro Básico'},
+    {campo:'nivelLogroIntermedio', etiqueta:'Nivel de logro Intermedio'},
+    {campo:'nivelLogroAvanzado', etiqueta:'Nivel de logro Avanzado'},
+    {campo:'temas', etiqueta:'Temas y subtemas'},
+    {campo:'pagina', etiqueta:'Página'}
+  ];
+  var vacios = [];
+  unidades.forEach(function(u, ui){
+    (u.filas||[]).forEach(function(f, fi){
+      var faltan = CAMPOS.filter(function(c){ return textoPcaVacio(f[c.campo]); }).map(function(c){ return c.etiqueta; });
+      if(!f.fechaInicio || !f.fechaFin) faltan.push('Fechas');
+      if(faltan.length) vacios.push((u.nombre || ('Unidad ' + (ui+1))) + ' · semana ' + (f.semana || (fi+1)) + ': ' + faltan.join(', '));
+    });
+  });
+  if(vacios.length){
+    problemas.push('Hay casilleros en blanco (' + vacios.length + ' semana(s)): ' + vacios.slice(0,4).join(' | ') + (vacios.length>4 ? ' …' : ''));
+  }
+
+  /* 3. Temas o niveles de logro repetidos entre semanas. */
+  ['temas','destreza','nivelLogroIntermedio','nivelLogroAvanzado'].forEach(function(campo){
+    var etiqueta = campo==='temas' ? 'Temas y subtemas'
+      : campo==='destreza' ? 'Nivel de logro Básico'
+      : campo==='nivelLogroIntermedio' ? 'Nivel de logro Intermedio' : 'Nivel de logro Avanzado';
+    var vistos = {}, repetidos = [];
+    unidades.forEach(function(u, ui){
+      (u.filas||[]).forEach(function(f, fi){
+        var clave = clavePcaTexto(f[campo]);
+        if(!clave || clave.length < 15 || clave === 'na' || clave === 'n a') return;
+        var donde = (u.nombre || ('Unidad ' + (ui+1))) + ' · semana ' + (f.semana || (fi+1));
+        if(vistos[clave]) repetidos.push(donde + ' repite lo de ' + vistos[clave]);
+        else vistos[clave] = donde;
+      });
+    });
+    if(repetidos.length) problemas.push(etiqueta + ' repetido: ' + repetidos.slice(0,3).join(' | ') + (repetidos.length>3 ? ' …' : ''));
+  });
+
+  return { problemas: problemas, requiereCorreccion: problemas.length > 0 };
+}
+/* Aviso dentro del formulario del PCA, con el mismo criterio visual del Plan Semanal. */
+function checklistPcaHtml(p, isIngles){
+  var v = validarPca(p);
+  if(!v.requiereCorreccion){
+    return '<div style="border:1px solid var(--green-600); background:var(--green-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
+      + '<div style="font-weight:700; color:var(--green-600);">' + escapeHtml(te('Revisión del PCA: sin observaciones. La temporalización cuadra, no hay casilleros en blanco ni contenidos repetidos.', isIngles)) + '</div></div>';
+  }
+  return '<div style="border:1px solid var(--red-600); background:var(--red-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
+    + '<div style="font-weight:700; color:var(--red-600);">' + escapeHtml(te('Corregir antes de entregar este PCA:', isIngles)) + '</div>'
+    + '<ul style="margin:6px 0 0 18px; padding:0;">' + v.problemas.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>'
+    + '<div class="hint" style="margin-top:6px;">' + escapeHtml(te('Cada semana debe tener su propia destreza y sus propios temas: si se repiten, el PCA deja de servir como guía del año.', isIngles)) + '</div>'
+    + '</div>';
 }
 
 function openPcaForm(pcaId, returnTo){
@@ -8142,6 +8313,7 @@ function renderPcaForm(d){
   + '    <button class="btn btn-ghost btn-sm" id="btnAddTemporalizacion" style="margin-top:10px;">' + te('+ Agregar unidad a la temporalización', isIngles) + '</button>'
   + '  </div>'
   + '  <div class="pca-band band-section">' + te('Contenidos', isIngles) + '</div>'
+  + '  <div class="pca-section no-print" id="pcaChecklist">' + checklistPcaHtml(p, isIngles) + '</div>'
   + '  <div id="unidadesWrap">' + unidadesHtml + '</div>'
   + '  <div style="padding:14px 20px;"><button class="btn btn-ghost btn-sm" id="btnAddUnidad">' + te('+ Agregar unidad', isIngles) + '</button></div>'
   + '  <div class="pca-band band-section">' + te('Firmas', isIngles) + '</div>'
@@ -8271,6 +8443,22 @@ function bindPcaFormEvents(){
     return;
   }
   bindAutoguardadoDelegado('pcaDoc', 'pca');
+  /* La revisión del PCA se recalcula mientras se escribe (con una pausa, para no rehacerla en cada
+     tecla) igual que el checklist del Plan Semanal. */
+  (function(){
+    var doc = document.getElementById('pcaDoc');
+    var temporizador = null;
+    if(!doc) return;
+    ['input','change'].forEach(function(evt){
+      doc.addEventListener(evt, function(){
+        clearTimeout(temporizador);
+        temporizador = setTimeout(function(){
+          var cont = document.getElementById('pcaChecklist');
+          if(cont) cont.innerHTML = checklistPcaHtml(state.editingPca, pcaEsIngles(state.editingPca));
+        }, 600);
+      });
+    });
+  })();
 
   document.getElementById('pfNivel').addEventListener('change', function(e){ p.nivel=e.target.value; p.especialidad=''; p.curso=''; p.asignatura=''; renderPcaFormAgain(); });
   document.getElementById('pfEspecialidad').addEventListener('change', function(e){ p.especialidad=e.target.value; p.asignatura=''; renderPcaFormAgain(); });
@@ -9353,6 +9541,55 @@ function renderSemanalListInner(d, scopeAll, banda){
 
   return head + filtroHtml + plegarTodoHtml + gruposHtml + sinFechaHtml;
 }
+/* ============================= GRUPOS PLEGABLES (todo el sistema) =============================
+   Mecanismo único para mostrar/ocultar grupos en cualquier lista: docentes, meses, semanas, cursos…
+   Cada grupo se identifica con una clave estable (vista + grupo) y su estado vive en memoria, así
+   sobrevive a los redibujados en tiempo real mientras el usuario trabaja. */
+function grupoColapsado(clave){ return !!(state.gruposColapsados && state.gruposColapsados[clave]); }
+/* Registra la clave (para "Ocultar todo") y devuelve el encabezado pulsable + el cuerpo si está
+   abierto. `nivel` solo cambia el tamaño del título: 'mes', 'semana' o 'docente'. */
+function grupoPlegableHtml(clave, nivel, titulo, cuentaTexto, cuerpoHtml){
+  if(!state.gruposClavesVisibles) state.gruposClavesVisibles = [];
+  state.gruposClavesVisibles.push(clave);
+  var cerrado = grupoColapsado(clave);
+  return '<div class="grupo-plegable-wrap grupo-nivel-' + nivel + '">'
+    + '<button type="button" class="sem-plegable sem-plegable-' + (nivel==='docente' ? 'docente' : nivel) + '" data-grupo-toggle="' + escapeHtml(clave) + '" aria-expanded="' + (!cerrado) + '" title="' + (cerrado ? 'Mostrar' : 'Ocultar') + '">'
+    + '<span class="sem-plegable-flecha" style="transform:rotate(' + (cerrado ? 0 : 90) + 'deg);">▸</span>'
+    + '<span>' + escapeHtml(titulo) + '</span>'
+    + (cuentaTexto ? '<span class="hint sem-plegable-cuenta">(' + escapeHtml(cuentaTexto) + ')</span>' : '')
+    + '</button>'
+    + (cerrado ? '' : cuerpoHtml)
+    + '</div>';
+}
+/* Barra con "Mostrar todo / Ocultar todo" para la pantalla actual. */
+function grupoBotonesTodoHtml(texto){
+  return '<div class="pca-toolbar no-print" style="margin-bottom:10px;">'
+    + '<span class="hint">' + escapeHtml(texto || 'Pulsa el título de un grupo para mostrarlo u ocultarlo.') + '</span>'
+    + '<div class="spacer"></div>'
+    + '<button class="btn btn-ghost btn-sm" data-grupos-todo="mostrar">▾ Mostrar todo</button>'
+    + '<button class="btn btn-ghost btn-sm" data-grupos-todo="ocultar">▸ Ocultar todo</button>'
+    + '</div>';
+}
+function bindGruposPlegables(){
+  state.gruposColapsados = state.gruposColapsados || {};
+  document.querySelectorAll('[data-grupo-toggle]').forEach(function(btn){
+    btn.onclick = function(){
+      var clave = btn.getAttribute('data-grupo-toggle');
+      if(state.gruposColapsados[clave]) delete state.gruposColapsados[clave];
+      else state.gruposColapsados[clave] = true;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-grupos-todo]').forEach(function(btn){
+    btn.onclick = function(){
+      var ocultar = btn.getAttribute('data-grupos-todo') === 'ocultar';
+      (state.gruposClavesVisibles||[]).forEach(function(k){
+        if(ocultar) state.gruposColapsados[k] = true; else delete state.gruposColapsados[k];
+      });
+      render();
+    };
+  });
+}
 function semanalBloqueColapsado(clave){ return !!(state.semanalColapsados && state.semanalColapsados[clave]); }
 /* Lunes de la semana a la que pertenece una fecha AAAA-MM-DD (los planes van de lunes a viernes). */
 function lunesDeSemanaIso(fechaISO){
@@ -9756,6 +9993,80 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
 }
 /* Devuelve el diagnóstico completo de un plan: qué casilleros faltan, si el método está bien
    desarrollado y si hay enlace de diapositivas. */
+/* ---------- Actividades copiadas ----------
+   Una planificación real cambia de un día a otro. Copiar y pegar las mismas Actividades de
+   Aprendizaje en varios días (o del plan de la semana anterior) es planificación burocrática, así
+   que el sistema lo detecta y lo avisa en rojo. El análisis se hace SIEMPRE al abrir o listar un
+   plan, así que también alcanza a los planes ya guardados. */
+var COPIA_MIN_PALABRAS = 12;   /* textos más cortos no son evidencia de copia */
+var COPIA_UMBRAL = 0.9;        /* 90 % de palabras en común ya es "prácticamente lo mismo" */
+function palabrasActividades(html){
+  var plano = richTextToPlain(htmlConEnlacesVisibles(html || ''));
+  var sinUrls = plano.replace(/https?:\/\/\S+/gi, ' ');
+  var norm = normalizarTextoPlan(sinUrls).replace(/[^a-z0-9ñ\s]/g, ' ');
+  return norm.split(/\s+/).filter(function(p){ return p.length > 2; });
+}
+/* Parecido entre dos textos por palabras en común (Jaccard): 1 = idénticos. Detecta también las
+   copias con retoques mínimos, no solo el copiar-pegar exacto. */
+function parecidoActividades(a, b){
+  if(a.length < COPIA_MIN_PALABRAS || b.length < COPIA_MIN_PALABRAS) return 0;
+  var setA = {}, setB = {};
+  a.forEach(function(p){ setA[p] = 1; });
+  b.forEach(function(p){ setB[p] = 1; });
+  var clavesA = Object.keys(setA), clavesB = Object.keys(setB);
+  var comunes = clavesA.filter(function(p){ return setB[p]; }).length;
+  var union = clavesA.length + clavesB.length - comunes;
+  return union ? comunes / union : 0;
+}
+/* ¿Este plan nació de "Replanificar" sobre aquel otro? Los planes nuevos lo dicen con el campo
+   replanificadoDe; los anteriores a ese campo se reconocen por su número: replanificar crea el
+   N.º 3.1 a partir del N.º 3 (ver numeroReplanificado). */
+function esReplanificacionDe(s, prev){
+  if(s.replanificadoDe && s.replanificadoDe === prev.id) return true;
+  var actual = String(s.numero||''), anterior = String(prev.numero||'');
+  if(actual.indexOf('.') === -1 || !actual) return false;
+  return actual.split('.')[0] === anterior.split('.')[0];
+}
+function actividadesRepetidasPlan(s){
+  var avisos = [];
+  var dias = s.dias || [];
+  var huellas = dias.map(function(dia){ return palabrasActividades(dia.actividades); });
+  /* 1) Días repetidos dentro del mismo plan. */
+  for(var i = 1; i < dias.length; i++){
+    for(var j = 0; j < i; j++){
+      if(parecidoActividades(huellas[i], huellas[j]) >= COPIA_UMBRAL){
+        avisos.push('Las Actividades del Día ' + (i+1) + ' son prácticamente las mismas del Día ' + (j+1) + ' de este plan.');
+        break;
+      }
+    }
+  }
+  /* 2) Repetidas respecto de planes anteriores del mismo docente, asignatura y curso: es normal
+     repetir contenido entre paralelos, pero no de una semana a la siguiente. */
+  var anteriores = load(LS.SEMANAL).filter(function(x){
+    return x.id !== s.id && x.docenteId === s.docenteId
+      && (x.asignatura||'') === (s.asignatura||'')
+      && normCursoCmp(x.curso) === normCursoCmp(s.curso)
+      && (x.fechaInicio||'') && (s.fechaInicio||'') && x.fechaInicio < s.fechaInicio;
+  }).sort(function(a,b){ return (b.fechaInicio||'').localeCompare(a.fechaInicio||''); }).slice(0, 4);
+  dias.forEach(function(dia, i){
+    for(var k = 0; k < anteriores.length; k++){
+      var prev = anteriores[k];
+      /* Si este plan nació del botón "Replanificar" sobre ese mismo plan, se exige que el texto sea
+         EXACTAMENTE igual para considerarlo copia: replanificar supone retomar lo pendiente, y ahí
+         lo normal es reutilizar parte de la clase y ajustar el resto. */
+      var umbral = esReplanificacionDe(s, prev) ? 1 : COPIA_UMBRAL;
+      var repetido = (prev.dias||[]).some(function(d2){
+        return parecidoActividades(huellas[i], palabrasActividades(d2.actividades)) >= umbral;
+      });
+      if(repetido){
+        avisos.push('Las Actividades del Día ' + (i+1) + ' se repiten del plan N.º ' + (prev.numero||'—') + ' (semana del ' + fmtDate(prev.fechaInicio) + ')'
+          + (umbral === 1 ? ', que replanificaste sin cambiar nada.' : '.'));
+        break;
+      }
+    }
+  });
+  return avisos;
+}
 function validarPlanSemanal(s){
   var dias = s.dias || [];
   var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
@@ -9765,10 +10076,12 @@ function validarPlanSemanal(s){
   }), metodoKey, exigirEnlace);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
   var completo = dias.length > 0 && !faltanCasilleros.length;
-  var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length;
+  var actividadesRepetidas = actividadesRepetidasPlan(s);
+  var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length && !actividadesRepetidas.length;
   return {
     completo: completo,
     metodoOk: metodoOk,
+    actividadesRepetidas: actividadesRepetidas,
     requiereCorreccion: completo && !metodoOk,
     sinDias: dias.length === 0,
     faltanCasilleros: faltanCasilleros,
@@ -9810,6 +10123,9 @@ function validarTallerPractico(t){
     faltanCasilleros: r.faltanCasilleros,
     problemasMetodo: r.problemasMetodo,
     faltanEnlaces: r.faltanEnlaces,
+    /* El control de actividades copiadas es propio del Plan Semanal (día a día); aquí va vacío para
+       que las pantallas compartidas puedan leer este campo sin comprobar el tipo de plan. */
+    actividadesRepetidas: [],
     metodo: metodoDeClase(metodoKey),
     exigeEnlace: exigirEnlace,
     metodoImpuesto: true
@@ -9850,9 +10166,10 @@ function observacionPlanHtml(v, estado, completadoEn){
   } else {
     pills.push('<span class="pill pill-green">Completado a tiempo</span>');
   }
-  var motivos = v.faltanCasilleros.concat(v.problemasMetodo);
+  var motivos = v.faltanCasilleros.concat(v.problemasMetodo, v.actividadesRepetidas||[]);
   if(v.faltanEnlaces.length) motivos.push('Sin enlace de diapositivas: ' + v.faltanEnlaces.join(', '));
   if(v.requiereCorreccion) pills.push('<span class="pill pill-red" title="' + escapeHtml(motivos.join(' | ')) + '">Corregir</span>');
+  if((v.actividadesRepetidas||[]).length) pills.push('<span class="pill pill-red" title="' + escapeHtml(v.actividadesRepetidas.join(' | ')) + '">Actividades copiadas</span>');
   var detalle = '';
   if(estado !== 'incompleto' && completadoEn) detalle = '<div class="hint" style="margin-top:3px;">' + escapeHtml(fmtDateTime(completadoEn)) + '</div>';
   else if(motivos.length) detalle = '<div class="hint" style="margin-top:3px;">' + escapeHtml(motivos[0]) + (motivos.length > 1 ? ' (+' + (motivos.length - 1) + ')' : '') + '</div>';
@@ -9907,6 +10224,29 @@ function tallerChecklistHtml(t){
 function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   var momentos = v.metodo.descripcion || v.metodo.momentos.map(function(m){ return m.label; }).join(' · ');
   var color, titulo, detalles = [];
+  var copiadas = v.actividadesRepetidas || [];
+  /* Las actividades copiadas se avisan SIEMPRE en rojo, aunque el plan esté completo: es lo que
+     distingue una planificación real de una hecha por trámite. */
+  if(copiadas.length && !v.sinDias && v.completo){
+    return '<div style="border:1px solid var(--red-600); background:var(--red-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
+      + '<div style="font-weight:700; color:var(--red-600);">' + escapeHtml(te('Actividades de Aprendizaje copiadas: planifique cada día de forma distinta.', isIngles)) + '</div>'
+      + '<ul style="margin:6px 0 0 18px; padding:0;">' + copiadas.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>'
+      + (v.problemasMetodo.length || v.faltanEnlaces.length
+          ? '<ul style="margin:6px 0 0 18px; padding:0;">' + v.problemasMetodo.concat(v.faltanEnlaces.length ? [te('Falta el enlace de las diapositivas en: ', isIngles) + v.faltanEnlaces.join(', ')] : []).map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>'
+          : '')
+      /* Mensaje del Asesor Pedagógico: el aviso no sirve de nada si no dice CÓMO corregirlo. */
+      + '<div style="margin-top:8px; font-size:12.5px; line-height:1.5;">'
+      + '<b>' + escapeHtml(te('Mensaje del Asesor Pedagógico:', isIngles)) + '</b> '
+      + escapeHtml(te('repetir las mismas actividades convierte la planificación en un trámite y no en una guía real de la clase. Cada día del plan responde a un momento distinto del aprendizaje.', isIngles))
+      + '<ul style="margin:6px 0 0 18px; padding:0;">'
+      + '<li>' + escapeHtml(te('Cambia la consigna: lo que el estudiante HACE (observar, comparar, resolver, crear) debe avanzar de un día al siguiente.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(te('Varía el recurso y el producto: si el lunes fue una lectura, el martes puede ser un organizador gráfico, un ejercicio o una exposición corta.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(te('Sigue los momentos del método: la Anticipación del día 2 no puede ser la misma del día 1, porque los estudiantes ya saben más.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(te('Con enfoque DUA, ofrece al menos una alternativa de respuesta (oral, escrita o gráfica) en uno de los días.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(te('Si necesitas retomar lo que quedó pendiente, usa el botón Replanificar y ajusta las actividades: así queda registrado como refuerzo y no como copia.', isIngles)) + '</li>'
+      + '</ul></div>'
+      + '</div>';
+  }
   if(v.sinDias){
     color = 'red'; titulo = te('Agregue al menos un ', isIngles) + te(etiquetaBloque, isIngles) + '.';
   } else if(!v.completo){
@@ -10253,6 +10593,19 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
   }).join('');
   return '<div class="field"><label class="semanal-section-title">' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
 }
+/* Color de las franjas del Plan Semanal según el área: ayuda a reconocer de un vistazo de qué
+   asignatura es el plan impreso, sobre todo cuando el docente maneja varias. Las áreas que no
+   están en esta lista conservan el dorado institucional. */
+var BANDA_POR_ASIGNATURA = [
+  {coincide:/matem[aá]tica|razonamiento\s*matem|[aá]lgebra|geometr[ií]a|c[aá]lculo|estad[ií]stica/i, fondo:'#CFE6F7', texto:'#0B3954'},
+  {coincide:/ciencias\s*naturales|biolog|qu[ií]mica|f[ií]sica(?!\s*\/?\s*cultura)|relaci[oó]n\s*con\s*el\s*medio/i, fondo:'#D7EFD9', texto:'#14532D'},
+  {coincide:/estudios\s*sociales|historia|ciudadan|geograf|filosof/i, fondo:'#C6D7F2', texto:'#17325E'},
+  {coincide:/lengua\s*y\s*literatura|lenguaje|comprensi[oó]n\s*y\s*expresi[oó]n|literatura|razonamiento\s*verbal/i, fondo:'#FBE2B6', texto:'#6B4B00'}
+];
+function estiloBandaAsignatura(asignatura){
+  var m = BANDA_POR_ASIGNATURA.find(function(x){ return x.coincide.test(asignatura||''); });
+  return m ? ' style="background:' + m.fondo + '; color:' + m.texto + ';"' : '';
+}
 function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles){
   var seleccionados = splitItemsList(dia.contenidos);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
@@ -10403,6 +10756,8 @@ function renderSemanalForm(d){
     return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, reforzarDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles);
   }).join('');
 
+  /* Color de las franjas según el área de la asignatura (ver BANDA_POR_ASIGNATURA). */
+  var bandaAsig = estiloBandaAsignatura(s.asignatura);
   return ''
   + semanalToolbarHtml(s)
   + '<div class="pca-doc" id="semanalDoc">'
@@ -10422,7 +10777,7 @@ function renderSemanalForm(d){
         : '    <strong>' + escapeHtml(fmtDateTimeLocal(limiteVigente)) + '</strong>');
     })()
   + '  </div>'
-  + '  <div class="pca-band band-section">' + te('Datos Informativos', isIngles) + '</div>'
+  + '  <div class="pca-band band-section"' + bandaAsig + '>' + te('Datos Informativos', isIngles) + '</div>'
   + '  <div class="pca-section">'
   + '    <div class="hint" style="margin-bottom:10px;">' + te('Nivel, especialidad, curso y asignatura se enlistan según tu Carga Horaria. La semana se enlaza a tu Plan Curricular Anual (PCA).', isIngles) + '</div>'
   + '    <div class="grid-4">'
@@ -10436,7 +10791,7 @@ function renderSemanalForm(d){
   + '      <div class="field"><label>' + te('Fecha', isIngles) + '</label><div style="display:flex; align-items:center; gap:6px;"><input class="cell-input" type="date" id="sfFechaInicio" value="' + escapeHtml(s.fechaInicio||'') + '" /><span class="hint">' + te('al', isIngles) + '</span><input class="cell-input" type="date" id="sfFechaFin" value="' + escapeHtml(s.fechaFin||'') + '" /></div></div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">' + te('Datos Curriculares', isIngles) + '</div>'
+  + '  <div class="pca-band band-section"' + bandaAsig + '>' + te('Datos Curriculares', isIngles) + '</div>'
   + '  <div class="pca-section">'
   + '    <div class="grid-2">'
   + '      <div class="field"><label>' + te('Unidad Didáctica', isIngles) + '</label><input class="cell-input" id="sfUnidad" value="' + escapeHtml(s.unidadDidactica||'') + '" placeholder="' + te('Se completa según la semana del PCA', isIngles) + '" /></div>'
@@ -10449,13 +10804,13 @@ function renderSemanalForm(d){
   + '      </div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">' + te('Desarrollo de las Clases', isIngles) + '</div>'
+  + '  <div class="pca-band band-section"' + bandaAsig + '>' + te('Desarrollo de las Clases', isIngles) + '</div>'
   + '  <div class="pca-section">'
   + '    <div id="semanalChecklist" class="no-print">' + semanalChecklistHtml(s, isIngles) + '</div>'
   + '    <div id="diasWrap">' + diasHtml + '</div>'
   + '    <button class="btn btn-ghost btn-sm no-print" id="btnAddDia">' + te('+ Agregar otro día de clase', isIngles) + '</button>'
   + '  </div>'
-  + '  <div class="pca-band band-section">' + te('Firmas de Responsabilidad', isIngles) + '</div>'
+  + '  <div class="pca-band band-section"' + bandaAsig + '>' + te('Firmas de Responsabilidad', isIngles) + '</div>'
   + '  <div class="signature-grid">'
   + '    <div class="signature-box"><div class="role">' + te('Elaborado por · Docente', isIngles) + '</div><input class="cell-input" value="' + escapeHtml(nombreFormal(d)) + '" readonly /></div>'
   + '    <div class="signature-box"><div class="role">' + te('Revisado por · Asesor Pedagógico', isIngles) + '</div><input class="cell-input" id="sfRevisado" value="' + escapeHtml(s.revisadoPor||'') + '" /></div>'
@@ -10625,6 +10980,10 @@ function replanificarSemanal(semId){
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
     unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
     metodo: s.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
+    /* Marca de origen: replanificar es una práctica legítima (se retoma lo que quedó pendiente),
+       así que el control de actividades copiadas es más benévolo con estos planes — solo avisa si
+       el docente no cambió absolutamente nada. Ver actividadesRepetidasPlan. */
+    replanificadoDe: s.id,
     dias: dias,
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     createdAt: nowISO(), updatedAt: nowISO()
@@ -10659,6 +11018,8 @@ function saveSemanal(s, silent){
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     importadoDeDocente: s.importadoDeDocente||'', importadoFecha: s.importadoFecha||'',
+    /* Se conserva el origen de una replanificación (ver replanificarSemanal). */
+    replanificadoDe: s.replanificadoDe||'',
     createdAt: s.createdAt,
     completadoEn: existingHeader ? (existingHeader.completadoEn||'') : '',
     historial: existingHeader ? (existingHeader.historial||[]) : [],
@@ -11318,7 +11679,28 @@ function renderTallerListInner(d, scopeAll){
   if(talleres.length===0){
     return head + filtroHtml + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>' + (scopeAll ? 'No hay Talleres Prácticos que coincidan con el filtro.' : 'Todavía no has creado ningún Taller Práctico.<br/><button class="btn btn-primary" id="btnNewTaller2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
   }
-  return head + filtroHtml + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + talleres.map(rowHtml).join('') + '</tbody></table></div></div>';
+  /* En Administración los talleres se agrupan por docente y cada grupo se puede ocultar. */
+  var cuerpo, barraGrupos = '';
+  if(scopeAll){
+    cuerpo = groupByDocente(talleres, docentesById).map(function(g){
+      var nombre = g.docente ? nombreFormal(g.docente) : '(docente eliminado)';
+      var clave = 'taller|' + (g.docenteId||'sin');
+      state.gruposClavesVisibles.push(clave);
+      var cerrado = grupoColapsado(clave);
+      var colspan = scopeAll ? 8 : 7;
+      return '<tr class="group-head-row"><td colspan="' + colspan + '">'
+        + '<button type="button" class="sem-plegable sem-plegable-docente" data-grupo-toggle="' + escapeHtml(clave) + '" aria-expanded="' + (!cerrado) + '">'
+        + '<span class="sem-plegable-flecha" style="transform:rotate(' + (cerrado?0:90) + 'deg);">▸</span>'
+        + '<span>' + escapeHtml(nombre) + '</span>'
+        + '<span class="hint sem-plegable-cuenta">(' + g.items.length + (g.items.length===1?' taller':' talleres') + ')</span>'
+        + '</button></td></tr>'
+        + (cerrado ? '' : g.items.map(rowHtml).join(''));
+    }).join('');
+    barraGrupos = grupoBotonesTodoHtml('Pulsa el nombre de un docente para mostrar u ocultar sus talleres.');
+  } else {
+    cuerpo = talleres.map(rowHtml).join('');
+  }
+  return head + filtroHtml + barraGrupos + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + cuerpo + '</tbody></table></div></div>';
 }
 function renderTallerList(d){ return renderTallerListInner(d, false); }
 function bindTallerListEvents(){
@@ -12040,6 +12422,8 @@ var ADMIN_TABS = [
   {key:'diapositivas', label:'Diapositivas'},
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
+  {key:'presentaciontaller', label:'Presentación de Talleres Prácticos'},
+  {key:'presentacionresumen', label:'Resumen por docente y mes'},
   {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
   {key:'presentacionpca', label:'Presentación de PCA (Escuela)'},
   {key:'presentacionpcacolegio', label:'Presentación de PCA (Colegio)'},
@@ -12057,6 +12441,8 @@ var ADMIN_TAB_PASTEL = {
   diapositivas: 'var(--lime-100)',
   consultas: 'var(--lime-100)',
   presentacion: 'var(--blue-100)',
+  presentaciontaller: 'var(--teal-100)',
+  presentacionresumen: 'var(--purple-100)',
   presentacioncolegio: 'var(--gold-100)',
   presentacionpca: 'var(--pink-100)',
   presentacionpcacolegio: 'var(--brown-100)',
@@ -12126,13 +12512,26 @@ function esMomentoDeEnsenanza(momento){
 }
 /* Enlaces de UNA combinación docente + asignatura + curso, con la referencia del plan y la semana
    de donde salió cada uno, para que el administrador pueda ubicarlo. */
-function enlacesDeDiapositivas(docenteId, asignatura, curso){
+/* Filtro por fechas: `criterio` decide qué fecha del plan se compara — la semana que planifica
+   (fechaInicio) o el momento en que el docente lo dejó completo (completadoEn, la "entrega"). */
+function diapositivasEnRango(registro, filtro){
+  if(!filtro || (!filtro.desde && !filtro.hasta)) return true;
+  var fecha = (filtro.criterio === 'entrega')
+    ? (registro.completadoEn || registro.createdAt || registro.updatedAt || '').slice(0,10)
+    : (registro.fechaInicio || '').slice(0,10);
+  if(!fecha) return false;
+  if(filtro.desde && fecha < filtro.desde) return false;
+  if(filtro.hasta && fecha > filtro.hasta) return false;
+  return true;
+}
+function enlacesDeDiapositivas(docenteId, asignatura, curso, filtro){
   var filas = [];
   function acumular(lista, e){
     if(!lista.some(function(x){ return x.url===e.url && x.momento===e.momento; })) lista.push(e);
   }
   load(LS.SEMANAL).filter(function(s){
-    return s.docenteId===docenteId && (s.asignatura||'')===asignatura && normCursoCmp(s.curso)===normCursoCmp(curso);
+    return s.docenteId===docenteId && (s.asignatura||'')===asignatura && normCursoCmp(s.curso)===normCursoCmp(curso)
+      && diapositivasEnRango(s, filtro);
   }).forEach(function(s){
     var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
     var enlaces = [];
@@ -12142,7 +12541,8 @@ function enlacesDeDiapositivas(docenteId, asignatura, curso){
     if(enlaces.length) filas.push({ origen:'Plan Semanal N.º ' + (s.numero||'—'), semana:s.fechaInicio||'', metodo:metodoDeClase(metodoKey).key, enlaces:enlaces });
   });
   load(LS.TALLER).filter(function(t){
-    return t.docenteId===docenteId && (t.asignatura||'')===asignatura && normCursoCmp(t.curso)===normCursoCmp(curso);
+    return t.docenteId===docenteId && (t.asignatura||'')===asignatura && normCursoCmp(t.curso)===normCursoCmp(curso)
+      && diapositivasEnRango(t, filtro);
   }).forEach(function(t){
     var enlaces = [];
     (t.fases||[]).forEach(function(fase){
@@ -12156,7 +12556,8 @@ function enlacesDeDiapositivas(docenteId, asignatura, curso){
   return filas;
 }
 function renderAdminDiapositivas(){
-  var filtro = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false});
+  var filtro = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false, desde:'', hasta:'', criterio:'semana'});
+  if(filtro.criterio === undefined) filtro.criterio = 'semana';
   var pastel = ADMIN_TAB_PASTEL.diapositivas;
   var docentesById = {};
   allDocentes().forEach(function(x){ docentesById[x.id] = x; });
@@ -12181,7 +12582,7 @@ function renderAdminDiapositivas(){
         .sort(function(a,b){ return a.localeCompare(b); });
       cursos.forEach(function(curso, i){
         totalCombinaciones++;
-        var fuentes = enlacesDeDiapositivas(docenteId, asig, curso);
+        var fuentes = enlacesDeDiapositivas(docenteId, asig, curso, filtro);
         var n = fuentes.reduce(function(acc, f){ return acc + f.enlaces.length; }, 0);
         var nEnsenanza = fuentes.reduce(function(acc, f){
           return acc + f.enlaces.filter(function(e){ return esMomentoDeEnsenanza(e.momento); }).length;
@@ -12212,10 +12613,11 @@ function renderAdminDiapositivas(){
       });
     });
     if(!filasHtml.length) return null;
+    var tabla = '<div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Curso</th><th style="width:70px; text-align:center;">Enlaces</th><th>Diapositivas</th></tr></thead><tbody>'
+      + filasHtml.join('') + '</tbody></table></div>';
     return { nombre: nombre, html: '<div class="card" style="border-top:4px solid '+pastel+';">'
-      + '<h2>' + escapeHtml(nombre) + '</h2>'
-      + '<div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Curso</th><th style="width:70px; text-align:center;">Enlaces</th><th>Diapositivas</th></tr></thead><tbody>'
-      + filasHtml.join('') + '</tbody></table></div></div>' };
+      + grupoPlegableHtml('diapositivas|' + docenteId, 'docente', nombre, filasHtml.length + (filasHtml.length===1?' fila':' filas'), tabla)
+      + '</div>' };
   }).filter(Boolean);
 
   bloques.sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
@@ -12229,6 +12631,19 @@ function renderAdminDiapositivas(){
     + '    <div class="field"><label>&nbsp;</label><label class="checkbox-pill" style="height:41px;"><input type="checkbox" id="dpSoloSin" ' + (filtro.soloSinEnlace?'checked':'') + ' /><span>Mostrar solo los que no tienen enlace</span></label></div>'
     + '    <div class="field"><label>&nbsp;</label><button class="btn btn-gold no-print" id="btnPrintDiapositivas" style="height:41px;">Imprimir / PDF (A4)</button></div>'
     + '  </div>'
+    /* Filtro por fechas: limita los enlaces a los planes de un período concreto. */
+    + '  <div class="grid-4" style="margin-top:10px; align-items:end;">'
+    + '    <div class="field"><label>Filtrar por</label><select class="cell-select" id="dpCriterio">'
+    + '      <option value="semana" ' + (filtro.criterio!=='entrega'?'selected':'') + '>Semana que planifica el plan</option>'
+    + '      <option value="entrega" ' + (filtro.criterio==='entrega'?'selected':'') + '>Fecha en que se presentó el plan</option>'
+    + '    </select></div>'
+    + '    <div class="field"><label>Desde</label><input class="cell-input" type="date" id="dpDesde" value="' + escapeHtml(filtro.desde||'') + '" /></div>'
+    + '    <div class="field"><label>Hasta</label><input class="cell-input" type="date" id="dpHasta" value="' + escapeHtml(filtro.hasta||'') + '" /></div>'
+    + '    <div class="field"><label>&nbsp;</label><button class="btn btn-ghost no-print" id="btnDpLimpiarFechas" style="height:41px;">Quitar filtro de fechas</button></div>'
+    + '  </div>'
+    + ((filtro.desde || filtro.hasta)
+        ? '  <div class="hint" style="margin-top:6px;">Mostrando solo los enlaces de planes ' + (filtro.criterio==='entrega' ? 'presentados' : 'cuya semana empieza') + (filtro.desde ? ' desde el ' + escapeHtml(fmtDate(filtro.desde)) : '') + (filtro.hasta ? ' hasta el ' + escapeHtml(fmtDate(filtro.hasta)) : '') + '.</div>'
+        : '')
     + '  <div class="grid-4" style="margin-top:12px;">'
     + '    <div class="field"><label>Asignaturas · curso</label><input class="cell-input tabular" readonly value="' + totalCombinaciones + '" /></div>'
     + '    <div class="field"><label>Con al menos un enlace</label><input class="cell-input tabular" readonly value="' + conEnlace + '" /></div>'
@@ -12240,7 +12655,8 @@ function renderAdminDiapositivas(){
   if(!bloques.length){
     return cabecera + '<div class="card"><div class="empty-state"><div class="ic">🔗</div>' + (filtro.soloSinEnlace ? 'Todas las asignaturas registradas tienen al menos un enlace de diapositivas.' : 'Todavía no hay Carga Horaria registrada.') + '</div></div>';
   }
-  return cabecera + '<div id="dpResultados">' + bloques.map(function(b){ return b.html; }).join('') + '</div>';
+  return cabecera + grupoBotonesTodoHtml('Pulsa el nombre de un docente para mostrar u ocultar sus enlaces.')
+    + '<div id="dpResultados">' + bloques.map(function(b){ return b.html; }).join('') + '</div>';
 }
 function bindAdminDiapositivasEvents(){
   var f = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false});
@@ -12249,6 +12665,14 @@ function bindAdminDiapositivasEvents(){
   var printBtn = document.getElementById('btnPrintDiapositivas');
   if(printBtn) printBtn.onclick = printAsPdf;
   if(soloSin) soloSin.onchange = function(e){ f.soloSinEnlace = e.target.checked; render(); };
+  var criterio = document.getElementById('dpCriterio');
+  if(criterio) criterio.onchange = function(e){ f.criterio = e.target.value; render(); };
+  var desde = document.getElementById('dpDesde');
+  if(desde) desde.onchange = function(e){ f.desde = e.target.value; render(); };
+  var hasta = document.getElementById('dpHasta');
+  if(hasta) hasta.onchange = function(e){ f.hasta = e.target.value; render(); };
+  var limpiar = document.getElementById('btnDpLimpiarFechas');
+  if(limpiar) limpiar.onclick = function(){ f.desde = ''; f.hasta = ''; render(); };
   /* El buscador filtra en pantalla, sin volver a dibujar, para no perder el foco al teclear. */
   function aplicar(){
     var q = (f.texto||'').trim().toLowerCase();
@@ -12271,7 +12695,7 @@ function bindAdminDiapositivasEvents(){
 var ADMIN_GROUPS = [
   {key:'personal', label:'Personal', tabs:['docentes','carga']},
   {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller','diapositivas']},
-  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentacionpca','presentacionpcacolegio']},
+  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionpca','presentacionpcacolegio','presentacionresumen']},
   {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
 ];
 function grupoDeAdminTab(tabKey){
@@ -12308,6 +12732,8 @@ function renderAdmin(d){
   else if(tab === 'consultas') body = renderAdminConsultas();
   else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
+  else if(tab === 'presentaciontaller') body = renderAdminPresentacionTaller();
+  else if(tab === 'presentacionresumen') body = renderAdminPresentacionResumen();
   else if(tab === 'presentacionpca') body = renderAdminPresentacionPca('escuela');
   else if(tab === 'presentacionpcacolegio') body = renderAdminPresentacionPca('colegio');
   else if(tab === 'fechaslimite') body = renderAdminFechasLimite();
@@ -12344,6 +12770,8 @@ function bindAdminEvents(){
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
+  else if(tab === 'presentaciontaller') bindAdminPresentacionTallerEvents();
+  else if(tab === 'presentacionresumen') bindAdminPresentacionResumenEvents();
   else if(tab === 'presentacionpca') bindAdminPresentacionPcaEvents();
   else if(tab === 'presentacionpcacolegio') bindAdminPresentacionPcaEvents();
   else if(tab === 'fechaslimite') bindAdminFechasLimiteEvents();
@@ -12826,7 +13254,7 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
        veredictos distintos del mismo plan. */
     var v = validarPlanSemanal(s);
     var estado = estadoPresentacionSemanal(s);
-    var motivos = v.faltanCasilleros.concat(v.problemasMetodo);
+    var motivos = v.faltanCasilleros.concat(v.problemasMetodo, v.actividadesRepetidas||[]);
     if(v.faltanEnlaces.length) motivos.push('Sin enlace de diapositivas: ' + v.faltanEnlaces.join(', '));
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
     return {
@@ -12839,6 +13267,242 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
     };
   });
 }
+/* ---------- Presentación de Talleres Prácticos ----------
+   Mismo reporte que el de Planes Semanales, pero sobre los Talleres Prácticos (asignaturas técnicas).
+   El taller no se divide en Escuela/Colegio: es siempre de Bachillerato/Básica Superior técnica, así
+   que van todos juntos. La puntualidad se mide contra la fecha límite guardada en cada taller
+   (el sábado posterior a la última semana planificada del taller anterior). */
+function filasPresentacionTallerDocente(docenteId, fechaInicioParte, fechaFinParte){
+  return load(LS.TALLER).filter(function(t){
+    return t.docenteId===docenteId && t.fechaInicio && t.fechaInicio>=fechaInicioParte && t.fechaInicio<=fechaFinParte;
+  }).map(function(t){
+    var v = validarTallerPractico(t);
+    var semanas = (t.fases||[]).reduce(function(n, fase){ return n + ((fase.semanas||[]).length); }, 0);
+    return {
+      numero: t.numero, fechaInicio: t.fechaInicio, fechaFin: t.fechaFin,
+      asignatura: t.asignatura, curso: t.curso, semanas: semanas,
+      completadoEn: t.completadoEn || t.createdAt || t.updatedAt,
+      fechaHoraLimite: t.fechaHoraLimite || '',
+      estado: estadoPresentacionTaller(t),
+      requiereCorreccion: v.requiereCorreccion,
+      motivos: v.faltanCasilleros.concat(v.problemasMetodo),
+      producto: !!richTextToPlain(t.productoFinal||'').trim()
+    };
+  });
+}
+function renderAdminPresentacionTaller(){
+  var pf = state.presentacionTallerForm;
+  var pastel = ADMIN_TAB_PASTEL.presentaciontaller;
+  var formHtml = ''
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>Presentación de Talleres Prácticos</h2>'
+    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar; se incluyen los talleres cuya <b>primera semana planificada</b> cae dentro del rango. La puntualidad se calcula contra la fecha límite guardada en cada taller (el sábado posterior a la última semana del taller anterior).</div>'
+    + '  <div class="grid-2" style="max-width:520px;">'
+    + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppTallerFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
+    + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppTallerFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
+    + '  </div>'
+    + '</div>';
+
+  if(!pf.fechaInicio || !pf.fechaFin){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>Elige la fecha de inicio y la fecha de fin del rango que quieres revisar.</div></div>';
+  }
+  if(pf.fechaInicio > pf.fechaFin){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
+  }
+
+  var bloques = allDocentes().map(function(doc){
+    var filas = filasPresentacionTallerDocente(doc.id, pf.fechaInicio, pf.fechaFin);
+    if(!filas.length) return null;
+    var porMes = {}; var ordenMeses = [];
+    filas.forEach(function(f){
+      var info = trimestreYMesDe(f.fechaInicio);
+      var key = info ? info.mesKey : 'zzz-sin-fecha';
+      var label = info ? info.mesLabel : 'Sin fecha';
+      if(!porMes[key]){ porMes[key] = {label:label, filas:[]}; ordenMeses.push(key); }
+      porMes[key].filas.push(f);
+    });
+    ordenMeses.sort();
+    var mesesHtml = ordenMeses.map(function(mk){
+      var g = porMes[mk];
+      var filasHtml = g.filas.slice().sort(function(a,b){ return (a.fechaInicio||'').localeCompare(b.fechaInicio||''); }).map(function(f){
+        return '<tr>'
+          + '<td class="tabular">' + (f.numero ? 'N.º ' + f.numero : '—') + '</td>'
+          + '<td>' + escapeHtml(f.asignatura||'—') + (f.curso ? ' · ' + escapeHtml(f.curso) : '') + '</td>'
+          + '<td>' + fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin) + '</td>'
+          + '<td class="tabular" style="text-align:center;">' + f.semanas + '</td>'
+          + '<td>' + (f.completadoEn ? fmtDateTime(f.completadoEn) : '—') + '</td>'
+          + '<td>' + (f.fechaHoraLimite ? fmtDateTimeLocal(f.fechaHoraLimite) : '—') + '</td>'
+          + '<td>' + presentacionBadge(f.estado)
+            + (f.requiereCorreccion ? ' <span style="font-weight:700; font-size:11px; letter-spacing:.02em; padding:4px 10px; border-radius:99px; color:#D62828; background:#FBE4E4; white-space:nowrap;" title="' + escapeHtml(f.motivos.join(' | ')) + '">Corregir</span>' : '')
+            + (f.motivos.length ? '<div class="hint" style="margin-top:3px;">' + escapeHtml(f.motivos[0]) + (f.motivos.length > 1 ? ' (+' + (f.motivos.length - 1) + ')' : '') + '</div>' : '')
+            + '</td>'
+          + '<td style="text-align:center;">' + siNoBadge(f.producto) + '</td>'
+          + '</tr>';
+      }).join('');
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Taller (asignatura · curso)</th><th>Semanas planificadas</th><th style="width:90px;">N.º de semanas</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th><th>Producto final</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      return grupoPlegableHtml('prestaller|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' taller':' talleres'), tabla);
+    }).join('');
+    return {doc:doc, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
+      + grupoPlegableHtml('prestaller|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' taller':' talleres'), mesesHtml)
+      + '</div>'};
+  }).filter(Boolean);
+
+  bloques.sort(function(a,b){ return ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||'')); });
+  var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
+  if(!bloquesHtml) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>No hay talleres prácticos que empiecen dentro del rango de fechas indicado.</div></div>';
+  return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
+}
+function bindAdminPresentacionTallerEvents(){
+  var fi = document.getElementById('ppTallerFechaInicio');
+  if(fi) fi.addEventListener('change', function(e){ state.presentacionTallerForm.fechaInicio = e.target.value; render(); });
+  var ff = document.getElementById('ppTallerFechaFin');
+  if(ff) ff.addEventListener('change', function(e){ state.presentacionTallerForm.fechaFin = e.target.value; render(); });
+}
+
+/* ---------- Resumen por docente y por mes ----------
+   Vista de conjunto de las otras pestañas de Presentaciones: una fila por docente, una columna por
+   mes, y en cada celda cuántos documentos presentó a tiempo, con retraso o incompletos. Sirve para
+   ver de un vistazo quién viene al día y en qué mes se atrasó todo el colegio. */
+var RESUMEN_ESTADOS = [
+  {clave:'a_tiempo', letra:'✓', titulo:'A tiempo', color:'#0F5132', bg:'#E3F5EC'},
+  {clave:'con_retraso', letra:'⏰', titulo:'Con retraso', color:'#8A5A00', bg:'#FBF0DC'},
+  {clave:'incompleto', letra:'✗', titulo:'Incompleto', color:'#D62828', bg:'#FBE4E4'},
+  {clave:'sin_limite', letra:'—', titulo:'Sin fecha límite', color:'#5B6B85', bg:'#EEF1F6'}
+];
+function resumenContadorVacio(){ return {a_tiempo:0, con_retraso:0, incompleto:0, sin_limite:0, total:0}; }
+function resumenSumar(acumulado, estado){
+  if(!acumulado[estado] && acumulado[estado]!==0) acumulado[estado] = 0;
+  acumulado[estado]++; acumulado.total++;
+}
+/* Todos los documentos de un docente dentro del rango, con el mes al que pertenecen y su estado. */
+function resumenDocumentosDocente(docenteId, desde, hasta, incluir){
+  var docs = [];
+  if(incluir.semanal){
+    load(LS.SEMANAL).forEach(function(s){
+      if(s.docenteId!==docenteId || !s.fechaInicio || s.fechaInicio<desde || s.fechaInicio>hasta) return;
+      docs.push({fecha:s.fechaInicio, estado:estadoPresentacionSemanal(s), tipo:'semanal'});
+    });
+  }
+  if(incluir.taller){
+    load(LS.TALLER).forEach(function(t){
+      if(t.docenteId!==docenteId || !t.fechaInicio || t.fechaInicio<desde || t.fechaInicio>hasta) return;
+      docs.push({fecha:t.fechaInicio, estado:estadoPresentacionTaller(t), tipo:'taller'});
+    });
+  }
+  if(incluir.pca){
+    load(LS.PCA).forEach(function(p){
+      var fecha = (p.createdAt||'').slice(0,10);
+      if(p.docenteId!==docenteId || !fecha || fecha<desde || fecha>hasta) return;
+      var curso = p.curso==='Otro…' ? p.cursoManual : p.curso;
+      var banda = esEscuelaPorNivelCurso(p.nivel, curso) ? 'escuela' : 'colegio';
+      var completo = pcaEstaCompleto({unidades: unidadesParaCompletitud(p.id, p.unidadesNombres)}, unidadCortePca(banda));
+      docs.push({fecha:fecha, estado:calcularEstadoPresentacion(completo, p.completadoEn || p.updatedAt, p.fechaLimite), tipo:'pca'});
+    });
+  }
+  return docs;
+}
+function renderAdminPresentacionResumen(){
+  var pf = state.presentacionResumenForm;
+  var pastel = ADMIN_TAB_PASTEL.presentacionresumen;
+  var incluir = pf.incluir;
+  var formHtml = ''
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>Resumen por docente y por mes</h2>'
+    + '  <div class="card-sub">Una fila por docente y una columna por mes, con cuántos documentos presentó <b>a tiempo</b>, <b>con retraso</b> o dejó <b>incompletos</b>. Elige qué instrumentos quieres contar.</div>'
+    + '  <div class="grid-2" style="max-width:520px;">'
+    + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppResDesde" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
+    + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppResHasta" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
+    + '  </div>'
+    + '  <div class="checkbox-grid" style="margin-top:10px;">'
+    + '    <label class="checkbox-pill"><input type="checkbox" data-res-inc="semanal" ' + (incluir.semanal?'checked':'') + ' /><span>Planes Semanales</span></label>'
+    + '    <label class="checkbox-pill"><input type="checkbox" data-res-inc="taller" ' + (incluir.taller?'checked':'') + ' /><span>Talleres Prácticos</span></label>'
+    + '    <label class="checkbox-pill"><input type="checkbox" data-res-inc="pca" ' + (incluir.pca?'checked':'') + ' /><span>PCA</span></label>'
+    + '    <button class="btn btn-gold btn-sm no-print" id="btnPrintResumen">Imprimir / PDF</button>'
+    + '  </div>'
+    + '</div>';
+
+  if(!pf.fechaInicio || !pf.fechaFin) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>Elige la fecha de inicio y la fecha de fin del rango que quieres revisar.</div></div>';
+  if(pf.fechaInicio > pf.fechaFin) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
+  if(!incluir.semanal && !incluir.taller && !incluir.pca) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📋</div>Marca al menos un tipo de documento para contar.</div></div>';
+
+  var meses = {}, ordenMeses = [];
+  var porDocente = [];
+  allDocentes().forEach(function(doc){
+    var documentos = resumenDocumentosDocente(doc.id, pf.fechaInicio, pf.fechaFin, incluir);
+    if(!documentos.length) return;
+    var porMes = {}, totalDocente = resumenContadorVacio();
+    documentos.forEach(function(d){
+      var info = trimestreYMesDe(d.fecha);
+      var key = info ? info.mesKey : 'zzz';
+      if(!meses[key]){ meses[key] = info ? info.mesLabel : 'Sin fecha'; ordenMeses.push(key); }
+      if(!porMes[key]) porMes[key] = resumenContadorVacio();
+      resumenSumar(porMes[key], d.estado);
+      resumenSumar(totalDocente, d.estado);
+    });
+    porDocente.push({doc:doc, porMes:porMes, total:totalDocente});
+  });
+  if(!porDocente.length) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📋</div>No hay documentos en el rango de fechas indicado.</div></div>';
+
+  ordenMeses.sort();
+  porDocente.sort(function(a,b){ return ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||'')); });
+
+  function celdaHtml(cont){
+    if(!cont || !cont.total) return '<td style="text-align:center; color:var(--muted);">—</td>';
+    var partes = RESUMEN_ESTADOS.filter(function(e){ return cont[e.clave]; }).map(function(e){
+      return '<span title="' + e.titulo + '" style="display:inline-block; font-weight:700; font-size:11px; padding:2px 7px; margin:1px; border-radius:99px; color:' + e.color + '; background:' + e.bg + ';">' + e.letra + ' ' + cont[e.clave] + '</span>';
+    }).join(' ');
+    return '<td style="text-align:center; white-space:nowrap;">' + partes + '</td>';
+  }
+  function porcentaje(cont){
+    if(!cont.total) return '—';
+    return Math.round((cont.a_tiempo / cont.total) * 100) + ' %';
+  }
+
+  var totalesMes = {}; var totalGeneral = resumenContadorVacio();
+  porDocente.forEach(function(fila){
+    ordenMeses.forEach(function(mk){
+      var c = fila.porMes[mk]; if(!c) return;
+      if(!totalesMes[mk]) totalesMes[mk] = resumenContadorVacio();
+      RESUMEN_ESTADOS.forEach(function(e){ totalesMes[mk][e.clave] += c[e.clave]; totalGeneral[e.clave] += c[e.clave]; });
+      totalesMes[mk].total += c.total; totalGeneral.total += c.total;
+    });
+  });
+
+  var encabezados = '<tr><th>Docente</th>' + ordenMeses.map(function(mk){ return '<th style="text-align:center;">' + escapeHtml(meses[mk]) + '</th>'; }).join('')
+    + '<th style="text-align:center;">Total</th><th style="text-align:center;">% a tiempo</th></tr>';
+  var filasHtml = porDocente.map(function(fila){
+    return '<tr><td><strong>' + escapeHtml(nombreFormal(fila.doc)) + '</strong></td>'
+      + ordenMeses.map(function(mk){ return celdaHtml(fila.porMes[mk]); }).join('')
+      + celdaHtml(fila.total)
+      + '<td class="tabular" style="text-align:center; font-weight:700;">' + porcentaje(fila.total) + '</td></tr>';
+  }).join('');
+  var filaTotales = '<tr class="group-head-row"><td><strong>Total del colegio</strong></td>'
+    + ordenMeses.map(function(mk){ return celdaHtml(totalesMes[mk]); }).join('')
+    + celdaHtml(totalGeneral)
+    + '<td class="tabular" style="text-align:center; font-weight:700;">' + porcentaje(totalGeneral) + '</td></tr>';
+
+  var leyenda = '<div class="hint" style="margin-top:8px;">' + RESUMEN_ESTADOS.map(function(e){
+    return '<span style="margin-right:12px;"><b>' + e.letra + '</b> ' + e.titulo + '</span>';
+  }).join('') + '</div>';
+
+  return formHtml
+    + '<div class="card" style="border-top:4px solid '+pastel+';">'
+    + '  <div class="table-wrap"><table><thead>' + encabezados + '</thead><tbody>' + filasHtml + filaTotales + '</tbody></table></div>'
+    +    leyenda
+    + '</div>';
+}
+function bindAdminPresentacionResumenEvents(){
+  var d1 = document.getElementById('ppResDesde');
+  if(d1) d1.addEventListener('change', function(e){ state.presentacionResumenForm.fechaInicio = e.target.value; render(); });
+  var d2 = document.getElementById('ppResHasta');
+  if(d2) d2.addEventListener('change', function(e){ state.presentacionResumenForm.fechaFin = e.target.value; render(); });
+  document.querySelectorAll('[data-res-inc]').forEach(function(cb){
+    cb.onchange = function(){ state.presentacionResumenForm.incluir[cb.getAttribute('data-res-inc')] = cb.checked; render(); };
+  });
+  var print = document.getElementById('btnPrintResumen');
+  if(print) print.onclick = printAsPdf;
+}
+
 function renderAdminPresentacion(banda){
   var pf = state.presentacionForm;
   var pastel = ADMIN_TAB_PASTEL[banda==='colegio' ? 'presentacioncolegio' : 'presentacion'];
@@ -12893,9 +13557,12 @@ function renderAdminPresentacion(banda){
           + '<td style="text-align:center;">' + siNoBadge(f.lecciones) + '</td>'
           + '</tr>';
       }).join('');
-      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan completado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan completado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      return grupoPlegableHtml('presentacion|' + banda + '|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' plan':' planes'), tabla);
     }).join('');
-    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
+    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
+      + grupoPlegableHtml('presentacion|' + banda + '|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' plan':' planes'), mesesHtml)
+      + '</div>'};
   }).filter(Boolean);
 
   bloques.sort(function(a,b){
@@ -12904,7 +13571,8 @@ function renderAdminPresentacion(banda){
   });
 
   var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
-  return formHtml + (bloquesHtml || '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>');
+  if(!bloquesHtml) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>';
+  return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
 }
 function bindAdminPresentacionEvents(){
   var fi = document.getElementById('ppFechaInicio');
@@ -12940,6 +13608,13 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
     var curso = (p.curso==='Otro…' ? p.cursoManual : p.curso) || '—';
     var pcaConUnidades = { unidades: unidadesParaCompletitud(p.id, p.unidadesNombres) };
     var completo = pcaEstaCompleto(pcaConUnidades, unidadCortePca(banda));
+    /* Mismas observaciones que ve el docente dentro del formulario (temporalización, casilleros en
+       blanco, temas repetidos), para que administración y docente lean lo mismo. */
+    var revision = validarPca({
+      unidades: pcaConUnidades.unidades,
+      temporalizacion: p.temporalizacion,
+      semanasT1: p.semanasT1, semanasT2: p.semanasT2, semanasT3: p.semanasT3
+    });
     /* Compara contra CUÁNDO QUEDÓ COMPLETO (completadoEn), no contra cuándo se creó — ver la nota
        en savePca. Los PCA guardados antes de que existiera este campo no lo tienen: para esos,
        usa updatedAt (la última edición) como el mejor dato disponible, aunque no sea exacto si
@@ -12951,7 +13626,8 @@ function filasPresentacionPcaDocente(docenteId, fechaInicioParte, fechaFinParte,
       curso: curso, cursoRaw: p.curso==='Otro…' ? p.cursoManual : p.curso,
       nivel: p.nivel||'—', especialidad: p.especialidad||'',
       unidades: (p.unidadesNombres||[]).length,
-      createdAt:p.createdAt, completadoEn: completo ? fechaParaObservacion : '', fechaLimite:p.fechaLimite, estado:estado
+      createdAt:p.createdAt, completadoEn: completo ? fechaParaObservacion : '', fechaLimite:p.fechaLimite, estado:estado,
+      problemas: revision.problemas
     };
   });
 }
@@ -13007,12 +13683,18 @@ function renderAdminPresentacionPca(banda){
           + '<td>' + (f.createdAt ? fmtDateTime(f.createdAt) : '—') + '</td>'
           + '<td>' + (f.completadoEn ? fmtDateTime(f.completadoEn) : '—') + '</td>'
           + '<td>' + (f.fechaLimite ? fmtDateTimeLocal(f.fechaLimite) : '—') + '</td>'
-          + '<td>' + presentacionBadge(f.estado) + '</td>'
+          + '<td>' + presentacionBadge(f.estado)
+            + ((f.problemas||[]).length ? ' <span class="pill pill-red" title="' + escapeHtml(f.problemas.join(' | ')) + '">Corregir</span>'
+                + '<div class="hint" style="margin-top:3px;">' + escapeHtml(f.problemas[0]) + (f.problemas.length>1 ? ' (+' + (f.problemas.length-1) + ')' : '') + '</div>' : '')
+            + '</td>'
           + '</tr>';
       }).join('');
-      return '<div style="margin-top:12px;"><h3 style="font-size:13.5px; color:var(--blue-700); margin-bottom:8px;">' + escapeHtml(g.label) + '</h3><div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div></div>';
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>Plan (asignatura · curso)</th><th>Nivel / Especialidad</th><th>Unidades</th><th>PCA creado el</th><th>Completado el</th><th>Fecha límite</th><th>Observación</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      return grupoPlegableHtml('prespca|' + banda + '|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' PCA':' PCA'), tabla);
     }).join('');
-    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';"><h2>' + escapeHtml(nombreFormal(doc)) + '</h2>' + mesesHtml + '</div>'};
+    return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
+      + grupoPlegableHtml('prespca|' + banda + '|' + doc.id, 'docente', nombreFormal(doc), filas.length + ' PCA', mesesHtml)
+      + '</div>'};
   }).filter(Boolean);
 
   bloques.sort(function(a,b){
@@ -13021,7 +13703,8 @@ function renderAdminPresentacionPca(banda){
   });
 
   var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
-  return formHtml + (bloquesHtml || '<div class="card"><div class="empty-state"><div class="ic">📘</div>No hay PCA creados en el rango de fechas indicado.</div></div>');
+  if(!bloquesHtml) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📘</div>No hay PCA creados en el rango de fechas indicado.</div></div>';
+  return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
 }
 function bindAdminPresentacionPcaEvents(){
   var fi = document.getElementById('ppPcaFechaInicio');
