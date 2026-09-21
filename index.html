@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260921014537">
+<meta name="app-build" content="20260921022216">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -6081,7 +6081,7 @@ function doSaveObservacion(){
    desde este módulo. Nunca visible a docentes: solo Administración/Directivos/DECE. */
 function fdiEstadoPillHtml(estado){
   if(estado==='Completa') return '<span class="pill pill-green">Completa</span>';
-  if(estado==='En revision') return '<span class="pill pill-blue">En revision</span>';
+  if(estado==='En revision') return '<span class="pill pill-blue">En revisión</span>';
   return '<span class="pill pill-muted">Nueva</span>';
 }
 var FDI_ESTADOS = ['Nueva','En revision','Completa'];
@@ -6132,15 +6132,25 @@ function fdiCampo(label, key, valor, editable, tipo){
 function fdiArea(label, key, valor, editable, filas){
   return '<div class="field"><label>'+label+'</label><textarea class="cell-input" rows="'+(filas||2)+'" data-fdi-field="'+key+'" '+(editable?'':'disabled')+'>'+escapeHtml(valor||'')+'</textarea></div>';
 }
+/* Las opciones se GUARDAN como estaban escritas en las fichas que ya existen (sin tilde), pero se
+   MUESTRAN bien escritas: cambiar el valor guardado dejaría sin marcar las respuestas anteriores. */
+var FDI_ETIQUETAS = {
+  'Si':'Sí', 'Union libre':'Unión libre', 'Luz electrica':'Luz eléctrica', 'Pozo septico':'Pozo séptico',
+  'Telefono':'Teléfono', 'Con prestamo':'Con préstamo', 'Teorico':'Teórico', 'Practico':'Práctico',
+  'Atencion':'Atención', 'Concentracion':'Concentración', 'Timido/a':'Tímido/a',
+  'Enfermedades cardiacas':'Enfermedades cardíacas', 'Hipertension':'Hipertensión',
+  'En revision':'En revisión'
+};
+function etiquetaFdi(valor){ return FDI_ETIQUETAS[valor] || valor; }
 function fdiRadios(label, key, opciones, valorActual, editable){
   return '<div class="field"><label>'+label+'</label><div class="checkbox-grid">' + opciones.map(function(o){
-    return '<label class="checkbox-pill"><input type="radio" name="fdi-'+key+'" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(valorActual===o?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(o)+'</label>';
+    return '<label class="checkbox-pill"><input type="radio" name="fdi-'+key+'" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(valorActual===o?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(etiquetaFdi(o))+'</label>';
   }).join('') + '</div></div>';
 }
 function fdiChecks(label, key, opciones, valorActual, editable){
   var sel = (valorActual||'').split(';').map(function(x){ return x.trim(); }).filter(Boolean);
   return '<div class="field"><label>'+label+'</label><div class="checkbox-grid">' + opciones.map(function(o){
-    return '<label class="checkbox-pill"><input type="checkbox" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(sel.indexOf(o)!==-1?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(o)+'</label>';
+    return '<label class="checkbox-pill"><input type="checkbox" data-fdi-group="'+key+'" value="'+escapeHtml(o)+'" '+(sel.indexOf(o)!==-1?'checked':'')+' '+(editable?'':'disabled')+' />'+escapeHtml(etiquetaFdi(o))+'</label>';
   }).join('') + '</div></div>';
 }
 function fdiListaCorta(key, valores, n, editable){
@@ -6149,7 +6159,7 @@ function fdiListaCorta(key, valores, n, editable){
   return out;
 }
 function fdiListaConAnio(keyTexto, keyAnio, valoresTexto, valoresAnio, n, editable){
-  var out = '<div class="table-wrap"><table><thead><tr><th style="width:24px;"></th><th>Descripcion</th><th style="width:90px;">Anio</th></tr></thead><tbody>';
+  var out = '<div class="table-wrap"><table><thead><tr><th style="width:24px;"></th><th>Descripción</th><th style="width:90px;">Año</th></tr></thead><tbody>';
   for(var i=0;i<n;i++){
     out += '<tr><td class="tabular">'+(i+1)+'</td>'
       + '<td><input class="cell-input" data-fdi-arr="'+keyTexto+'" data-fdi-idx="'+i+'" value="'+escapeHtml(valoresTexto[i]||'')+'" '+(editable?'':'disabled')+' /></td>'
@@ -6185,79 +6195,79 @@ function fdiCuerpoHtml(e, editable){
   + '  <div class="pca-section">'
   + '    <div class="grid-2">'
   + fdiRadios('Jornada', 'jornada', FDI_JORNADA, e.jornada, editable)
-  + fdiCampo('Cedula del/a estudiante', 'cedulaEstudiante', e.cedulaEstudiante, editable)
+  + fdiCampo('Cédula del/la estudiante', 'cedulaEstudiante', e.cedulaEstudiante, editable)
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:14px;">'
   + '      <div class="field"><label>Nivel Educativo</label><select class="cell-select cell-select-lg" data-fdi-field="nivelEducativo" '+(editable?'':'disabled')+'>' + optionsHtml(NIVELES, e.nivelEducativo, 'Elija un elemento…') + '</select></div>'
   + '      <div class="field"><label>Curso</label><select class="cell-select cell-select-lg" data-fdi-field="curso" '+(editable && e.nivelEducativo?'':'disabled')+'>' + optionsHtml(cursoOpts, e.curso, e.nivelEducativo ? 'Elija un elemento…' : 'Elija primero el nivel') + '</select></div>'
   + '    </div>'
   + '  </div>'
-  + '  <div class="pca-band band-section">1. Datos de identificacion/informacion</div>'
+  + '  <div class="pca-band band-section">1. Datos de identificación e información</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-2">' + fdiCampo('Apellidos y Nombres del/la estudiante', 'estudianteNombre', e.estudianteNombre, editable) + '<div class="field"><label>Foto del/a estudiante (obligatorio)</label></div>' + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Apellidos y Nombres del/la estudiante', 'estudianteNombre', e.estudianteNombre, editable) + '<div class="field"><label>Foto del/la estudiante (obligatoria)</label></div>' + '</div>'
   + '    <div style="max-width:220px; margin:6px 0 14px;">'
   + '      <div id="fdiFotoPreview" style="width:150px; height:190px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); overflow:hidden; display:flex; align-items:center; justify-content:center; background:var(--surface-2);">' + (e.fotoEstudiante ? '<img src="'+e.fotoEstudiante+'" style="width:100%; height:100%; object-fit:cover;" />' : '<span class="hint">Sin foto</span>') + '</div>'
   + (editable ? '      <input type="file" accept="image/*" id="fdiFotoInput" class="no-print" style="margin-top:8px;" />' + (e.fotoEstudiante ? '<button class="btn btn-ghost btn-sm no-print" id="btnFdiFotoQuitar" style="margin-top:6px;">Quitar foto</button>' : '') : '')
   + '    </div>'
   + '    <div class="grid-3">' + fdiCampo('Lugar de nacimiento', 'lugarNacimiento', e.lugarNacimiento, editable) + fdiCampo('Fecha de nacimiento', 'fechaNacimiento', e.fechaNacimiento, editable, 'date') + fdiCampo('Sector', 'sector', e.sector, editable) + '</div>'
   + '    <div class="grid-2">' + fdiCampo('Domicilio', 'domicilio', e.domicilio, editable) + fdiCampo('Cambios de domicilio', 'cambiosDomicilio', e.cambiosDomicilio, editable) + '</div>'
-  + '    <div class="grid-2">' + fdiCampo('Telefono convencional', 'telefonoConvencional', e.telefonoConvencional, editable) + fdiCampo('Celular', 'celular', e.celular, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Teléfono convencional', 'telefonoConvencional', e.telefonoConvencional, editable) + fdiCampo('Celular', 'celular', e.celular, editable) + '</div>'
   + '  </div>'
   + '  <div class="pca-band band-section">2. Datos familiares</div>'
   + '  <div class="pca-section">'
   + '    <div class="hint" style="font-weight:700; margin-bottom:6px;">Madre</div>'
   + '    <div class="grid-3">' + fdiCampo('Nombre de la madre', 'madreNombre', e.madreNombre, editable) + fdiCampo('Edad', 'madreEdad', e.madreEdad, editable) + fdiRadios('Estado civil', 'madreEstadoCivil', FDI_ESTADO_CIVIL, e.madreEstadoCivil, editable) + '</div>'
-  + '    <div class="grid-3">' + fdiCampo('Instruccion', 'madreInstruccion', e.madreInstruccion, editable) + fdiCampo('Profesion u ocupacion', 'madreProfesion', e.madreProfesion, editable) + fdiCampo('Lugar de trabajo', 'madreTrabajo', e.madreTrabajo, editable) + '</div>'
-  + '    <div class="grid-2">' + fdiCampo('Telefono de contacto', 'madreTelContacto', e.madreTelContacto, editable) + fdiCampo('Telefono de trabajo', 'madreTelTrabajo', e.madreTelTrabajo, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Instrucción', 'madreInstruccion', e.madreInstruccion, editable) + fdiCampo('Profesión u ocupación', 'madreProfesion', e.madreProfesion, editable) + fdiCampo('Lugar de trabajo', 'madreTrabajo', e.madreTrabajo, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Teléfono de contacto', 'madreTelContacto', e.madreTelContacto, editable) + fdiCampo('Teléfono de trabajo', 'madreTelTrabajo', e.madreTelTrabajo, editable) + '</div>'
   + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Padre</div>'
   + '    <div class="grid-3">' + fdiCampo('Nombre del padre', 'padreNombre', e.padreNombre, editable) + fdiCampo('Edad', 'padreEdad', e.padreEdad, editable) + fdiRadios('Estado civil', 'padreEstadoCivil', FDI_ESTADO_CIVIL, e.padreEstadoCivil, editable) + '</div>'
-  + '    <div class="grid-3">' + fdiCampo('Instruccion', 'padreInstruccion', e.padreInstruccion, editable) + fdiCampo('Profesion u ocupacion', 'padreProfesion', e.padreProfesion, editable) + fdiCampo('Lugar de trabajo', 'padreTrabajo', e.padreTrabajo, editable) + '</div>'
-  + '    <div class="grid-2">' + fdiCampo('Telefono de contacto', 'padreTelContacto', e.padreTelContacto, editable) + fdiCampo('Telefono de trabajo', 'padreTelTrabajo', e.padreTelTrabajo, editable) + '</div>'
-  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Representante legal / cuidador / tutor (solo si el estudiante esta bajo el cuidado de otra persona que no sean sus progenitores)</div>'
+  + '    <div class="grid-3">' + fdiCampo('Instrucción', 'padreInstruccion', e.padreInstruccion, editable) + fdiCampo('Profesión u ocupación', 'padreProfesion', e.padreProfesion, editable) + fdiCampo('Lugar de trabajo', 'padreTrabajo', e.padreTrabajo, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Teléfono de contacto', 'padreTelContacto', e.padreTelContacto, editable) + fdiCampo('Teléfono de trabajo', 'padreTelTrabajo', e.padreTelTrabajo, editable) + '</div>'
+  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Representante legal / cuidador / tutor (solo si el estudiante está bajo el cuidado de otra persona que no sean sus progenitores)</div>'
   + '    <div class="grid-3">' + fdiCampo('Nombre', 'repLegalNombre', e.repLegalNombre, editable) + fdiCampo('Parentesco', 'repLegalParentesco', e.repLegalParentesco, editable) + fdiCampo('Edad', 'repLegalEdad', e.repLegalEdad, editable) + '</div>'
-  + '    <div class="grid-3">' + fdiCampo('Profesion u ocupacion', 'repLegalProfesion', e.repLegalProfesion, editable) + fdiCampo('Telefono de contacto', 'repLegalTelefono', e.repLegalTelefono, editable) + fdiCampo('Lugar de trabajo', 'repLegalTrabajo', e.repLegalTrabajo, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiCampo('Profesión u ocupación', 'repLegalProfesion', e.repLegalProfesion, editable) + fdiCampo('Teléfono de contacto', 'repLegalTelefono', e.repLegalTelefono, editable) + fdiCampo('Lugar de trabajo', 'repLegalTrabajo', e.repLegalTrabajo, editable) + '</div>'
   + '  </div>'
   + '  <div class="pca-band band-section">3. Referencias familiares del/la estudiante</div>'
   + '  <div class="pca-section">'
   + fdiArea('Personas con quien vive el estudiante (especifique todas las personas que conforman la estructura familiar)', 'personasConvive', e.personasConvive, editable)
-  + '    <div class="grid-3">' + fdiRadios('Tiene hermanos/as?', 'tieneHermanos', FDI_SINO, e.tieneHermanos, editable) + fdiCampo('Cuantos?', 'cuantosHermanos', e.cuantosHermanos, editable) + fdiRadios('Padres migrantes?', 'padresMigrantes', FDI_SINO, e.padresMigrantes, editable) + '</div>'
+  + '    <div class="grid-3">' + fdiRadios('¿Tiene hermanos/as?', 'tieneHermanos', FDI_SINO, e.tieneHermanos, editable) + fdiCampo('¿Cuántos?', 'cuantosHermanos', e.cuantosHermanos, editable) + fdiRadios('¿Padres migrantes?', 'padresMigrantes', FDI_SINO, e.padresMigrantes, editable) + '</div>'
   + (e.padresMigrantes==='Si' ? fdiCampo('Lugar', 'lugarMigracion', e.lugarMigracion, editable) : '')
   + fdiHermanosEdadesHtml(e.hermanosEdades, e.hermanosLugar, editable)
-  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Hermanos/as que estudian en la institucion</div>'
+  + '    <div class="hint" style="font-weight:700; margin:14px 0 6px;">Hermanos/as que estudian en la institución</div>'
   + fdiHermanosInstitucionHtml(e.hermanosInstNombre, e.hermanosInstCurso, e.hermanosInstParalelo, editable)
-  + '    <div class="grid-2">' + fdiRadios('Familiares con algun tipo de discapacidad?', 'familiaresDiscapacidad', FDI_SINO, e.familiaresDiscapacidad, editable) + (e.familiaresDiscapacidad==='Si' ? fdiCampo('Determinar quien', 'familiaresDiscapacidadQuien', e.familiaresDiscapacidadQuien, editable) : '') + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('¿Familiares con algún tipo de discapacidad?', 'familiaresDiscapacidad', FDI_SINO, e.familiaresDiscapacidad, editable) + (e.familiaresDiscapacidad==='Si' ? fdiCampo('Determinar quien', 'familiaresDiscapacidadQuien', e.familiaresDiscapacidadQuien, editable) : '') + '</div>'
   + fdiArea('Observaciones', 'obsReferenciasFamiliares', e.obsReferenciasFamiliares, editable)
   + '  </div>'
-  + '  <div class="pca-band band-section">3.1 Referencias socioeconomicas generales</div>'
+  + '  <div class="pca-band band-section">3.1 Referencias socioeconómicas generales</div>'
   + '  <div class="pca-section">'
   + fdiRadios('Condiciones de vivienda', 'condicionVivienda', FDI_VIVIENDA, e.condicionVivienda, editable)
-  + fdiArea('Breve descripcion de la vivienda (casa, departamento, cuarto, etc.)', 'descripcionVivienda', e.descripcionVivienda, editable)
+  + fdiArea('Breve descripción de la vivienda (casa, departamento, cuarto, etc.)', 'descripcionVivienda', e.descripcionVivienda, editable)
   + fdiChecks('Servicios', 'servicios', FDI_SERVICIOS, e.servicios, editable)
   + fdiArea('Observaciones', 'obsSocioeconomicas', e.obsSocioeconomicas, editable)
   + '  </div>'
   + '  <div class="pca-band band-section">4. Datos de salud</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-3">' + fdiRadios('Tiene algun tipo de discapacidad?', 'discapacidad', FDI_SINO, e.discapacidad, editable) + (e.discapacidad==='Si' ? fdiCampo('N. carnet del CONADIS', 'carnetConadis', e.carnetConadis, editable) : '') + '</div>'
-  + (e.discapacidad==='Si' ? fdiCampo('Determinar que discapacidad', 'queDiscapacidad', e.queDiscapacidad, editable) : '')
-  + '    <div class="grid-2">' + fdiRadios('Condicion medica especifica?', 'condicionMedica', FDI_SINO, e.condicionMedica, editable) + (e.condicionMedica==='Si' ? fdiCampo('Determine cual', 'condicionMedicaCual', e.condicionMedicaCual, editable) : '') + '</div>'
-  + '    <div class="grid-2">' + fdiRadios('Padece de alergias?', 'alergiasSalud', FDI_SINO, e.alergiasSalud, editable) + (e.alergiasSalud==='Si' ? fdiCampo('Determinar cuales', 'alergiasCuales', e.alergiasCuales, editable) : '') + '</div>'
-  + fdiArea('Especificar medicamentos que utiliza', 'medicamentos', e.medicamentos, editable)
-  + fdiCampo('Sufre de alguna enfermedad catastrofica? Especifique', 'enfermedadCatastrofica', e.enfermedadCatastrofica, editable)
+  + '    <div class="grid-3">' + fdiRadios('¿Tiene algún tipo de discapacidad?', 'discapacidad', FDI_SINO, e.discapacidad, editable) + (e.discapacidad==='Si' ? fdiCampo('N. carnet del CONADIS', 'carnetConadis', e.carnetConadis, editable) : '') + '</div>'
+  + (e.discapacidad==='Si' ? fdiCampo('Determinar qué discapacidad', 'queDiscapacidad', e.queDiscapacidad, editable) : '')
+  + '    <div class="grid-2">' + fdiRadios('¿Condición médica específica?', 'condicionMedica', FDI_SINO, e.condicionMedica, editable) + (e.condicionMedica==='Si' ? fdiCampo('Determine cuál', 'condicionMedicaCual', e.condicionMedicaCual, editable) : '') + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('¿Padece de alergias?', 'alergiasSalud', FDI_SINO, e.alergiasSalud, editable) + (e.alergiasSalud==='Si' ? fdiCampo('Determinar cuáles', 'alergiasCuales', e.alergiasCuales, editable) : '') + '</div>'
+  + fdiArea('Especificar los medicamentos que utiliza', 'medicamentos', e.medicamentos, editable)
+  + fdiCampo('¿Sufre de alguna enfermedad catastrófica? Especifique', 'enfermedadCatastrofica', e.enfermedadCatastrofica, editable)
   + fdiArea('Observaciones', 'obsSalud', e.obsSalud, editable)
   + '  </div>'
-  + '  <div class="pca-band band-section">5. Datos academicos / rendimiento escolar</div>'
+  + '  <div class="pca-band band-section">5. Datos académicos y rendimiento escolar</div>'
   + '  <div class="pca-section">'
-  + '    <div class="grid-2">' + fdiCampo('Fecha de ingreso a la institucion', 'fechaIngresoInstitucion', e.fechaIngresoInstitucion, editable, 'date') + fdiCampo('Institucion educativa de la que procede', 'institucionProcedencia', e.institucionProcedencia, editable) + '</div>'
-  + '    <div class="grid-2">' + fdiRadios('El estudiante ha repetido anios?', 'repitioAnios', FDI_SINO, e.repitioAnios, editable) + (e.repitioAnios==='Si' ? fdiCampo('Cual/es?', 'anioRepitio', e.anioRepitio, editable) : '') + '</div>'
+  + '    <div class="grid-2">' + fdiCampo('Fecha de ingreso a la institución', 'fechaIngresoInstitucion', e.fechaIngresoInstitucion, editable, 'date') + fdiCampo('Institución educativa de la que procede', 'institucionProcedencia', e.institucionProcedencia, editable) + '</div>'
+  + '    <div class="grid-2">' + fdiRadios('¿El estudiante ha repetido años?', 'repitioAnios', FDI_SINO, e.repitioAnios, editable) + (e.repitioAnios==='Si' ? fdiCampo('¿Cuál/es?', 'anioRepitio', e.anioRepitio, editable) : '') + '</div>'
   + '    <div class="grid-2" style="align-items:start;">'
   + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas de preferencia</div>' + fdiListaCorta('asignaturasPreferencia', e.asignaturasPreferencia, 4, editable) + '</div>'
   + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Asignaturas con dificultad</div>' + fdiListaCorta('asignaturasDificultad', e.asignaturasDificultad, 4, editable) + '</div>'
   + '    </div>'
   + '    <div class="grid-2" style="margin-top:10px;">'
-  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Logros academicos</div>' + fdiListaConAnio('logrosAcademicos', 'logrosAnios', e.logrosAcademicos, e.logrosAnios, 4, editable) + '</div>'
-  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Participacion en</div>' + fdiListaConAnio('participacion', 'participacionAnios', e.participacion, e.participacionAnios, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Logros académicos</div>' + fdiListaConAnio('logrosAcademicos', 'logrosAnios', e.logrosAcademicos, e.logrosAnios, 4, editable) + '</div>'
+  + '      <div><div class="hint" style="font-weight:700; margin-bottom:4px;">Participación en</div>' + fdiListaConAnio('participacion', 'participacionAnios', e.participacion, e.participacionAnios, 4, editable) + '</div>'
   + '    </div>'
-  + '    <div class="grid-3" style="margin-top:10px;">' + fdiRadios('Extracurriculares: nivel de participacion', 'extracurricularNivel', FDI_CALIDAD, e.extracurricularNivel, editable) + fdiRadios('Participa en extracurriculares?', 'extracurricularParticipa', FDI_SINO, e.extracurricularParticipa, editable) + (e.extracurricularParticipa==='Si' ? fdiCampo('Cuales?', 'extracurricularCual', e.extracurricularCual, editable) : '') + '</div>'
+  + '    <div class="grid-3" style="margin-top:10px;">' + fdiRadios('Extracurriculares: nivel de participación', 'extracurricularNivel', FDI_CALIDAD, e.extracurricularNivel, editable) + fdiRadios('¿Participa en extracurriculares?', 'extracurricularParticipa', FDI_SINO, e.extracurricularParticipa, editable) + (e.extracurricularParticipa==='Si' ? fdiCampo('¿Cuáles?', 'extracurricularCual', e.extracurricularCual, editable) : '') + '</div>'
   + fdiChecks('Su aprendizaje es', 'aprendizajeTipo', FDI_APRENDIZAJE_TIPO, e.aprendizajeTipo, editable)
   + fdiChecks('En el aprendizaje tiene dificultades de', 'dificultadesAprendizaje', FDI_DIFICULTADES_APRENDIZAJE, e.dificultadesAprendizaje, editable)
   + fdiRadios('Para el cumplimiento de tareas se considera', 'cumplimientoTareas', FDI_RESPONSABILIDAD, e.cumplimientoTareas, editable)
@@ -6265,18 +6275,18 @@ function fdiCuerpoHtml(e, editable){
   + '  </div>'
   + '  <div class="pca-band band-section">6. Historia vital</div>'
   + '  <div class="pca-section">'
-  + '    <div class="hint" style="font-weight:700; margin:0 0 6px;">6.1 Antecedentes patologicos familiares</div>'
+  + '    <div class="hint" style="font-weight:700; margin:0 0 6px;">6.1 Antecedentes patológicos familiares</div>'
   + fdiChecks('', 'antecedentesPatologicos', FDI_ANTECEDENTES_PATOLOGICOS, e.antecedentesPatologicos, editable)
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.2 Como describiria la relacion del/la estudiante con...?</div>'
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.2 ¿Cómo describiría la relación del/la estudiante con…?</div>'
   + '    <div class="grid-2">' + fdiRadios('Padre', 'relacionPadre', FDI_CALIDAD, e.relacionPadre, editable) + fdiCampo('Motivo', 'motivoPadre', e.motivoPadre, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Madre', 'relacionMadre', FDI_CALIDAD, e.relacionMadre, editable) + fdiCampo('Motivo', 'motivoMadre', e.motivoMadre, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Hermanos/as', 'relacionHermanos', FDI_CALIDAD, e.relacionHermanos, editable) + fdiCampo('Motivo', 'motivoHermanos', e.motivoHermanos, editable) + '</div>'
   + '    <div class="grid-2">' + fdiRadios('Otros', 'relacionOtros', FDI_CALIDAD, e.relacionOtros, editable) + fdiCampo('Motivo', 'motivoOtros', e.motivoOtros, editable) + '</div>'
   + fdiArea('Observaciones', 'obsRelaciones', e.obsRelaciones, editable)
-  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.3 Costumbres, habitos</div>'
-  + '    <div class="grid-2">' + fdiCampo('Habitos de sueno', 'habitosSueno', e.habitosSueno, editable) + fdiCampo('Habitos alimenticios', 'habitosAlimenticios', e.habitosAlimenticios, editable) + '</div>'
-  + '    <div><div class="hint" style="font-weight:700; margin-bottom:4px;">A que actividades en el tiempo libre se dedica con frecuencia</div>' + fdiListaCorta('actividadesTiempoLibre', e.actividadesTiempoLibre, 4, editable) + '</div>'
-  + fdiCampo('Que tiempo dedica para realizar sus tareas en el dia', 'tiempoTareas', e.tiempoTareas, editable)
+  + '    <div class="hint" style="font-weight:700; margin:10px 0 6px;">6.3 Costumbres y hábitos</div>'
+  + '    <div class="grid-2">' + fdiCampo('Hábitos de sueño', 'habitosSueno', e.habitosSueno, editable) + fdiCampo('Hábitos alimenticios', 'habitosAlimenticios', e.habitosAlimenticios, editable) + '</div>'
+  + '    <div><div class="hint" style="font-weight:700; margin-bottom:4px;">¿A qué actividades en el tiempo libre se dedica con frecuencia?</div>' + fdiListaCorta('actividadesTiempoLibre', e.actividadesTiempoLibre, 4, editable) + '</div>'
+  + fdiCampo('¿Qué tiempo dedica para realizar sus tareas en el día?', 'tiempoTareas', e.tiempoTareas, editable)
   + '  </div>';
 }
 
@@ -6462,17 +6472,17 @@ function renderDeceLista(){
         + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-dece-open="'+c.id+'">Abrir</button> <button class="btn btn-danger btn-sm" data-dece-delete="'+c.id+'">Eliminar</button></td>'
         + '</tr>';
     }).join('');
-    var tabla = '<div class="table-wrap"><table><thead><tr><th>Actualizado</th><th>Estudiante</th><th>Cedula</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + filas + '</tbody></table></div>';
+    var tabla = '<div class="table-wrap"><table><thead><tr><th>Actualizado</th><th>Estudiante</th><th>Cédula</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' + filas + '</tbody></table></div>';
     return '<div style="margin-bottom:18px;">'
       + grupoPlegableHtml('dece|' + clave, 'mes', clave, grupos[clave].length + (grupos[clave].length===1?' ficha':' fichas'), tabla)
       + '</div>';
-  }).join('') || '<div class="hint">Todavia no hay fichas registradas con este filtro.</div>';
+  }).join('') || '<div class="hint">Todavía no hay fichas registradas con este filtro.</div>';
   return ''
-  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejeria Estudiantil</div><h1>Ficha de Datos Informativos</h1><p>Registro acumulativo general de cada estudiante, agrupado por curso. Visible solo para Administracion, Directivos y DECE.</p></div></div>'
+  + '<div class="page-head"><div><div class="eyebrow">Departamento de Consejería Estudiantil</div><h1>Ficha de Datos Informativos</h1><p>Registro acumulativo general de cada estudiante, agrupado por curso. Visible solo para Administración, Directivos y DECE.</p></div></div>'
   + '<div class="card">'
   + '  <div class="field-row" style="margin-bottom:14px;">'
-  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcFEstado">' + optionsHtml(FDI_ESTADOS, f.estado, 'Todos') + '</select></div>'
-  + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido..." /></div>'
+  + '    <div class="field"><label>Estado</label><select class="cell-select" id="dcFEstado">' + optionsHtml(FDI_ESTADOS, f.estado, 'Todos', etiquetaFdi) + '</select></div>'
+  + '    <div class="field"><label>Buscar estudiante</label><input class="cell-input" id="dcFBuscar" value="' + escapeHtml(f.q) + '" placeholder="Nombre o apellido…" /></div>'
   + '  </div>'
   + '  <button class="btn btn-primary btn-sm" id="btnDeceNuevo" style="margin-bottom:14px;">+ Nueva ficha</button>'
   +    grupoBotonesTodoHtml('Pulsa el nombre de un curso para mostrar u ocultar sus fichas.')
@@ -6564,12 +6574,12 @@ function renderDeceForm(){
   + '<div class="form-error no-print" id="dcError" style="margin-bottom:10px;"></div>'
   + '<div class="pca-doc dece-doc" id="dcDoc">'
   + deceFormLogoHeaderHtml('REGISTRO ACUMULATIVO GENERAL')
-  + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">Esta informaci&oacute;n es confidencial. Solo la puede ver personal de Administraci&oacute;n, Directivos y DECE.</div></div>'
+  + '  <div class="pca-section" style="padding-bottom:0;"><div class="hint">Esta informaci&oacute;n es confidencial. Solo la puede ver el personal de Administraci&oacute;n, Directivos y DECE.</div></div>'
   + fdiCuerpoHtml(e, true)
   + fdiFirmaYConsentimientoHtml(e, true, '<span class="no-print">' + (e.origen==='publico' ? 'Recibido desde el formulario p&uacute;blico el ' + fmtDateTime(e.createdAt) : 'Registrado directamente por el DECE') + '</span>')
   + avisoRespaldoImpresionHtml()
   + '  <div class="pca-section no-print" style="text-align:center;"><button class="btn btn-gold" id="btnDecePrintFinal" title="Imprime o guarda en PDF (A4 vertical) el Registro Acumulativo y el Consentimiento Informado">🖨️ Imprimir ficha</button></div>'
-  + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null) + '</select></div></div>'
+  + '  <div class="pca-section no-print"><div class="field" style="max-width:260px;"><label>Estado (uso interno del DECE)</label><select class="cell-select" id="dcEstado">' + optionsHtml(FDI_ESTADOS, e.estado, null, etiquetaFdi) + '</select></div></div>'
   + (existsInDb ? '  <div class="no-print" style="padding:0 20px 20px;"><button class="btn btn-danger btn-sm" id="btnDeceEliminar">Eliminar ficha</button></div>' : '')
   + '</div>'
   + deceNavBarHtml('bottom');
