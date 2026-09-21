@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260921012723">
+<meta name="app-build" content="20260921014537">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -13259,6 +13259,7 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
     var evalTexto = (s.dias||[]).map(function(dia){ return richTextToPlain(dia.evaluacion||''); }).join(' ').toLowerCase();
     return {
       numero:s.numero, fechaInicio:s.fechaInicio, fechaFin:s.fechaFin, asignatura:s.asignatura, curso:s.curso,
+      dias:(s.dias||[]).length, updatedAt:s.updatedAt, plan:s,
       createdAt:s.completadoEn || s.createdAt || s.updatedAt, fechaHoraLimite:limiteVigenteDelPlan(s), estado:estado,
       requiereCorreccion: v.requiereCorreccion, motivos: motivos,
       tareas: evalTexto.indexOf('tarea')!==-1,
@@ -13510,8 +13511,9 @@ function renderAdminPresentacion(banda){
   var formHtml = ''
     + '<div class="card" style="background:'+pastel+';">'
     + '  <h2>' + tituloBanda + '</h2>'
-    + '  <div class="card-sub">Elige el rango de fechas que quieres revisar (por ejemplo, un mes completo). La puntualidad se calcula contra la Fecha y hora límite que cada plan tiene guardada.</div>'
-    + '  <div class="grid-2" style="max-width:520px;">'
+    + '  <div class="card-sub">Elige el mes que quieres revisar (o un rango de fechas a medida). La puntualidad se calcula contra la Fecha y hora límite que cada plan tiene guardada.</div>'
+    + '  <div class="grid-3" style="max-width:760px;">'
+    + '    <div class="field"><label>Mes</label><input class="cell-input" type="month" id="ppMes" value="' + escapeHtml((pf.fechaInicio||'').slice(0,7)) + '" /></div>'
     + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="ppFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
     + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="ppFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
     + '  </div>'
@@ -13541,23 +13543,21 @@ function renderAdminPresentacion(banda){
     ordenMeses.sort();
     var mesesHtml = ordenMeses.map(function(mk){
       var g = porMes[mk];
+      /* Misma vista que la lista de Planes Semanales de Administración: N.º, docente, asignatura,
+         curso, semana, días, observación y última actualización. */
       var filasHtml = g.filas.slice().sort(function(a,b){ return (a.fechaInicio||'').localeCompare(b.fechaInicio||''); }).map(function(f){
         return '<tr>'
           + '<td class="tabular">' + (f.numero ? 'N.º ' + f.numero : '—') + '</td>'
-          + '<td>' + escapeHtml(f.asignatura||'—') + (f.curso ? ' · '+escapeHtml(f.curso) : '') + '</td>'
+          + '<td>' + escapeHtml(nombreFormal(doc)) + '</td>'
+          + '<td><strong>' + escapeHtml(f.asignatura||'—') + '</strong></td>'
+          + '<td>' + escapeHtml(f.curso||'—') + '</td>'
           + '<td>' + fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin) + '</td>'
-          + '<td>' + (f.createdAt ? fmtDateTime(f.createdAt) : '—') + '</td>'
-          + '<td>' + (f.fechaHoraLimite ? fmtDateTimeLocal(f.fechaHoraLimite) : '—') + '</td>'
-          + '<td>' + presentacionBadge(f.estado)
-            + (f.requiereCorreccion ? ' <span style="font-weight:700; font-size:11px; letter-spacing:.02em; padding:4px 10px; border-radius:99px; color:#D62828; background:#FBE4E4; white-space:nowrap;" title="' + escapeHtml(f.motivos.join(' | ')) + '">Corregir</span>' : '')
-            + (f.motivos.length ? '<div class="hint" style="margin-top:3px;">' + escapeHtml(f.motivos[0]) + (f.motivos.length > 1 ? ' (+' + (f.motivos.length - 1) + ')' : '') + '</div>' : '')
-            + '</td>'
-          + '<td style="text-align:center;">' + siNoBadge(f.tareas) + '</td>'
-          + '<td style="text-align:center;">' + siNoBadge(f.talleres) + '</td>'
-          + '<td style="text-align:center;">' + siNoBadge(f.lecciones) + '</td>'
+          + '<td class="tabular" style="text-align:center;">' + (f.dias||0) + '</td>'
+          + '<td>' + observacionSemanalHtml(f.plan) + '</td>'
+          + '<td>' + (f.updatedAt ? fmtDateTime(f.updatedAt) : '—') + '</td>'
           + '</tr>';
       }).join('');
-      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Plan (asignatura · curso)</th><th>Semana del plan</th><th>Plan completado el</th><th>Fecha límite</th><th>Observación</th><th>Tareas en casa</th><th>Talleres en clase</th><th>Lecciones</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Docente</th><th>Asignatura</th><th>Curso</th><th>Fecha</th><th style="width:60px;">Días</th><th>Observación</th><th>Actualizado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
       return grupoPlegableHtml('presentacion|' + banda + '|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' plan':' planes'), tabla);
     }).join('');
     return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
@@ -13575,6 +13575,17 @@ function renderAdminPresentacion(banda){
   return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
 }
 function bindAdminPresentacionEvents(){
+  /* Elegir un mes llena automáticamente el rango completo de ese mes. */
+  var mes = document.getElementById('ppMes');
+  if(mes) mes.addEventListener('change', function(e){
+    var v = e.target.value;
+    if(!v) return;
+    var anio = parseInt(v.slice(0,4),10), m = parseInt(v.slice(5,7),10);
+    var ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+    state.presentacionForm.fechaInicio = v + '-01';
+    state.presentacionForm.fechaFin = v + '-' + String(ultimo).padStart(2,'0');
+    render();
+  });
   var fi = document.getElementById('ppFechaInicio');
   if(fi) fi.addEventListener('change', function(e){ state.presentacionForm.fechaInicio = e.target.value; render(); });
   var ff = document.getElementById('ppFechaFin');
