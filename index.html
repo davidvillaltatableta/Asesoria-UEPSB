@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260921154955">
+<meta name="app-build" content="20260927023722">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -13788,6 +13788,29 @@ function fechaLimiteExactaDeSemana(fechaInicioPlan){
 function limiteVigenteDelPlan(s){
   return fechaLimiteExactaDeSemana(s && s.fechaInicio) || (s && s.fechaHoraLimite) || '';
 }
+/* Cada Plan Semanal guarda una COPIA de su fecha límite (fechaHoraLimite) desde el momento en que
+   se creó. El veredicto "a tiempo / atrasado" nunca se juzga con esa copia — siempre manda la
+   fecha vigente de Fechas Límite (limiteVigenteDelPlan) —, pero la copia se sigue usando como
+   respaldo cuando la semana del plan no tiene fecha propia y viaja en los respaldos exportados.
+   Cuando el administrador corrige el plazo de una semana (p.ej. 19:31 → 23:59), esta función
+   alinea esa copia en todos los planes de esa semana, para que el dato guardado y lo que se ve en
+   pantalla digan exactamente lo mismo. Solo toca los planes cuya semana SÍ tiene fecha registrada:
+   a los demás se les respeta la que llevan. Devuelve cuántos planes cambiaron. */
+function resincronizarLimitesSemanales(){
+  var planes = load(LS.SEMANAL);
+  var cambiados = 0;
+  var actualizados = planes.map(function(s){
+    var vigente = fechaLimiteExactaDeSemana(s.fechaInicio);
+    if(!vigente || vigente === (s.fechaHoraLimite||'')) return s;
+    cambiados++;
+    return Object.assign({}, s, {fechaHoraLimite: vigente});
+  });
+  if(cambiados) save(LS.SEMANAL, actualizados);
+  return cambiados;
+}
+function avisoResincronizacion(cambiados){
+  if(cambiados) toast('Fecha límite actualizada. Se alinearon ' + cambiados + ' plan' + (cambiados===1?'':'es') + ' ya creado' + (cambiados===1?'':'s') + ' con el nuevo plazo de su semana.', 'success');
+}
 function fechaLimiteParaSemana(fechaInicioPlan){
   var entradas = load(LS.FECHAS_LIMITE).filter(function(x){ return x.categoria==='semanal'; });
   if(!entradas.length) return '';
@@ -13875,6 +13898,7 @@ function categoriaFechaLimiteCardHtml(categoria, titulo, agruparPorMes){
     + '  </div>'
     + '  <div style="margin-top:10px;">'
     + '    <button class="btn btn-danger btn-sm" data-apply-fechalimite="' + categoria + '" title="Usa la fecha escrita arriba y la escribe en TODOS los ' + (categoria==='pca'?'PCA':'Planes Semanales') + ' que ya existen, reemplazando la que cada uno tenía">⚠️ Aplicar esa fecha a TODOS los ' + (categoria==='pca'?'PCA':'Planes Semanales') + ' ya existentes</button>'
+    + (porSemana ? '    <button class="btn btn-ghost btn-sm" data-resync-fechalimite="1" style="margin-left:8px;" title="Recorre los planes ya creados y le pone a cada uno la fecha límite que hoy tiene registrada SU semana. No cambia ningún plan cuya semana no tenga fecha propia.">↻ Resincronizar los planes con la fecha de su semana</button>' : '')
     + '  </div>'
     + tableHtml
     + '</div>';
@@ -13908,6 +13932,9 @@ function bindAdminFechasLimiteEvents(){
       toast(semanaInicio
         ? 'Fecha límite registrada para la semana del ' + fmtDate(semanaInicio) + '.'
         : 'Fecha límite general agregada.', 'success');
+      /* Si la fecha que se acaba de registrar es de una semana que ya tiene planes hechos, esos
+         planes quedan alineados en el acto (ver resincronizarLimitesSemanales). */
+      if(categoria === 'semanal') avisoResincronizacion(resincronizarLimitesSemanales());
       render();
     };
   });
@@ -13933,6 +13960,22 @@ function bindAdminFechasLimiteEvents(){
           render();
         }, 'Aplicar a todos');
       }
+    };
+  });
+  document.querySelectorAll('[data-resync-fechalimite]').forEach(function(btn){
+    btn.onclick = function(){
+      /* Se calcula primero cuántos planes cambiarían, para que el administrador confirme sabiendo
+         el alcance exacto en vez de aceptar a ciegas una escritura masiva. */
+      var planes = load(LS.SEMANAL);
+      var porCambiar = planes.filter(function(s){
+        var vigente = fechaLimiteExactaDeSemana(s.fechaInicio);
+        return vigente && vigente !== (s.fechaHoraLimite||'');
+      });
+      if(!porCambiar.length){ toast('Todos los planes ya tienen la fecha límite de su semana. No hay nada que corregir.', 'success'); return; }
+      confirmDialog('Se va a corregir la fecha límite guardada en ' + porCambiar.length + ' Plan' + (porCambiar.length===1?'':'es') + ' Semanal' + (porCambiar.length===1?'':'es') + ', dejándole a cada uno la fecha que hoy tiene registrada SU semana. Los planes de semanas sin fecha propia no se tocan. ¿Continuar?', function(){
+        avisoResincronizacion(resincronizarLimitesSemanales());
+        render();
+      }, 'Corregir');
     };
   });
   document.querySelectorAll('[data-edit-fechalimite]').forEach(function(btn){
@@ -13966,7 +14009,13 @@ function bindAdminFechasLimiteEvents(){
       });
       save(LS.FECHAS_LIMITE, entradas);
       state.editingFechaLimiteId = null;
-      toast('Fecha límite actualizada.', 'success');
+      var editada = entradas.filter(function(x){ return x.id===id; })[0];
+      if(editada && editada.categoria === 'semanal'){
+        var n = resincronizarLimitesSemanales();
+        if(n) avisoResincronizacion(n); else toast('Fecha límite actualizada.', 'success');
+      } else {
+        toast('Fecha límite actualizada.', 'success');
+      }
       render();
     };
   });
