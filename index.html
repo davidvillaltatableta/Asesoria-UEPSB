@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260927023722">
+<meta name="app-build" content="20260928002245">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1600,6 +1600,59 @@ function promptDialog(message, defaultValue, onSubmit){
   okBtn.onclick = function(){ var v = input.value.trim(); close(); if(v) onSubmit(v); };
   input.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); okBtn.click(); } });
   overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
+}
+
+/* Diálogo de "Replanificar": antes de duplicar el plan se le pide al docente el MOTIVO, elegido de
+   la lista o escrito por él. El motivo se guarda en el plan nuevo y decide si se le aplica el
+   control de actividades copiadas (ver MOTIVOS_REPLANIFICACION). */
+function motivoReplanificacionDialog(onSubmit, tipo){
+  var esTaller = tipo === 'taller';
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  box.innerHTML = ''
+    + '<p style="margin-bottom:6px;"><b>' + (esTaller ? 'Replanificar este Taller Práctico' : 'Replanificar este plan semanal') + '</b></p>'
+    + '<p class="hint" style="margin-bottom:12px;">' + (esTaller
+        ? 'Se crea un taller nuevo con las mismas fases, semanas, temas y niveles de logro (editables). Indica por qué necesitas replanificar.'
+        : 'Se crea un plan nuevo con los temas y niveles de logro de la semana anterior del PCA agregados en el primer día. Indica por qué necesitas replanificar.') + '</p>'
+    + '<div class="field" style="margin-bottom:10px;"><label>Motivo de la replanificación</label>'
+    + '  <select class="cell-input" id="mrvSelect">'
+    + '    <option value="">— Selecciona un motivo —</option>'
+    + MOTIVOS_REPLANIFICACION.map(function(m){ return '<option value="' + m.clave + '">' + escapeHtml(m.texto) + '</option>'; }).join('')
+    + '  </select>'
+    + '</div>'
+    + '<div class="field" id="mrvOtroWrap" style="display:none; margin-bottom:10px;"><label>Escribe el motivo</label>'
+    + '  <input class="cell-input" id="mrvOtro" placeholder="p.ej. Se adelantó la evaluación del bloque" />'
+    + '</div>'
+    + '<div class="hint" id="mrvNota" style="margin-bottom:14px;"></div>'
+    + '<div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="mrvCancel">Cancelar</button><button class="btn btn-primary btn-sm" id="mrvOk">Replanificar</button></div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  var sel = box.querySelector('#mrvSelect');
+  var otroWrap = box.querySelector('#mrvOtroWrap');
+  var otro = box.querySelector('#mrvOtro');
+  var nota = box.querySelector('#mrvNota');
+  function close(){ overlay.remove(); }
+  sel.addEventListener('change', function(){
+    var m = motivoReplanificacion(sel.value);
+    otroWrap.style.display = (sel.value==='otro') ? '' : 'none';
+    if(sel.value==='otro') otro.focus();
+    nota.textContent = !m ? ''
+      : (m.repetirEsValido
+          ? 'Como la clase no llegó a darse o no se avanzó, puedes conservar las mismas actividades del plan anterior: no se te avisará de actividades copiadas.'
+          : 'Para este motivo, las Actividades de Aprendizaje no pueden ser copia literal del plan anterior: si vas a retomar el tema, trabájalo de otra manera.');
+  });
+  box.querySelector('#mrvCancel').onclick = close;
+  box.querySelector('#mrvOk').onclick = function(){
+    if(!sel.value){ toast('Elige el motivo de la replanificación.', 'error'); return; }
+    var texto = (sel.value==='otro') ? (otro.value||'').trim() : motivoReplanificacion(sel.value).texto;
+    if(sel.value==='otro' && !texto){ toast('Escribe el motivo de la replanificación.', 'error'); return; }
+    close();
+    onSubmit(sel.value, texto);
+  };
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) close(); });
+  sel.focus();
 }
 
 /* Orientación de impresión dinámica: en vez de depender de "páginas con nombre" de CSS (soporte
@@ -9458,6 +9511,10 @@ function renderSemanalListInner(d, scopeAll, banda){
     + '    <button class="btn btn-ghost btn-sm" data-edit-semanal="' + s.id + '">Ver / Editar</button> '
     + '    <button class="btn btn-ghost btn-sm" data-historial-semanal="' + s.id + '" title="Ver el historial de edición de este plan">🕓</button> '
     + (soloRevision ? '' : '    <button class="btn btn-ghost btn-sm" data-replanificar-semanal="' + s.id + '" title="Crea un nuevo plan duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA para reforzar">Replanificar</button> ')
+    /* Inglés se dicta por grupos de nivel (A1, B1…) que mezclan paralelos y hasta grados: el mismo
+       plan se repite tal cual en varios grupos, así que el docente necesita copiarlo y cambiarle
+       solo el curso o el grupo, sin que eso cuente como replanificación. */
+    + (soloRevision || !asignaturaEsIngles(s.asignatura) ? '' : '    <button class="btn btn-ghost btn-sm" data-duplicar-semanal="' + s.id + '" title="Crea una copia de este plan para otro grupo o paralelo: se abre para que le cambies el curso o el grupo">Duplicar</button> ')
     + '    <button class="btn btn-gold btn-sm" data-export-semanal-pdf="' + s.id + '" title="PDF real, sin restricciones de tu vista">PDF ✓</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-word="' + s.id + '">Word</button> '
     + '    <button class="btn btn-ghost btn-sm" data-export-semanal-excel="' + s.id + '">Excel</button> '
@@ -9743,9 +9800,17 @@ function bindSemanalListSharedEvents(){
   document.querySelectorAll('[data-replanificar-semanal]').forEach(function(btn){
     btn.onclick = function(){
       var semId = btn.getAttribute('data-replanificar-semanal');
-      confirmDialog('¿Crear un nuevo plan semanal duplicando este, agregando los temas y niveles de logro de la semana anterior del PCA en el primer día (para reforzar)?', function(){
-        replanificarSemanal(semId);
-      }, 'Replanificar');
+      motivoReplanificacionDialog(function(clave, texto){
+        replanificarSemanal(semId, clave, texto);
+      });
+    };
+  });
+  document.querySelectorAll('[data-duplicar-semanal]').forEach(function(btn){
+    btn.onclick = function(){
+      var semId = btn.getAttribute('data-duplicar-semanal');
+      confirmDialog('¿Crear una copia de este plan para otro grupo o paralelo? Se abrirá la copia para que le cambies el curso, el grupo y lo que necesites.', function(){
+        duplicarSemanalOtroGrupo(semId);
+      }, 'Duplicar');
     };
   });
   document.querySelectorAll('[data-export-semanal-word]').forEach(function(btn){ btn.onclick = function(){ exportSemanalWord(btn.getAttribute('data-export-semanal-word')); }; });
@@ -10027,6 +10092,80 @@ function parecidoActividades(a, b){
   if(a.length < COPIA_MIN_PALABRAS || b.length < COPIA_MIN_PALABRAS) return 0;
   return a.join(' ') === b.join(' ') ? 1 : 0;
 }
+/* ---------- Motivo de la replanificación ----------
+   Al replanificar, el docente declara POR QUÉ lo hace, y ese motivo decide si el control de
+   actividades copiadas se le aplica o no frente al plan que replanificó:
+   · repetirEsValido: la clase no se dictó o no se alcanzó a avanzar (feriado, reunión, ausencia,
+     contenidos pendientes). Volver a planificar lo mismo es exactamente lo correcto, así que no
+     se le reclama nada.
+   · repetirEsValido false: el motivo es volver sobre el tema con los estudiantes (consolidar,
+     reforzar) o un motivo escrito a mano. Ahí sí se exige que las Actividades de Aprendizaje no
+     sean copia literal, porque consolidar implica trabajar el tema de otra manera. */
+var MOTIVOS_REPLANIFICACION = [
+  {clave:'no_avanzo', texto:'No se avanzó con todos los contenidos previstos', repetirEsValido:true},
+  {clave:'feriado', texto:'Feriado', repetirEsValido:true},
+  {clave:'reunion_padres', texto:'Reunión de padres de familia', repetirEsValido:true},
+  {clave:'reunion_docentes', texto:'Reunión o capacitación de docentes', repetirEsValido:true},
+  {clave:'suspension', texto:'Suspensión de clases o actividad institucional', repetirEsValido:true},
+  {clave:'ausencia', texto:'Ausencia justificada del docente', repetirEsValido:true},
+  {clave:'consolidar', texto:'Se necesita consolidar o reforzar los temas', repetirEsValido:false},
+  {clave:'otro', texto:'Otro motivo (escribirlo)', repetirEsValido:false}
+];
+function motivoReplanificacion(clave){
+  for(var i=0;i<MOTIVOS_REPLANIFICACION.length;i++){ if(MOTIVOS_REPLANIFICACION[i].clave===clave) return MOTIVOS_REPLANIFICACION[i]; }
+  return null;
+}
+/* Texto que se muestra en el documento y en los avisos. */
+function motivoReplanificacionTexto(s){
+  if(!s) return '';
+  var m = motivoReplanificacion(s.motivoReplanificacion);
+  if(!m) return (s.motivoReplanificacionTexto||'').trim();
+  if(m.clave==='otro') return (s.motivoReplanificacionTexto||'').trim();
+  return m.texto;
+}
+/* Solo se relaja el control si el docente declaró un motivo en el que la clase no llegó a darse o
+   no se alcanzó a avanzar. Sin motivo declarado (planes viejos) NO se relaja nada: se mantiene lo
+   que ya estaba, es decir, avisar solo cuando la copia es literal. */
+function replanRepetirEsValido(s){
+  var m = motivoReplanificacion(s && s.motivoReplanificacion);
+  return !!(m && m.repetirEsValido);
+}
+/* Campo "Motivo de la replanificación" dentro del documento (Plan Semanal y Taller Práctico): se
+   muestra solo en los planes que nacieron de Replanificar, y queda editable por si el docente
+   eligió mal el motivo o quiere precisarlo. */
+function motivoReplanificacionFieldHtml(s, prefijo, isIngles){
+  var clave = s.motivoReplanificacion||'';
+  var esOtro = clave === 'otro';
+  var opciones = '<option value="">' + te('— Selecciona un motivo —', isIngles) + '</option>'
+    + MOTIVOS_REPLANIFICACION.map(function(m){
+        return '<option value="' + m.clave + '"' + (m.clave===clave?' selected':'') + '>' + escapeHtml(te(m.texto, isIngles)) + '</option>';
+      }).join('');
+  var m = motivoReplanificacion(clave);
+  var nota = !m ? te('Declara el motivo: define si se te exige cambiar las Actividades de Aprendizaje.', isIngles)
+    : (m.repetirEsValido
+        ? te('La clase no llegó a darse o no se avanzó: puedes conservar las mismas actividades del plan anterior.', isIngles)
+        : te('Para este motivo, las Actividades de Aprendizaje no pueden ser copia literal del plan anterior.', isIngles));
+  return ''
+    + '      <div class="field"><label>' + te('Motivo de la replanificación', isIngles) + '</label>'
+    + '        <select class="cell-input" id="' + prefijo + 'MotivoReplan">' + opciones + '</select>'
+    + '        <input class="cell-input" id="' + prefijo + 'MotivoReplanOtro" style="margin-top:6px;' + (esOtro?'':'display:none;') + '" placeholder="' + te('Escribe el motivo', isIngles) + '" value="' + escapeHtml(esOtro ? (s.motivoReplanificacionTexto||'') : '') + '" />'
+    + '        <div class="hint" style="margin-top:4px;">' + escapeHtml(nota) + '</div>'
+    + '      </div>';
+}
+function bindMotivoReplanificacionEvents(s, prefijo, redibujar){
+  var sel = document.getElementById(prefijo + 'MotivoReplan');
+  if(!sel) return;
+  var otro = document.getElementById(prefijo + 'MotivoReplanOtro');
+  sel.addEventListener('change', function(e){
+    s.motivoReplanificacion = e.target.value;
+    var m = motivoReplanificacion(e.target.value);
+    /* Al cambiar de "Otro" a un motivo de la lista se guarda el texto del catálogo, para que los
+       reportes y el documento impreso muestren siempre el motivo vigente. */
+    s.motivoReplanificacionTexto = (e.target.value==='otro') ? ((otro && otro.value)||'') : (m ? m.texto : '');
+    redibujar();
+  });
+  if(otro) otro.addEventListener('input', function(e){ s.motivoReplanificacionTexto = e.target.value; });
+}
 /* ¿Este plan nació de "Replanificar" sobre aquel otro? Los planes nuevos lo dicen con el campo
    replanificadoDe; los anteriores a ese campo se reconocen por su número: replanificar crea el
    N.º 3.1 a partir del N.º 3 (ver numeroReplanificado). */
@@ -10061,11 +10200,63 @@ function actividadesRepetidasPlan(s){
     for(var k = 0; k < anteriores.length; k++){
       var prev = anteriores[k];
       var replanificado = esReplanificacionDe(s, prev);
+      /* Replanificado por un motivo en el que la clase no se dictó o no se avanzó (feriado,
+         reunión, ausencia, contenidos pendientes): repetir el plan anterior es lo correcto, así
+         que ese plan no se compara. Los demás planes anteriores se siguen comparando igual. */
+      if(replanificado && replanRepetirEsValido(s)) continue;
       var repetido = (prev.dias||[]).some(function(d2){
         return parecidoActividades(huellas[i], palabrasActividades(d2.actividades)) === 1;
       });
       if(repetido){
         avisos.push('Las Actividades del Día ' + (i+1) + ' son idénticas a las del plan N.º ' + (prev.numero||'—') + ' (semana del ' + fmtDate(prev.fechaInicio) + ')'
+          + (replanificado ? ', que replanificaste sin cambiar nada.' : '.'));
+        break;
+      }
+    }
+  });
+  return avisos;
+}
+/* Mismo control para el Taller Práctico: aquí el bloque no es un día sino cada SEMANA de cada
+   FASE. Se compara semana contra semana dentro del mismo taller, y contra los talleres anteriores
+   del mismo docente, asignatura y curso; el taller de origen no se compara si la replanificación
+   se hizo por un motivo en el que la clase no llegó a darse (ver MOTIVOS_REPLANIFICACION). */
+function bloquesActividadesTaller(t){
+  var out = [];
+  (t.fases||[]).forEach(function(fase, fi){
+    (fase.semanas||[]).forEach(function(sem, si){
+      out.push({ etiqueta: (fase.nombre || ('Fase ' + (fi+1))) + ' · Semana ' + (si+1), huella: palabrasActividades(sem.actividades) });
+    });
+  });
+  return out;
+}
+function actividadesRepetidasTaller(t){
+  var avisos = [];
+  var bloques = bloquesActividadesTaller(t);
+  for(var i = 1; i < bloques.length; i++){
+    for(var j = 0; j < i; j++){
+      if(parecidoActividades(bloques[i].huella, bloques[j].huella) === 1){
+        avisos.push('Las Actividades de ' + bloques[i].etiqueta + ' son idénticas a las de ' + bloques[j].etiqueta + ' de este taller.');
+        break;
+      }
+    }
+  }
+  var anteriores = load(LS.TALLER).filter(function(x){
+    return x.id !== t.id && x.docenteId === t.docenteId
+      && (x.asignatura||'') === (t.asignatura||'')
+      && normCursoCmp(x.curso) === normCursoCmp(t.curso)
+      && (x.fechaInicio||'') && (t.fechaInicio||'') && x.fechaInicio < t.fechaInicio;
+  }).sort(function(a,b){ return (b.fechaInicio||'').localeCompare(a.fechaInicio||''); }).slice(0, 4);
+  bloques.forEach(function(b){
+    for(var k = 0; k < anteriores.length; k++){
+      var prev = anteriores[k];
+      var replanificado = esReplanificacionDe(t, prev);
+      if(replanificado && replanRepetirEsValido(t)) continue;
+      var repetido = bloquesActividadesTaller(prev).some(function(pb){
+        return parecidoActividades(b.huella, pb.huella) === 1;
+      });
+      if(repetido){
+        avisos.push('Las Actividades de ' + b.etiqueta + ' son idénticas a las del Taller Práctico N.º ' + (prev.numero||'—')
+          + (prev.fechaInicio ? ' (desde el ' + fmtDate(prev.fechaInicio) + ')' : '')
           + (replanificado ? ', que replanificaste sin cambiar nada.' : '.'));
         break;
       }
@@ -10120,7 +10311,8 @@ function validarTallerPractico(t){
   });
   var r = validarBloquesPlan(bloques, metodoKey, exigirEnlace);
   var completo = bloques.length > 0 && !r.faltanCasilleros.length;
-  var metodoOk = completo && !r.problemasMetodo.length && !r.faltanEnlaces.length;
+  var actividadesRepetidas = actividadesRepetidasTaller(t);
+  var metodoOk = completo && !r.problemasMetodo.length && !r.faltanEnlaces.length && !actividadesRepetidas.length;
   return {
     completo: completo,
     metodoOk: metodoOk,
@@ -10129,9 +10321,9 @@ function validarTallerPractico(t){
     faltanCasilleros: r.faltanCasilleros,
     problemasMetodo: r.problemasMetodo,
     faltanEnlaces: r.faltanEnlaces,
-    /* El control de actividades copiadas es propio del Plan Semanal (día a día); aquí va vacío para
-       que las pantallas compartidas puedan leer este campo sin comprobar el tipo de plan. */
-    actividadesRepetidas: [],
+    /* Semanas del taller con Actividades copiadas, con el mismo criterio literal del Plan Semanal
+       (ver actividadesRepetidasTaller). */
+    actividadesRepetidas: actividadesRepetidas,
     metodo: metodoDeClase(metodoKey),
     exigeEnlace: exigirEnlace,
     metodoImpuesto: true
@@ -10201,7 +10393,11 @@ function hayCambiosRegistro(previo, nuevo){
     if(v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
     if(Array.isArray(v)) return '[' + v.map(estable).join(',') + ']';
     return '{' + Object.keys(v).sort().filter(function(k){
-      return k !== 'updatedAt' && k !== 'historial' && k !== 'completadoEn' && k.charAt(0) !== '_';
+      /* Un campo vacío y un campo que todavía no existe son lo mismo: cada vez que el sistema
+         agrega un campo nuevo (motivo de replanificación, duplicadoDe…), los planes guardados
+         antes no lo tienen, y sin esto el solo hecho de abrirlos contaría como edición y les
+         movería la fecha de "Actualizado" y el historial. */
+      return k !== 'updatedAt' && k !== 'historial' && k !== 'completadoEn' && k.charAt(0) !== '_' && v[k] !== '';
     }).map(function(k){ return JSON.stringify(k) + ':' + estable(v[k]); }).join(',') + '}';
   }
   return estable(previo) !== estable(nuevo);
@@ -10233,9 +10429,12 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   var copiadas = v.actividadesRepetidas || [];
   /* Las actividades copiadas se avisan SIEMPRE en rojo, aunque el plan esté completo: es lo que
      distingue una planificación real de una hecha por trámite. */
+  var esTallerPractico = v.metodo.key === METODO_TALLER;
   if(copiadas.length && !v.sinDias && v.completo){
     return '<div style="border:1px solid var(--red-600); background:var(--red-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
-      + '<div style="font-weight:700; color:var(--red-600);">' + escapeHtml(te('Actividades de Aprendizaje copiadas: planifique cada día de forma distinta.', isIngles)) + '</div>'
+      + '<div style="font-weight:700; color:var(--red-600);">' + escapeHtml(esTallerPractico
+          ? 'Actividades Académicas copiadas: planifique cada semana de forma distinta.'
+          : te('Actividades de Aprendizaje copiadas: planifique cada día de forma distinta.', isIngles)) + '</div>'
       + '<ul style="margin:6px 0 0 18px; padding:0;">' + copiadas.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>'
       + (v.problemasMetodo.length || v.faltanEnlaces.length
           ? '<ul style="margin:6px 0 0 18px; padding:0;">' + v.problemasMetodo.concat(v.faltanEnlaces.length ? [te('Falta el enlace de las diapositivas en: ', isIngles) + v.faltanEnlaces.join(', ')] : []).map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>'
@@ -10243,13 +10442,21 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
       /* Mensaje del Asesor Pedagógico: el aviso no sirve de nada si no dice CÓMO corregirlo. */
       + '<div style="margin-top:8px; font-size:12.5px; line-height:1.5;">'
       + '<b>' + escapeHtml(te('Mensaje del Asesor Pedagógico:', isIngles)) + '</b> '
-      + escapeHtml(te('repetir las mismas actividades convierte la planificación en un trámite y no en una guía real de la clase. Cada día del plan responde a un momento distinto del aprendizaje.', isIngles))
+      + escapeHtml(esTallerPractico
+          ? 'repetir las mismas actividades convierte la planificación en un trámite y no en una guía real del proyecto. Cada semana del taller avanza en la construcción del producto final.'
+          : te('repetir las mismas actividades convierte la planificación en un trámite y no en una guía real de la clase. Cada día del plan responde a un momento distinto del aprendizaje.', isIngles))
       + '<ul style="margin:6px 0 0 18px; padding:0;">'
-      + '<li>' + escapeHtml(te('Cambia la consigna: lo que el estudiante HACE (observar, comparar, resolver, crear) debe avanzar de un día al siguiente.', isIngles)) + '</li>'
-      + '<li>' + escapeHtml(te('Varía el recurso y el producto: si el lunes fue una lectura, el martes puede ser un organizador gráfico, un ejercicio o una exposición corta.', isIngles)) + '</li>'
-      + '<li>' + escapeHtml(te('Sigue los momentos del método: la Anticipación del día 2 no puede ser la misma del día 1, porque los estudiantes ya saben más.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(esTallerPractico
+          ? 'Cambia la consigna: lo que el estudiante HACE (explorar, diseñar, construir, probar, corregir) debe avanzar de una semana a la siguiente.'
+          : te('Cambia la consigna: lo que el estudiante HACE (observar, comparar, resolver, crear) debe avanzar de un día al siguiente.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(esTallerPractico
+          ? 'Varía el recurso y la evidencia: boceto, prototipo, prueba de funcionamiento, registro fotográfico, presentación del avance.'
+          : te('Varía el recurso y el producto: si el lunes fue una lectura, el martes puede ser un organizador gráfico, un ejercicio o una exposición corta.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(esTallerPractico
+          ? 'Sigue los momentos del Taller Práctico: la semana que construye no puede planificarse igual que la que diseña o la que evalúa el producto.'
+          : te('Sigue los momentos del método: la Anticipación del día 2 no puede ser la misma del día 1, porque los estudiantes ya saben más.', isIngles)) + '</li>'
       + '<li>' + escapeHtml(te('Con enfoque DUA, ofrece al menos una alternativa de respuesta (oral, escrita o gráfica) en uno de los días.', isIngles)) + '</li>'
-      + '<li>' + escapeHtml(te('Si necesitas retomar lo que quedó pendiente, usa el botón Replanificar y ajusta las actividades: así queda registrado como refuerzo y no como copia.', isIngles)) + '</li>'
+      + '<li>' + escapeHtml(te('Si necesitas retomar lo que quedó pendiente, usa el botón Replanificar y declara el motivo: si la clase no llegó a darse (feriado, reunión, contenidos pendientes), no se te pedirá cambiar las actividades.', isIngles)) + '</li>'
       + '</ul></div>'
       + '</div>';
   }
@@ -10808,6 +11015,7 @@ function renderSemanalForm(d){
   + '        ' + metodoSelectorHtml('sfMetodo', s.asignatura, s.metodo, isIngles)
   + '        <div class="hint" style="margin-top:4px;">' + te('Las Actividades de aprendizaje de cada día deben desarrollar los momentos de este método.', isIngles) + '</div>'
   + '      </div>'
+  + (s.replanificadoDe || String(s.numero||'').indexOf('.') !== -1 ? motivoReplanificacionFieldHtml(s, 'sf', isIngles) : '')
   + '    </div>'
   + '  </div>'
   + '  <div class="pca-band band-section"' + bandaAsig + '>' + te('Desarrollo de las Clases', isIngles) + '</div>'
@@ -10868,6 +11076,7 @@ function bindSemanalFormEvents(){
   var limiteInput = document.getElementById('sfFechaHoraLimite');
   if(limiteInput) limiteInput.addEventListener('change', function(e){ s.fechaHoraLimite = e.target.value; renderSemanalFormAgain(); });
   document.getElementById('sfUnidad').addEventListener('input', function(e){ s.unidadDidactica = e.target.value; });
+  bindMotivoReplanificacionEvents(s, 'sf', renderSemanalFormAgain);
   var metodoSel = document.getElementById('sfMetodo');
   if(metodoSel) metodoSel.addEventListener('change', function(e){ s.metodo = e.target.value; renderSemanalFormAgain(); });
   var bloqueInput = document.getElementById('sfBloque');
@@ -10954,7 +11163,7 @@ function numeroReplanificado(docenteId, asignatura, base){
   do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
   return candidato;
 }
-function replanificarSemanal(semId){
+function replanificarSemanal(semId, motivoClave, motivoTexto){
   var s = load(LS.SEMANAL).find(function(x){ return x.id===semId; });
   if(!s) return;
   var temasReforzar = s.semanaRowId ? temasSemanaAnteriorCompleta(s.pcaId, s.semanaRowId) : [];
@@ -10986,10 +11195,12 @@ function replanificarSemanal(semId){
     pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'', fechaHoraLimite: s.fechaHoraLimite||'',
     unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
     metodo: s.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
-    /* Marca de origen: replanificar es una práctica legítima (se retoma lo que quedó pendiente),
-       así que el control de actividades copiadas es más benévolo con estos planes — solo avisa si
-       el docente no cambió absolutamente nada. Ver actividadesRepetidasPlan. */
+    /* Marca de origen y motivo declarado: replanificar es una práctica legítima (se retoma lo que
+       quedó pendiente), y según el motivo el control de actividades copiadas ni siquiera se aplica
+       frente al plan de origen. Ver MOTIVOS_REPLANIFICACION y actividadesRepetidasPlan. */
     replanificadoDe: s.id,
+    motivoReplanificacion: motivoClave||'',
+    motivoReplanificacionTexto: motivoTexto||'',
     dias: dias,
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     createdAt: nowISO(), updatedAt: nowISO()
@@ -10999,6 +11210,41 @@ function replanificarSemanal(semId){
   save(LS.SEMANAL, all);
   toast('Plan replanificado como N.º ' + nuevoNumero + ', con los temas y niveles de logro de la semana anterior agregados en el primer día.', 'success');
   render();
+}
+/* "Duplicar" (solo en asignaturas de Inglés): Inglés se dicta por grupos de nivel que agrupan
+   paralelos distintos, así que el mismo plan se dicta tal cual en varios grupos. Esto crea una
+   COPIA independiente, con su propio número correlativo (no un "3.1": no es una replanificación,
+   no arrastra motivo ni temas de la semana anterior) y la abre para que el docente le cambie el
+   curso o el grupo. No dispara el control de actividades copiadas: ese control solo compara planes
+   de semanas ANTERIORES del mismo curso, y la copia nace en la misma semana y para otro grupo. */
+function duplicarSemanalOtroGrupo(semId){
+  var s = load(LS.SEMANAL).find(function(x){ return x.id===semId; });
+  if(!s) return;
+  var nuevo = {
+    id: uid('sem'), docenteId: s.docenteId, numero: siguienteNumeroSemanal(s.docenteId, s.asignatura),
+    nivel: s.nivel, especialidad: s.especialidad||'', curso: s.curso, asignatura: s.asignatura,
+    pcaId: s.pcaId||'', semanaRowId: s.semanaRowId||'', fechaInicio: s.fechaInicio||'', fechaFin: s.fechaFin||'',
+    fechaHoraLimite: fechaLimiteParaSemana(s.fechaInicio||''),
+    unidadDidactica: s.unidadDidactica||'', bloqueCurricular: s.bloqueCurricular||'',
+    metodo: s.metodo || METODO_POR_DEFECTO, completadoEn:'', historial:[],
+    replanificadoDe:'', motivoReplanificacion:'', motivoReplanificacionTexto:'',
+    /* Trazabilidad: de qué plan se copió, sin las consecuencias de replanificadoDe. */
+    duplicadoDe: s.id,
+    dias: (s.dias||[]).map(function(dia){
+      return {
+        id: uid('dia'), fecha: dia.fecha||'', contenidos: dia.contenidos||'',
+        nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
+        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+      };
+    }),
+    revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  var all = load(LS.SEMANAL).slice();
+  all.push(nuevo);
+  save(LS.SEMANAL, all);
+  toast('Plan duplicado como N.º ' + nuevo.numero + '. Cambia el curso o el grupo y guarda.', 'success');
+  openSemanalForm(nuevo.id, vistaDeRetornoLista('semanallist'));
 }
 function saveSemanal(s, silent){
   var d = currentDocente();
@@ -11024,8 +11270,12 @@ function saveSemanal(s, silent){
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
     importadoDeDocente: s.importadoDeDocente||'', importadoFecha: s.importadoFecha||'',
-    /* Se conserva el origen de una replanificación (ver replanificarSemanal). */
+    /* Se conserva el origen de una replanificación y su motivo (ver replanificarSemanal). */
     replanificadoDe: s.replanificadoDe||'',
+    motivoReplanificacion: s.motivoReplanificacion||'',
+    motivoReplanificacionTexto: s.motivoReplanificacionTexto||'',
+    /* Copia para otro grupo/paralelo de Inglés (ver duplicarSemanalOtroGrupo). */
+    duplicadoDe: s.duplicadoDe||'',
     createdAt: s.createdAt,
     completadoEn: existingHeader ? (existingHeader.completadoEn||'') : '',
     historial: existingHeader ? (existingHeader.historial||[]) : [],
@@ -11366,6 +11616,9 @@ function renderTallerForm(d){
   + '      <input class="cell-input" value="' + escapeHtml(metodoDeClase(METODO_TALLER).momentos.map(function(m){ return m.label; }).join(' · ')) + '" readonly />'
   + '      <div class="hint" style="margin-top:4px;">Cada semana debe desarrollar <b>al menos uno</b> de estos momentos en sus Actividades Académicas, y el taller completo debe cubrir <b>los tres</b> al menos una vez. Son los propios del Taller Práctico: no se eligen.</div>'
   + '    </div>'
+  + (t.replanificadoDe || String(t.numero||'').indexOf('.') !== -1
+      ? '    <div class="field-row" style="margin-top:14px;">' + motivoReplanificacionFieldHtml(t, 'tf', false) + '</div>'
+      : '')
   + '  </div>'
   + '  <div class="pca-section no-print" id="tallerChecklist">' + tallerChecklistHtml(t) + '</div>'
   + tallerFasesHtml(t)
@@ -11416,6 +11669,7 @@ function bindTallerFormEvents(){
   });
   document.getElementById('tfFechaInicio').addEventListener('change', function(e){ t.fechaInicio=e.target.value; marcarAutoguardadoPendiente('taller'); });
   document.getElementById('tfFechaFin').addEventListener('change', function(e){ t.fechaFin=e.target.value; marcarAutoguardadoPendiente('taller'); });
+  bindMotivoReplanificacionEvents(t, 'tf', renderTallerFormAgain);
   document.getElementById('tfRevisado').addEventListener('input', function(e){ t.revisadoPor=e.target.value; });
   document.getElementById('tfAprobado').addEventListener('input', function(e){ t.aprobadoPor=e.target.value; });
 
@@ -11532,6 +11786,10 @@ function saveTaller(t, silent){
     }),
     revisadoPor: t.revisadoPor||'', aprobadoPor: t.aprobadoPor||'',
     importadoDeDocente: t.importadoDeDocente||'', importadoFecha: t.importadoFecha||'',
+    /* Origen y motivo de la replanificación (ver replanificarTaller). */
+    replanificadoDe: t.replanificadoDe||'',
+    motivoReplanificacion: t.motivoReplanificacion||'',
+    motivoReplanificacionTexto: t.motivoReplanificacionTexto||'',
     createdAt: t.createdAt,
     completadoEn: existingHeader ? (existingHeader.completadoEn||'') : '',
     historial: existingHeader ? (existingHeader.historial||[]) : [],
@@ -11598,7 +11856,7 @@ function numeroReplanificadoTaller(docenteId, asignatura, base){
   do{ candidato = base + '.' + i; i++; } while(existentes.indexOf(candidato)!==-1);
   return candidato;
 }
-function replanificarTaller(tallerId){
+function replanificarTaller(tallerId, motivoClave, motivoTexto){
   var t = load(LS.TALLER).find(function(x){ return x.id===tallerId; });
   if(!t) return;
   var nuevoNumero = numeroReplanificadoTaller(t.docenteId, t.asignatura, t.numero);
@@ -11610,6 +11868,11 @@ function replanificarTaller(tallerId){
     pcaId: t.pcaId||'', fechaInicio: t.fechaInicio||'', fechaFin: t.fechaFin||'', fechaHoraLimite: fechaLimiteTallerSiguiente(t.docenteId, t.asignatura, t.curso),
     productoFinal: t.productoFinal||'',
     metodo: METODO_TALLER, completadoEn:'', historial:[],
+    /* Igual que en el Plan Semanal: se guarda de qué taller nació y por qué (ver
+       MOTIVOS_REPLANIFICACION y actividadesRepetidasTaller). */
+    replanificadoDe: t.id,
+    motivoReplanificacion: motivoClave||'',
+    motivoReplanificacionTexto: motivoTexto||'',
     fases: (t.fases||[]).map(function(fase){
       return {
         id: uid('fase'), nombre: fase.nombre||'',
@@ -11732,9 +11995,9 @@ function bindTallerListEvents(){
   document.querySelectorAll('[data-replanificar-taller]').forEach(function(btn){
     btn.onclick = function(){
       var tallerId = btn.getAttribute('data-replanificar-taller');
-      confirmDialog('¿Crear un nuevo Taller Práctico duplicando este, con los mismos temas y niveles de logro (podrás editarlos después)?', function(){
-        replanificarTaller(tallerId);
-      }, 'Replanificar');
+      motivoReplanificacionDialog(function(clave, texto){
+        replanificarTaller(tallerId, clave, texto);
+      }, 'taller');
     };
   });
   document.querySelectorAll('[data-export-taller-pdf]').forEach(function(btn){
