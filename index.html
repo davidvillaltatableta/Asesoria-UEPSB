@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20260928172007">
+<meta name="app-build" content="20261001151941">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -3408,6 +3408,45 @@ function cronogramaSemillaMeses(){
   });
 }
 function cronogramaRecord(){ return load(LS.CONFIG).find(function(c){ return c.id === 'cronograma'; }); }
+/* ---------- Feriados del cronograma ----------
+   Los días marcados como "Feriado" en el cronograma escolar se cotejan con las fechas de los días
+   del Plan Semanal: en un día feriado no se le exige al docente desarrollar los momentos del
+   método ni adjuntar el enlace de las diapositivas — le basta con dejar escrito "Feriado" en los
+   casilleros, y el plan se da por completo.
+
+   El cronograma guarda números de día sueltos por semana (sin año), y una misma fila de semana
+   puede terminar en el mes siguiente ("28,29,30,1,2,3,4"), así que el mes se va avanzando cuando
+   el número del día es menor que el anterior de esa misma fila. Como el calendario cubre un solo
+   año lectivo, basta con comparar mes y día (MM-DD) y no hace falta deducir el año. */
+var CRONO_MES_NUMERO = {ENERO:1, FEBRERO:2, MARZO:3, ABRIL:4, MAYO:5, JUNIO:6, JULIO:7, AGOSTO:8, SEPTIEMBRE:9, OCTUBRE:10, NOVIEMBRE:11, DICIEMBRE:12};
+var FERIADOS_CACHE = null;
+function feriadosDelCronograma(){
+  var rec = cronogramaRecord();
+  var sello = rec ? (rec.updatedAt || '') : 'semilla';
+  if(FERIADOS_CACHE && FERIADOS_CACHE.sello === sello) return FERIADOS_CACHE.mapa;
+  var mapa = {};
+  function dosDigitos(n){ return (n < 10 ? '0' : '') + n; }
+  cronogramaMeses().forEach(function(mes){
+    var base = CRONO_MES_NUMERO[normalizarTextoPlan(mes.nombre||'').toUpperCase().trim()];
+    if(!base) return;
+    (mes.semanas||[]).forEach(function(sem){
+      var mesActual = base, anterior = 0;
+      (sem.dias||[]).forEach(function(celda){
+        var n = parseInt(celda && celda.n, 10);
+        if(!n) return;
+        if(anterior && n < anterior) mesActual = (mesActual === 12) ? 1 : mesActual + 1;
+        anterior = n;
+        if(celda.cat === 'feriado') mapa[dosDigitos(mesActual) + '-' + dosDigitos(n)] = true;
+      });
+    });
+  });
+  FERIADOS_CACHE = {sello: sello, mapa: mapa};
+  return mapa;
+}
+function esFeriadoEscolar(fechaISO){
+  if(!fechaISO || fechaISO.length < 10) return false;
+  return !!feriadosDelCronograma()[fechaISO.slice(5, 10)];
+}
 function cronogramaMeses(){
   var rec = cronogramaRecord();
   if(rec && rec.meses && rec.meses.length) return rec.meses;
@@ -10055,6 +10094,10 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
     if(!richTextToPlain(b.recursos || '').trim()) faltan.push('Recursos');
     if(!richTextToPlain(b.evaluacion || '').trim()) faltan.push(b.etiquetaEvaluacion || 'Instrumentos de evaluación');
     if(faltan.length){ faltanCasilleros.push(b.etiqueta + ': falta ' + faltan.join(', ')); return; }
+    /* Día marcado como FERIADO en el cronograma escolar: no hubo clase, así que no se le exige
+       desarrollar los momentos del método ni el enlace de las diapositivas. Los casilleros sí
+       deben estar escritos (basta con "Feriado"), para que el documento deje constancia. */
+    if(b.exento) return;
     /* Método por cobertura (Taller Práctico): basta con que el bloque desarrolle UNO de los
        momentos; los que desarrolle se anotan para el control del conjunto, más abajo. */
     if(metodo.coberturaMomentos){
@@ -10224,7 +10267,9 @@ function esReplanificacionDe(s, prev){
 function actividadesRepetidasPlan(s){
   var avisos = [];
   var dias = s.dias || [];
-  var huellas = dias.map(function(dia){ return palabrasActividades(dia.actividades); });
+  /* Los días feriados quedan fuera del control de copias: lo normal es que digan lo mismo
+     ("Feriado…") en todos los planes, y eso no es planificación repetida. */
+  var huellas = dias.map(function(dia){ return esFeriadoEscolar(dia.fecha) ? [] : palabrasActividades(dia.actividades); });
   /* 1) Días repetidos dentro del mismo plan. */
   for(var i = 1; i < dias.length; i++){
     for(var j = 0; j < i; j++){
@@ -10317,16 +10362,23 @@ function validarPlanSemanal(s){
   var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
   var exigirEnlace = !asignaturaExentaDiapositivas(s.asignatura);
   var r = validarBloquesPlan(dias.map(function(dia, i){
-    return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion };
+    return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion,
+             /* Ver esFeriadoEscolar: los feriados del cronograma no exigen método ni diapositivas. */
+             exento: esFeriadoEscolar(dia.fecha) };
   }), metodoKey, exigirEnlace);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
   var completo = dias.length > 0 && !faltanCasilleros.length;
+  var diasFeriado = dias.map(function(dia, i){
+    return esFeriadoEscolar(dia.fecha) ? ('Día ' + (i+1) + (dia.fecha ? ' (' + fmtDate(dia.fecha) + ')' : '')) : null;
+  }).filter(Boolean);
   var actividadesRepetidas = actividadesRepetidasPlan(s);
   var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length && !actividadesRepetidas.length;
   return {
     completo: completo,
     metodoOk: metodoOk,
     actividadesRepetidas: actividadesRepetidas,
+    /* Días del plan que caen en un feriado del cronograma (ver esFeriadoEscolar). */
+    diasFeriado: diasFeriado,
     requiereCorreccion: completo && !metodoOk,
     sinDias: dias.length === 0,
     faltanCasilleros: faltanCasilleros,
@@ -10538,6 +10590,10 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   return '<div style="border:1px solid var(--' + color + '-600); background:var(--' + color + '-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
     + '<div style="font-weight:700; color:var(--' + color + '-600);">' + escapeHtml(titulo) + '</div>'
     + (detalles.length ? '<ul style="margin:6px 0 0 18px; padding:0;">' + detalles.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>' : '')
+    /* Feriados del cronograma: se dice explícitamente para que el docente no busque qué le falta. */
+    + ((v.diasFeriado||[]).length
+        ? '<div class="hint" style="margin-top:6px;">' + escapeHtml(te('Feriado según el cronograma escolar: ', isIngles) + v.diasFeriado.join(', ') + '. ' + te('En esos días basta con escribir “Feriado” en los casilleros — no se exige el método ni el enlace de las diapositivas.', isIngles)) + '</div>'
+        : '')
     + '<div class="hint" style="margin-top:6px;">'
     + (v.metodo.key === METODO_TALLER ? 'Momentos del Taller Práctico' : te('Método ', isIngles) + v.metodo.key) + ': ' + escapeHtml(momentos)
     + (v.metodo.key === METODO_INGLES ? te(' (obligatorio en Inglés)', isIngles) : '')
@@ -10912,9 +10968,13 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasRe
   }
 
   var fechaLarga = dia.fecha ? fmtDateLargo(dia.fecha, isIngles) : te('Elige una fecha', isIngles);
+  /* Si la fecha cae en un feriado del cronograma escolar se avisa aquí mismo, para que el docente
+     sepa por qué no se le va a exigir el método ni el enlace de ese día (ver esFeriadoEscolar). */
+  var feriadoDia = esFeriadoEscolar(dia.fecha);
   return ''
   + '<div class="semanal-day" data-day="' + dia.id + '">'
   + '  <div class="day-head"><strong>' + te('Día', isIngles) + ' ' + (i+1) + ' — ' + escapeHtml(fechaLarga) + '</strong>'
+  + (feriadoDia ? '<span class="pill pill-blue" title="' + escapeHtml(te('Día marcado como feriado en el cronograma escolar: basta con escribir “Feriado” en los casilleros.', isIngles)) + '">' + te('Feriado', isIngles) + '</span>' : '')
   + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
   + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">' + te('Eliminar día', isIngles) + '</button>' : '')
   + '  </div>'
