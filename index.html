@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261001151941">
+<meta name="app-build" content="20261005161044">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -12052,6 +12052,7 @@ function replanificarTaller(tallerId, motivoClave, motivoTexto){
   openTallerForm(nuevo.id, state.subview==='admin' ? 'admin' : 'tallerlist');
 }
 function renderTallerListInner(d, scopeAll){
+  if(!scopeAll && state.tallerImportando) return renderTallerImportarPicker(d);
   var isAdmin = isStaffRole(currentDocente().role);
   var talleres = scopeAll ? load(LS.TALLER) : load(LS.TALLER).filter(function(t){ return t.docenteId===d.id; });
   talleres.sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); });
@@ -12098,7 +12099,7 @@ function renderTallerListInner(d, scopeAll){
   var theadHtml = '<thead><tr><th>N.º</th>' + theadDocente + '<th>Asignatura</th><th>Curso</th><th>Fecha</th><th>Observación</th><th>Actualizado</th><th>Acciones</th></tr></thead>';
   var head = scopeAll
     ? '<p class="hint" style="margin-bottom:14px;">Talleres Prácticos de las asignaturas técnicas de Bachillerato (Diseño Gráfico, Computación, Robótica e Informática Aplicada).</p>'
-    : '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Taller Práctico</h1><p>Plan de clase para proyectos de tu asignatura técnica, enlazado con tu Plan Curricular Anual.</p></div><button class="btn btn-primary" id="btnNewTaller">+ Nuevo Taller Práctico</button></div>';
+    : '<div class="page-head"><div><div class="eyebrow">Lo Pedagógico</div><h1>Taller Práctico</h1><p>Plan de clase para proyectos de tu asignatura técnica, enlazado con tu Plan Curricular Anual.</p></div><div style="display:flex; gap:10px;"><button class="btn btn-ghost" id="btnImportarTaller">Importar de otro docente</button><button class="btn btn-primary" id="btnNewTaller">+ Nuevo Taller Práctico</button></div></div>';
 
   if(talleres.length===0){
     return head + filtroHtml + '<div class="card"><div class="empty-state"><div class="ic">🛠️</div>' + (scopeAll ? 'No hay Talleres Prácticos que coincidan con el filtro.' : 'Todavía no has creado ningún Taller Práctico.<br/><button class="btn btn-primary" id="btnNewTaller2" style="margin-top:14px;">Crear el primero</button>') + '</div></div>';
@@ -12127,7 +12128,105 @@ function renderTallerListInner(d, scopeAll){
   return head + filtroHtml + barraGrupos + '<div class="card"><div class="table-wrap"><table>' + theadHtml + '<tbody>' + cuerpo + '</tbody></table></div></div>';
 }
 function renderTallerList(d){ return renderTallerListInner(d, false); }
+/* ============================= TALLER PRÁCTICO · IMPORTAR DE OTRO DOCENTE =============================
+   Igual que en el PCA y en el Plan Semanal (ver renderSemanalImportarPicker): el docente solo puede
+   elegir entre los Talleres Prácticos de OTROS docentes que coincidan exactamente en Nivel +
+   Especialidad + Asignatura. Se copian el producto final y todas las fases con sus semanas (temas,
+   niveles de logro, actividades, recursos, técnica e instrumento) a un taller nuevo con las fechas
+   en blanco — el docente decide el curso y el calendario — que se abre en el formulario para
+   revisar y guardar: no se guarda nada por su cuenta. */
+function renderTallerImportarPicker(d){
+  var f = state.tallerImportFiltro || (state.tallerImportFiltro = {nivel:'', especialidad:'', asignatura:'', sourceId:''});
+  var especialidades = especialidadesFor(f.nivel);
+  var asignaturas = asignaturasFor(f.nivel, f.especialidad);
+  var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
+  var candidatos = (f.nivel && f.asignatura)
+    ? load(LS.TALLER).filter(function(t){
+        return t.docenteId !== d.id && t.nivel===f.nivel && (t.especialidad||'')===(f.especialidad||'') && t.asignatura===f.asignatura;
+      }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
+    : [];
+  var candidatosHtml;
+  if(!f.nivel || !f.asignatura){
+    candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los Talleres Prácticos de otros docentes disponibles para importar.</div>';
+  } else if(!candidatos.length){
+    candidatosHtml = '<div class="hint">Ningún otro docente tiene un Taller Práctico con ese nivel y asignatura todavía.</div>';
+  } else {
+    candidatosHtml = '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + candidatos.map(function(t){
+      var owner = docentesById[t.docenteId];
+      var semanas = (t.fases||[]).reduce(function(n, fase){ return n + (fase.semanas||[]).length; }, 0);
+      var etiqueta = (owner ? nombreFormal(owner) : '(docente eliminado)') + ' — N.º ' + (t.numero||'—') + ' — ' + (t.curso||'(sin curso)')
+        + ' — ' + (t.fases||[]).length + ' fase(s), ' + semanas + ' semana(s) — actualizado ' + fmtDateTime(t.updatedAt);
+      return '<label class="checkbox-pill"><input type="radio" name="tallerImportSel" value="' + t.id + '" ' + (f.sourceId===t.id?'checked':'') + ' />' + escapeHtml(etiqueta) + '</label>';
+    }).join('') + '</div>';
+  }
+  return ''
+  + '<div class="page-head"><div><div class="eyebrow">Taller Práctico</div><h1>Importar Taller Práctico de otro docente</h1><p>El contenido se carga en un taller nuevo (con las fechas en blanco, para que elijas el curso y el calendario) — no reemplaza nada automáticamente.</p></div></div>'
+  + '<div class="card">'
+  + '  <div class="field-row">'
+  + '    <div class="field"><label>Nivel</label><select class="cell-select" id="tiNivel">' + optionsHtml(NIVELES, f.nivel, 'Elija un elemento…') + '</select></div>'
+  + '    <div class="field"><label>Especialidad</label><select class="cell-select" id="tiEspecialidad" '+(especialidades.length?'':'disabled')+'>' + optionsHtml(especialidades, f.especialidad, especialidades.length?'Elija un elemento…':'No aplica') + '</select></div>'
+  + '  </div>'
+  + '  <div class="field" style="margin-top:10px;"><label>Asignatura</label><select class="cell-select" id="tiAsignatura" '+(f.nivel?'':'disabled')+'>' + optionsHtml(asignaturas, f.asignatura, 'Elija un elemento…') + '</select></div>'
+  + '  <div class="field" style="margin-top:14px;"><label>Taller Práctico de otro docente para importar</label>' + candidatosHtml + '</div>'
+  + '  <div style="display:flex; gap:10px; margin-top:18px;">'
+  + '    <button class="btn btn-ghost btn-sm" id="btnCancelarImportarTaller">Cancelar</button>'
+  + '    <button class="btn btn-primary btn-sm" id="btnConfirmarImportarTaller" ' + (f.sourceId?'':'disabled') + '>Importar</button>'
+  + '  </div>'
+  + '</div>';
+}
+function bindTallerImportarPickerEvents(d){
+  var f = state.tallerImportFiltro;
+  var nivelSel = document.getElementById('tiNivel');
+  if(nivelSel) nivelSel.onchange = function(e){ f.nivel=e.target.value; f.especialidad=''; f.asignatura=''; f.sourceId=''; render(); };
+  var espSel = document.getElementById('tiEspecialidad');
+  if(espSel) espSel.onchange = function(e){ f.especialidad=e.target.value; f.asignatura=''; f.sourceId=''; render(); };
+  var asigSel = document.getElementById('tiAsignatura');
+  if(asigSel) asigSel.onchange = function(e){ f.asignatura=e.target.value; f.sourceId=''; render(); };
+  document.querySelectorAll('input[name="tallerImportSel"]').forEach(function(radio){
+    radio.onchange = function(){ f.sourceId = radio.value; render(); };
+  });
+  var cancelBtn = document.getElementById('btnCancelarImportarTaller');
+  if(cancelBtn) cancelBtn.onclick = function(){ state.tallerImportando = false; state.tallerImportFiltro = null; render(); };
+  var confirmBtn = document.getElementById('btnConfirmarImportarTaller');
+  if(confirmBtn) confirmBtn.onclick = function(){ if(f.sourceId) importarTaller(f.sourceId); };
+}
+function importarTaller(tallerId){
+  var d = currentDocente();
+  var t = load(LS.TALLER).find(function(x){ return x.id===tallerId; });
+  if(!t) return;
+  var docenteFuente = allDocentes().find(function(x){ return x.id===t.docenteId; });
+  state.editingTaller = {
+    id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, t.asignatura),
+    nivel: t.nivel, especialidad: t.especialidad||'', curso:'', asignatura: t.asignatura,
+    pcaId:'', fechaInicio:'', fechaFin:'', fechaHoraLimite:'',
+    productoFinal: t.productoFinal||'',
+    metodo: METODO_TALLER, completadoEn:'', historial:[],
+    replanificadoDe:'', motivoReplanificacion:'', motivoReplanificacionTexto:'',
+    fases: (t.fases||[]).map(function(fase){
+      return {
+        id: uid('fase'), nombre: fase.nombre||'',
+        semanas: (fase.semanas||[]).map(function(sem){
+          return {
+            id: uid('tsem'), fechaInicio:'', fechaFin:'', semanaRowId:'',
+            contenidos: sem.contenidos||'',
+            nivelLogroBasico: sem.nivelLogroBasico||'', nivelLogroIntermedio: sem.nivelLogroIntermedio||'', nivelLogroAvanzado: sem.nivelLogroAvanzado||'',
+            actividades: sem.actividades||'', recursos: sem.recursos||'',
+            tecnica: sem.tecnica||'', instrumento: sem.instrumento||''
+          };
+        })
+      };
+    }),
+    revisadoPor:'Lic. David Villalta', aprobadoPor:'Lcdo. José Gómez',
+    importadoDeDocente: docenteFuente ? nombreFormal(docenteFuente) : '(docente eliminado)', importadoFecha: nowISO(),
+    createdAt: nowISO(), updatedAt: nowISO()
+  };
+  state.tallerImportando = false; state.tallerImportFiltro = null;
+  state.tallerReturnTo = 'tallerlist';
+  toast('Se importó el Taller Práctico de ' + (docenteFuente?nombreFormal(docenteFuente):'otro docente') + '. Elige el curso y las fechas, y presiona "Guardar plan" para crearlo.', 'success');
+  go('tallerform');
+}
 function bindTallerListEvents(){
+  if(state.tallerImportando){ bindTallerImportarPickerEvents(currentDocente()); return; }
   if(document.getElementById('atfDocente')) bindAdminFiltroBarraEvents(state.adminTallerFilter, 'atf');
   var filaTaller = document.getElementById('filaTallerResaltado');
   if(filaTaller){
@@ -12138,6 +12237,8 @@ function bindTallerListEvents(){
     var b = document.getElementById(id);
     if(b) b.onclick = function(){ openTallerForm(null, 'tallerlist'); };
   });
+  var btnImportarTaller = document.getElementById('btnImportarTaller');
+  if(btnImportarTaller) btnImportarTaller.onclick = function(){ state.tallerImportando = true; render(); };
   document.querySelectorAll('[data-edit-taller]').forEach(function(btn){
     btn.onclick = function(){ openTallerForm(btn.getAttribute('data-edit-taller'), state.subview==='admin' ? 'admin' : 'tallerlist'); };
   });
