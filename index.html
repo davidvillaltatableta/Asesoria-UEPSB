@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261005161044">
+<meta name="app-build" content="20261007100618">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1732,6 +1732,8 @@ var state = {
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
   presentacionTallerForm: {fechaInicio:'', fechaFin:''},
+  /* Filtros del reporte "Planes no presentados" (ver renderAdminPresentacionFaltantes). */
+  faltantesForm: {fechaInicio:'', fechaFin:'', banda:'', criterio:'habitual'},
   presentacionResumenForm: {fechaInicio:'', fechaFin:'', incluir:{semanal:true, taller:true, pca:false}},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
   editingFechaLimiteId: null,
@@ -12953,6 +12955,7 @@ var ADMIN_TABS = [
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
   {key:'presentaciontaller', label:'Presentación de Talleres Prácticos'},
+  {key:'presentacionfaltantes', label:'Planes no presentados'},
   {key:'presentacionresumen', label:'Resumen por docente y mes'},
   {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
   {key:'presentacionpca', label:'Presentación de PCA (Escuela)'},
@@ -12972,6 +12975,7 @@ var ADMIN_TAB_PASTEL = {
   consultas: 'var(--lime-100)',
   presentacion: 'var(--blue-100)',
   presentaciontaller: 'var(--teal-100)',
+  presentacionfaltantes: 'var(--red-100)',
   presentacionresumen: 'var(--purple-100)',
   presentacioncolegio: 'var(--gold-100)',
   presentacionpca: 'var(--pink-100)',
@@ -13234,7 +13238,7 @@ function bindAdminDiapositivasEvents(){
 var ADMIN_GROUPS = [
   {key:'personal', label:'Personal', tabs:['docentes','carga']},
   {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller','diapositivas']},
-  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionpca','presentacionpcacolegio','presentacionresumen']},
+  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionfaltantes','presentacionpca','presentacionpcacolegio','presentacionresumen']},
   {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
 ];
 function grupoDeAdminTab(tabKey){
@@ -13272,6 +13276,7 @@ function renderAdmin(d){
   else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
   else if(tab === 'presentaciontaller') body = renderAdminPresentacionTaller();
+  else if(tab === 'presentacionfaltantes') body = renderAdminPresentacionFaltantes();
   else if(tab === 'presentacionresumen') body = renderAdminPresentacionResumen();
   else if(tab === 'presentacionpca') body = renderAdminPresentacionPca('escuela');
   else if(tab === 'presentacionpcacolegio') body = renderAdminPresentacionPca('colegio');
@@ -13310,6 +13315,7 @@ function bindAdminEvents(){
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
   else if(tab === 'presentaciontaller') bindAdminPresentacionTallerEvents();
+  else if(tab === 'presentacionfaltantes') bindAdminPresentacionFaltantesEvents();
   else if(tab === 'presentacionresumen') bindAdminPresentacionResumenEvents();
   else if(tab === 'presentacionpca') bindAdminPresentacionPcaEvents();
   else if(tab === 'presentacionpcacolegio') bindAdminPresentacionPcaEvents();
@@ -13802,7 +13808,8 @@ function filasPresentacionDocente(docenteId, fechaInicioParte, fechaFinParte, ba
       dias:(s.dias||[]).length, updatedAt:s.updatedAt, plan:s,
       createdAt:s.completadoEn || s.createdAt || s.updatedAt, fechaHoraLimite:limiteVigenteDelPlan(s), estado:estado,
       requiereCorreccion: v.requiereCorreccion, motivos: motivos,
-      tareas: evalTexto.indexOf('tarea')!==-1,
+      /* "deber" entra junto a "tarea": es como lo escriben la mitad de los docentes. */
+      tareas: /tarea|deber/.test(evalTexto),
       talleres: evalTexto.indexOf('taller')!==-1,
       lecciones: evalTexto.indexOf('lecci')!==-1
     };
@@ -14096,11 +14103,16 @@ function renderAdminPresentacion(banda){
           + '<td>' + escapeHtml(f.curso||'—') + '</td>'
           + '<td>' + fmtDate(f.fechaInicio) + ' al ' + fmtDate(f.fechaFin) + '</td>'
           + '<td class="tabular" style="text-align:center;">' + (f.dias||0) + '</td>'
+          /* Deberes/tareas, talleres en clase y lecciones: se detectan leyendo el casillero de
+             Evaluación de cada día del plan (ver filasPresentacionDocente). */
+          + '<td style="text-align:center;">' + siNoBadge(f.tareas) + '</td>'
+          + '<td style="text-align:center;">' + siNoBadge(f.talleres) + '</td>'
+          + '<td style="text-align:center;">' + siNoBadge(f.lecciones) + '</td>'
           + '<td>' + observacionSemanalHtml(f.plan) + '</td>'
           + '<td>' + (f.updatedAt ? fmtDateTime(f.updatedAt) : '—') + '</td>'
           + '</tr>';
       }).join('');
-      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Docente</th><th>Asignatura</th><th>Curso</th><th>Fecha</th><th style="width:60px;">Días</th><th>Observación</th><th>Actualizado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Docente</th><th>Asignatura</th><th>Curso</th><th>Fecha</th><th style="width:60px;">Días</th><th title="Deberes o tareas enviadas a casa">Tareas</th><th title="Talleres resueltos en clase">Talleres</th><th title="Lecciones tomadas en clase">Lecciones</th><th>Observación</th><th>Actualizado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
       return grupoPlegableHtml('presentacion|' + banda + '|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' plan':' planes'), tabla);
     }).join('');
     return {doc:doc, rank:rankDocente, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
@@ -14116,6 +14128,231 @@ function renderAdminPresentacion(banda){
   var bloquesHtml = bloques.map(function(b){ return b.html; }).join('');
   if(!bloquesHtml) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>';
   return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
+}
+/* ============================= ADMIN: PLANES NO PRESENTADOS =============================
+   El reporte de Presentación muestra lo que SÍ se entregó; este muestra el hueco contrario: qué
+   plan semanal debía existir y no existe. Se arma cruzando tres cosas:
+
+   1. Las semanas exigibles: las filas de Fechas Límite (categoría "semanal") que tienen semana
+      asignada, cuyo lunes cae en el rango elegido y cuyo plazo YA venció. Mientras el plazo siga
+      abierto no se le reclama nada a nadie.
+   2. La carga horaria de cada docente: cada combinación Nivel + Especialidad + Curso + Asignatura
+      que tiene registrada es un plan que debe presentar cada semana.
+   3. Los planes semanales existentes: si hay uno de ese docente, esa asignatura y ese curso con
+      Fecha de Inicio dentro de la semana, está presentado; si no, la fila sale como NO PRESENTADO.
+
+   Quedan fuera las asignaturas que se planifican con Taller Práctico (Computación, Robótica,
+   Diseño…): esas no llevan Plan Semanal y tienen su propio reporte. */
+function semanasExigiblesEnRango(desde, hasta){
+  var ahora = nowISO();
+  var porSemana = {};
+  load(LS.FECHAS_LIMITE).forEach(function(x){
+    if(x.categoria!=='semanal' || !x.semanaInicio || !x.fechaHoraLimite) return;
+    if(x.semanaInicio < desde || x.semanaInicio > hasta) return;
+    var previo = porSemana[x.semanaInicio];
+    /* Si una semana tiene varias filas registradas manda la más reciente, igual que en
+       fechaLimiteExactaDeSemana. */
+    if(!previo || (previo.createdAt||'') <= (x.createdAt||'')) porSemana[x.semanaInicio] = x;
+  });
+  return Object.keys(porSemana).sort().map(function(k){
+    return {semanaInicio:k, semanaFin: addDays(k, 4), limite: porSemana[k].fechaHoraLimite};
+  }).filter(function(w){
+    return new Date(w.limite).toISOString() <= ahora;   // solo semanas cuyo plazo ya venció
+  });
+}
+/* Combinaciones de la carga horaria que SÍ exigen Plan Semanal, sin repetir. */
+function cargaQueExigePlanSemanal(docenteId, banda){
+  var vistos = {}, out = [];
+  load(LS.CARGA).forEach(function(r){
+    if(r.docenteId !== docenteId || !r.asignatura || !r.curso || !r.nivel) return;
+    if(esAsignaturaTallerPractico(r.nivel, r.asignatura)) return;
+    if(banda && esEscuelaPorNivelCurso(r.nivel, r.curso) !== (banda==='escuela')) return;
+    var clave = r.nivel + '|' + (r.especialidad||'') + '|' + normCursoCmp(r.curso) + '|' + r.asignatura;
+    if(vistos[clave]) return;
+    vistos[clave] = 1;
+    out.push(r);
+  });
+  return out;
+}
+/* Qué se le exige a cada docente cada semana. Hay tres criterios porque no todos planifican igual:
+   · 'habitual' (el que viene por defecto): los pares Asignatura + Curso que ESE docente ya
+     presentó alguna vez en el año. Es el más justo y el que menos ruido genera: los docentes de
+     Inglés, por ejemplo, tienen en la carga horaria un curso por paralelo pero entregan UN plan
+     por grupo, así que exigirles uno por curso inflaba el reporte con planes que nunca existieron.
+   · 'carga': un plan por cada Asignatura + Curso de la carga horaria. El más estricto.
+   · 'asignatura': un plan por asignatura, sin importar en cuántos cursos la dicte. */
+function combosExigiblesDocente(docenteId, banda, criterio){
+  var out = [], vistos = {};
+  function agregar(asignatura, curso, nivel){
+    var clave = asignatura + '|' + normCursoCmp(curso);
+    if(vistos[clave]) return;
+    vistos[clave] = 1;
+    out.push({asignatura:asignatura, curso:curso, nivel:nivel});
+  }
+  if(criterio === 'habitual'){
+    /* Hay planes guardados SIN curso (quedaron así de versiones anteriores del formulario). Si de
+       una asignatura existen planes con curso, mandan esos; si todos vienen sin curso, se exige un
+       único plan de esa asignatura. Sin esto la misma asignatura se contaba dos veces. */
+    var porAsignatura = {};
+    load(LS.SEMANAL).forEach(function(s){
+      if(s.docenteId!==docenteId || !s.fechaInicio || !s.asignatura) return;
+      if(esAsignaturaTallerPractico(s.nivel, s.asignatura)) return;
+      if(banda && esEscuelaPorNivelCurso(s.nivel, s.curso) !== (banda==='escuela')) return;
+      var reg = porAsignatura[s.asignatura] || (porAsignatura[s.asignatura] = {cursos:{}, nivel:s.nivel||''});
+      if((s.curso||'').trim()) reg.cursos[normCursoCmp(s.curso)] = s.curso;
+    });
+    Object.keys(porAsignatura).forEach(function(a){
+      var reg = porAsignatura[a];
+      var claves = Object.keys(reg.cursos);
+      if(!claves.length) agregar(a, '', reg.nivel);
+      else claves.forEach(function(k){ agregar(a, reg.cursos[k], reg.nivel); });
+    });
+    return out;
+  }
+  cargaQueExigePlanSemanal(docenteId, banda).forEach(function(r){
+    if(criterio === 'asignatura') agregar(r.asignatura, '', r.nivel);
+    else agregar(r.asignatura, r.curso, r.nivel);
+  });
+  return out;
+}
+function filasNoPresentadasDocente(docenteId, desde, hasta, banda, criterio){
+  var semanas = semanasExigiblesEnRango(desde, hasta);
+  if(!semanas.length) return [];
+  var combos = combosExigiblesDocente(docenteId, banda, criterio);
+  if(!combos.length) return [];
+  var planes = load(LS.SEMANAL).filter(function(s){ return s.docenteId===docenteId && s.fechaInicio; });
+  var filas = [];
+  semanas.forEach(function(w){
+    combos.forEach(function(r){
+      var presentado = planes.some(function(s){
+        if((s.asignatura||'') !== r.asignatura) return false;
+        /* El curso solo se compara cuando los DOS lo tienen: con el criterio por asignatura no hay
+           curso que exigir, y un plan guardado sin curso vale para el curso que se esperaba (si no,
+           esos planes antiguos aparecerían como no presentados aunque estén hechos). */
+        if(criterio !== 'asignatura' && (r.curso||'') && (s.curso||'') && normCursoCmp(s.curso) !== normCursoCmp(r.curso)) return false;
+        return s.fechaInicio >= w.semanaInicio && s.fechaInicio <= addDays(w.semanaInicio, 6);
+      });
+      if(!presentado) filas.push({ asignatura:r.asignatura, curso: r.curso || 'Todos sus cursos', nivel:r.nivel, semanaInicio:w.semanaInicio, semanaFin:w.semanaFin, limite:w.limite });
+    });
+  });
+  return filas;
+}
+function renderAdminPresentacionFaltantes(){
+  var pf = state.faltantesForm || (state.faltantesForm = {fechaInicio:'', fechaFin:'', banda:'', criterio:'habitual'});
+  if(!pf.criterio) pf.criterio = 'habitual';
+  var pastel = ADMIN_TAB_PASTEL.presentacionfaltantes;
+  var formHtml = ''
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>Planes semanales no presentados</h2>'
+    + '  <div class="card-sub">Cruza la carga horaria de cada docente con los planes que realmente existen. Solo se revisan las semanas que ya tienen registrada su fecha límite en <b>Fechas Límite</b> y cuyo plazo ya venció. No se incluyen las asignaturas que se planifican con Taller Práctico.</div>'
+    + '  <div class="grid-4" style="max-width:980px;">'
+    + '    <div class="field"><label>Mes</label><input class="cell-input" type="month" id="pfMes" value="' + escapeHtml((pf.fechaInicio||'').slice(0,7)) + '" /></div>'
+    + '    <div class="field"><label>Fecha de corte — inicio</label><input class="cell-input" type="date" id="pfFechaInicio" value="' + escapeHtml(pf.fechaInicio||'') + '" /></div>'
+    + '    <div class="field"><label>Fecha de corte — fin</label><input class="cell-input" type="date" id="pfFechaFin" value="' + escapeHtml(pf.fechaFin||'') + '" /></div>'
+    + '    <div class="field"><label>Banda</label><select class="cell-select" id="pfBanda">'
+    + '      <option value=""' + (pf.banda===''?' selected':'') + '>Todas</option>'
+    + '      <option value="escuela"' + (pf.banda==='escuela'?' selected':'') + '>Escuela</option>'
+    + '      <option value="colegio"' + (pf.banda==='colegio'?' selected':'') + '>Colegio</option>'
+    + '    </select></div>'
+    + '  </div>'
+    + '  <div class="field" style="max-width:520px; margin-top:12px;"><label>¿Qué se le exige a cada docente por semana?</label>'
+    + '    <select class="cell-select" id="pfCriterio">'
+    + '      <option value="habitual"' + (pf.criterio==='habitual'?' selected':'') + '>Lo que ese docente suele presentar (recomendado)</option>'
+    + '      <option value="carga"' + (pf.criterio==='carga'?' selected':'') + '>Un plan por cada asignatura y curso de su carga horaria</option>'
+    + '      <option value="asignatura"' + (pf.criterio==='asignatura'?' selected':'') + '>Un plan por asignatura, sin importar el curso</option>'
+    + '    </select>'
+    + '    <div class="hint" style="margin-top:4px;">' + escapeHtml(pf.criterio==='carga'
+        ? 'Exige un plan por cada par asignatura + curso registrado en Carga Horaria. Es el más estricto: marca de más a quien dicta la misma asignatura en varios paralelos con un solo plan (típico en Inglés, que planifica por grupo).'
+        : (pf.criterio==='asignatura'
+          ? 'Basta un plan por asignatura en la semana, sin importar en cuántos cursos la dicte.'
+          : 'Toma los pares asignatura + curso que ese docente ya presentó alguna vez en el año y revisa si volvió a presentarlos cada semana. Respeta la forma de planificar de cada uno.')) + '</div>'
+    + '  </div>'
+    + '</div>';
+
+  if(!pf.fechaInicio || !pf.fechaFin){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>Elige el mes o el rango de fechas que quieres revisar.</div></div>';
+  }
+  if(pf.fechaInicio > pf.fechaFin){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🕒</div>La fecha de inicio no puede ser posterior a la fecha de fin.</div></div>';
+  }
+  var semanas = semanasExigiblesEnRango(pf.fechaInicio, pf.fechaFin);
+  if(!semanas.length){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>En ese rango no hay ninguna semana con fecha límite vencida. Registra las fechas en <b>Fechas Límite</b> para poder exigir los planes de esas semanas.</div></div>';
+  }
+
+  var totalFaltantes = 0;
+  var bloques = allDocentes().map(function(doc){
+    var filas = filasNoPresentadasDocente(doc.id, pf.fechaInicio, pf.fechaFin, pf.banda, pf.criterio);
+    if(!filas.length) return null;
+    totalFaltantes += filas.length;
+    var porMes = {}; var ordenMeses = [];
+    filas.forEach(function(f){
+      var info = trimestreYMesDe(f.semanaInicio);
+      var key = info ? info.mesKey : 'zzz-sin-fecha';
+      var label = info ? info.mesLabel : 'Sin fecha';
+      if(!porMes[key]){ porMes[key] = {label:label, filas:[]}; ordenMeses.push(key); }
+      porMes[key].filas.push(f);
+    });
+    ordenMeses.sort();
+    var mesesHtml = ordenMeses.map(function(mk){
+      var g = porMes[mk];
+      var filasHtml = g.filas.slice().sort(function(a,b){
+        return (a.semanaInicio||'').localeCompare(b.semanaInicio||'') || (a.asignatura||'').localeCompare(b.asignatura||'');
+      }).map(function(f){
+        return '<tr>'
+          + '<td class="tabular">—</td>'
+          + '<td>' + escapeHtml(nombreFormal(doc)) + '</td>'
+          + '<td><strong>' + escapeHtml(f.asignatura||'—') + '</strong></td>'
+          + '<td>' + escapeHtml(f.curso||'—') + '</td>'
+          + '<td>' + fmtDate(f.semanaInicio) + ' al ' + fmtDate(f.semanaFin) + '</td>'
+          + '<td class="tabular" style="text-align:center;">—</td>'
+          + '<td><span class="pill pill-red">No presentado</span>'
+          + '<div class="hint" style="margin-top:3px;">Venció el ' + escapeHtml(fmtDateTimeLocal(f.limite)) + '</div></td>'
+          + '<td>—</td>'
+          + '</tr>';
+      }).join('');
+      var tabla = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Docente</th><th>Asignatura</th><th>Curso</th><th>Fecha</th><th style="width:60px;">Días</th><th>Observación</th><th>Actualizado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+      return grupoPlegableHtml('faltantes|' + doc.id + '|' + mk, 'mes', g.label, g.filas.length + (g.filas.length===1?' plan':' planes'), tabla);
+    }).join('');
+    return {doc:doc, cuenta:filas.length, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
+      + grupoPlegableHtml('faltantes|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' plan no presentado':' planes no presentados'), mesesHtml)
+      + '</div>'};
+  }).filter(Boolean);
+
+  /* Primero los que más deben: es el orden en que el asesor los va a llamar. */
+  bloques.sort(function(a,b){
+    return b.cuenta - a.cuenta || ((a.doc.apellidos||'')+(a.doc.nombres||'')).localeCompare((b.doc.apellidos||'')+(b.doc.nombres||''));
+  });
+
+  if(!bloques.length){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">✅</div>Todos los docentes presentaron sus planes de las semanas revisadas (' + semanas.length + (semanas.length===1?' semana':' semanas') + ').</div></div>';
+  }
+  var resumen = '<div class="card" style="border-top:4px solid '+pastel+';">'
+    + '<h2>' + totalFaltantes + (totalFaltantes===1 ? ' plan no presentado' : ' planes no presentados') + '</h2>'
+    + '<div class="card-sub">' + bloques.length + (bloques.length===1?' docente':' docentes') + ' con planes pendientes, en ' + semanas.length + (semanas.length===1?' semana revisada':' semanas revisadas')
+    + ' (' + semanas.map(function(w){ return fmtDate(w.semanaInicio); }).join(', ') + ').</div>'
+    + '</div>';
+  return formHtml + resumen + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloques.map(function(b){ return b.html; }).join('');
+}
+function bindAdminPresentacionFaltantesEvents(){
+  var mes = document.getElementById('pfMes');
+  if(mes) mes.addEventListener('change', function(e){
+    var v = e.target.value;
+    if(!v) return;
+    var anio = parseInt(v.slice(0,4),10), m = parseInt(v.slice(5,7),10);
+    var ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+    state.faltantesForm.fechaInicio = v + '-01';
+    state.faltantesForm.fechaFin = v + '-' + String(ultimo).padStart(2,'0');
+    render();
+  });
+  var fi = document.getElementById('pfFechaInicio');
+  if(fi) fi.addEventListener('change', function(e){ state.faltantesForm.fechaInicio = e.target.value; render(); });
+  var ff = document.getElementById('pfFechaFin');
+  if(ff) ff.addEventListener('change', function(e){ state.faltantesForm.fechaFin = e.target.value; render(); });
+  var banda = document.getElementById('pfBanda');
+  if(banda) banda.addEventListener('change', function(e){ state.faltantesForm.banda = e.target.value; render(); });
+  var criterio = document.getElementById('pfCriterio');
+  if(criterio) criterio.addEventListener('change', function(e){ state.faltantesForm.criterio = e.target.value; render(); });
 }
 function bindAdminPresentacionEvents(){
   /* Elegir un mes llena automáticamente el rango completo de ese mes. */
