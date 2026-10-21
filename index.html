@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261012230859">
+<meta name="app-build" content="20261021103035">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -701,6 +701,12 @@ var FS_COLLECTION = {
   FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config', PAPELERA: 'papelera', TALLER: 'taller', EVAL: 'evaluaciones'
 };
 var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [], PAPELERA: [], TALLER: [], EVAL: [] };
+/* Versión de los datos en memoria: sube cada vez que se reemplaza una colección (al guardar o al
+   llegar un cambio de Firestore). Las cachés de validación la usan como sello: mientras no cambie,
+   un plan ya revisado no se vuelve a revisar. Revisar un plan implica interpretar el HTML de cada
+   casillero, y la lista de Administración dibuja cientos de filas de una sola vez. */
+var DATOS_VERSION = 0;
+function marcarDatosCambiados(){ DATOS_VERSION++; }
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -718,6 +724,7 @@ function save(key, val){
     if(!keptIds[r.id]) writes.push(window.FB.deleteDoc(window.FB.doc(window.FB.db, FS_COLLECTION[key], String(r.id))));
   });
   FS_CACHE[key] = val;
+  marcarDatosCambiados();
   Promise.all(writes).catch(function(e){
     console.error('Error guardando en Firestore', key, e);
     toast('No se pudo guardar en la nube (' + (e.message||e.code||e) + '). Revisa tu conexión.', 'error');
@@ -5548,8 +5555,17 @@ function repFirmaInspeccion(){
 /* Clave para COMPARAR cursos (nunca para mostrarlos). Un mismo curso se escribió de varias formas
    al registrar estudiantes: "1.º EGB", "1° EGB", "1°. EGB"… Se ignoran el símbolo de grado/ordinal,
    los puntos, los espacios de más y las mayúsculas, así que todas esas variantes son el mismo curso. */
+/* Se memoriza: comparar cursos es de lo más repetido del sistema (listas, reportes, asistencia) y
+   son siempre los mismos veinte textos. */
+var NORM_CURSO_CACHE = new Map();
 function normCursoCmp(c){
-  return (c||'').replace(/[°º]/g, '').replace(/\./g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+  var clave = c || '';
+  var memo = NORM_CURSO_CACHE.get(clave);
+  if(memo !== undefined) return memo;
+  var calculado = clave.replace(/[°º]/g, '').replace(/./g, '').replace(/s+/g, ' ').trim().toUpperCase();
+  if(NORM_CURSO_CACHE.size > 500) NORM_CURSO_CACHE.clear();
+  NORM_CURSO_CACHE.set(clave, calculado);
+  return calculado;
 }
 /* De Inicial a 6.º EGB un solo "docente de grado" dicta casi todas las asignaturas del curso, así
    que mostrar cada materia por separado es redundante — solo se indica el nombre y el título
@@ -9484,8 +9500,20 @@ function linkificarUrls(html){
   procesar(doc.body.firstChild);
   return doc.body.firstChild.innerHTML;
 }
+/* El paso de HTML a texto plano interpreta el documento con DOMParser, que es lo más caro de todo
+   el sistema: se llama por cada casillero de cada día, y la lista de Administración revisa cientos
+   de planes de una sola vez. Se memoriza por contenido. */
+var TEXTO_PLANO_CACHE = new Map();
 function richTextToPlain(html){
   if(!html) return '';
+  var memo = TEXTO_PLANO_CACHE.get(html);
+  if(memo !== undefined) return memo;
+  var calculado = richTextToPlainCalculo(html);
+  if(TEXTO_PLANO_CACHE.size > 6000) TEXTO_PLANO_CACHE.clear();
+  TEXTO_PLANO_CACHE.set(html, calculado);
+  return calculado;
+}
+function richTextToPlainCalculo(html){
   var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
   var BLOQUE = {P:1, DIV:1, LI:1};
   var lines = [];
@@ -10247,7 +10275,17 @@ var COPIA_MIN_PALABRAS = 12;   /* textos más cortos no son evidencia de copia *
    consideran copiados si, quitando eso, queda EXACTAMENTE el mismo texto, en el mismo orden.
    Antes se comparaba el parecido (90 % de palabras en común) y eso marcaba como copia actividades
    que en realidad eran distintas: bastaba que compartieran vocabulario. */
+var HUELLAS_CACHE = new Map();
 function palabrasActividades(html){
+  var clave = html || '';
+  var memo = HUELLAS_CACHE.get(clave);
+  if(memo) return memo;
+  var calculada = palabrasActividadesCalculo(clave);
+  if(HUELLAS_CACHE.size > 6000) HUELLAS_CACHE.clear();
+  HUELLAS_CACHE.set(clave, calculada);
+  return calculada;
+}
+function palabrasActividadesCalculo(html){
   var plano = richTextToPlain(htmlConEnlacesVisibles(html || ''));
   var sinUrls = plano.replace(/https?:\/\/\S+/gi, ' ');
   var norm = normalizarTextoPlan(sinUrls).replace(/[^a-z0-9ñ\s]/g, ' ');
@@ -10266,6 +10304,45 @@ function extractoActividades(html){
 function parecidoActividades(a, b){
   if(a.length < COPIA_MIN_PALABRAS || b.length < COPIA_MIN_PALABRAS) return 0;
   return a.join(' ') === b.join(' ') ? 1 : 0;
+}
+/* Planes del mismo docente, asignatura y curso, del más reciente al más antiguo. Se arma un índice
+   una sola vez por versión de los datos: antes cada fila de la lista recorría LAS MIL filas de la
+   colección para encontrar sus cuatro planes anteriores, y eso se multiplicaba por cada plan
+   dibujado. */
+var SERIES_CACHE = null, SERIES_CACHE_VERSION = -1, SELLO_POR_PLAN = new Map();
+function claveSeriePlan(s){
+  return (s.docenteId||'') + '|' + (s.asignatura||'') + '|' + normCursoCmp(s.curso);
+}
+function indiceSeries(){
+  if(SERIES_CACHE_VERSION !== DATOS_VERSION || !SERIES_CACHE){
+    var idx = {};
+    load(LS.SEMANAL).forEach(function(x){
+      var k = claveSeriePlan(x);
+      (idx[k] = idx[k] || []).push(x);
+    });
+    SERIES_CACHE = {};
+    SELLO_POR_PLAN = new Map();
+    Object.keys(idx).forEach(function(k){
+      var lista = idx[k].sort(function(a,b){ return (b.fechaInicio||'').localeCompare(a.fechaInicio||''); });
+      /* Sello de la serie: cambia solo si cambió un plan de ESTA serie. Así, cuando otro docente
+         guarda lo suyo, no se tira a la basura la revisión ya hecha de todos los demás planes. */
+      var ultima = '';
+      lista.forEach(function(x){ if((x.updatedAt||'') > ultima) ultima = x.updatedAt||''; });
+      var sello = lista.length + '@' + ultima;
+      SERIES_CACHE[k] = {lista: lista, sello: sello};
+      lista.forEach(function(x){ SELLO_POR_PLAN.set(x.id, sello); });
+    });
+    SERIES_CACHE_VERSION = DATOS_VERSION;
+  }
+  return SERIES_CACHE;
+}
+function planesDeLaSerie(s){
+  var reg = indiceSeries()[claveSeriePlan(s)];
+  return reg ? reg.lista : [];
+}
+function selloSeriePlan(s){
+  indiceSeries();
+  return SELLO_POR_PLAN.get(s.id) || '0@';
 }
 /* ---------- Motivo de la replanificación ----------
    Al replanificar, el docente declara POR QUÉ lo hace, y ese motivo decide si el control de
@@ -10367,12 +10444,9 @@ function actividadesRepetidasPlan(s){
   }
   /* 2) Repetidas respecto de planes anteriores del mismo docente, asignatura y curso: es normal
      repetir contenido entre paralelos, pero no de una semana a la siguiente. */
-  var anteriores = load(LS.SEMANAL).filter(function(x){
-    return x.id !== s.id && x.docenteId === s.docenteId
-      && (x.asignatura||'') === (s.asignatura||'')
-      && normCursoCmp(x.curso) === normCursoCmp(s.curso)
-      && (x.fechaInicio||'') && (s.fechaInicio||'') && x.fechaInicio < s.fechaInicio;
-  }).sort(function(a,b){ return (b.fechaInicio||'').localeCompare(a.fechaInicio||''); }).slice(0, 4);
+  var anteriores = planesDeLaSerie(s).filter(function(x){
+    return x.id !== s.id && (x.fechaInicio||'') && (s.fechaInicio||'') && x.fechaInicio < s.fechaInicio;
+  }).slice(0, 4);
   dias.forEach(function(dia, i){
     for(var k = 0; k < anteriores.length; k++){
       var prev = anteriores[k];
@@ -10443,7 +10517,27 @@ function actividadesRepetidasTaller(t){
   });
   return avisos;
 }
+/* Revisar un plan cuesta: interpreta el HTML de cada casillero, analiza los momentos del método y
+   lo compara con los planes anteriores de su serie. La lista de Administración lo pedía dos veces
+   por fila (una para la observación y otra para el estado) y cientos de veces por pantalla, así
+   que el resultado se guarda hasta que cambien los datos. El plan ABIERTO en el formulario nunca
+   se cachea: su contenido cambia mientras el docente escribe y el recuadro de arriba tiene que
+   responder en vivo. */
+var VALIDACION_CACHE = {}, VALIDACION_CACHE_CUENTA = 0;
 function validarPlanSemanal(s){
+  var editando = state.editingSemanal && state.editingSemanal.id === s.id;
+  if(editando) return validarPlanSemanalCalculo(s);
+  var clave = s.id + '|' + (s.updatedAt||'') + '|' + selloSeriePlan(s);
+  /* Tope de memoria para sesiones largas. */
+  if(VALIDACION_CACHE_CUENTA > 4000){ VALIDACION_CACHE = {}; VALIDACION_CACHE_CUENTA = 0; }
+  var memo = VALIDACION_CACHE[clave];
+  if(memo) return memo;
+  var calculada = validarPlanSemanalCalculo(s);
+  VALIDACION_CACHE[clave] = calculada;
+  VALIDACION_CACHE_CUENTA++;
+  return calculada;
+}
+function validarPlanSemanalCalculo(s){
   var dias = s.dias || [];
   var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
   var exigirEnlace = !asignaturaExentaDiapositivas(s.asignatura);
@@ -10478,7 +10572,20 @@ function validarPlanSemanal(s){
 /* Mismo control para el Taller Práctico. Aquí el bloque a revisar no es un "día" sino cada SEMANA
    dentro de cada FASE, y el casillero de evaluación es el "Instrumento" de esa semana (la columna
    "Instrumentos de evaluación" de la tabla de fases). La Técnica queda como campo opcional. */
+var VALIDACION_TALLER_CACHE = {}, VALIDACION_TALLER_CACHE_VERSION = -1;
 function validarTallerPractico(t){
+  var editandoTaller = state.editingTaller && state.editingTaller.id === t.id;
+  if(!editandoTaller){
+    if(VALIDACION_TALLER_CACHE_VERSION !== DATOS_VERSION){ VALIDACION_TALLER_CACHE = {}; VALIDACION_TALLER_CACHE_VERSION = DATOS_VERSION; }
+    var claveT = t.id + '|' + (t.updatedAt||'');
+    if(VALIDACION_TALLER_CACHE[claveT]) return VALIDACION_TALLER_CACHE[claveT];
+    var calculadaT = validarTallerPracticoCalculo(t);
+    VALIDACION_TALLER_CACHE[claveT] = calculadaT;
+    return calculadaT;
+  }
+  return validarTallerPracticoCalculo(t);
+}
+function validarTallerPracticoCalculo(t){
   /* El Taller Práctico no usa ACC/ERCA/PPP: tiene sus propios momentos, iguales para todas sus
      asignaturas técnicas, así que el método no depende de lo guardado ni de la asignatura. */
   var metodoKey = METODO_TALLER;
@@ -15193,7 +15300,7 @@ async function attachRealtimeListeners(){
     /* El Inspector General sí necesita INCIDENTES (pestaña Disciplina) aunque no sea "staff" —
        pero NUNCA debe sincronizar DECE (confidencial), la otra colección de esta lista. */
     var permitidoParaInspector = soyInspector && key === 'INCIDENTES';
-    if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; return; }
+    if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; marcarDatosCambiados(); return; }
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
     /* CONTENIDOS es, con diferencia, la colección más pesada del sistema (una fila por CADA semana
        de CADA unidad de CADA PCA de TODO el colegio: miles de documentos). Sincronizarla completa
@@ -15214,6 +15321,7 @@ async function attachRealtimeListeners(){
         var porId = {};
         parciales.propias.concat(parciales.area).forEach(function(r){ porId[r.id] = r; });
         FS_CACHE[key] = Object.keys(porId).map(function(id){ return porId[id]; });
+        marcarDatosCambiados();
         if(!debeOmitirRenderPorEdicionActiva(key)) render();
       };
       [['propias', window.FB.where('docenteId', '==', CURRENT_UID)], ['area', window.FB.where('area', '==', AREA_OBS_INGLES)]].forEach(function(par){
@@ -15237,6 +15345,7 @@ async function attachRealtimeListeners(){
       var arr = [];
       snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
       FS_CACHE[key] = arr;
+      marcarDatosCambiados();
       // El eco de Firestore por el propio autoguardado del docente llega segundos después de
       // escribir; si en ese momento sigue con ese mismo formulario abierto, NO hace falta
       // reconstruir todo el HTML (su copia en memoria ya está al día — es la que se acaba de
@@ -15284,6 +15393,7 @@ window.addEventListener('firebase-ready', function(){
       detachRealtimeListeners();
       detenerTodosLosAutoguardados();
       Object.keys(FS_CACHE).forEach(function(k){ FS_CACHE[k] = []; });
+      marcarDatosCambiados();
       state.iaEstado = null; state.iaReemplazando = false;
       state.subview = 'dashboard';
       RESTORED_LAST_VIEW = false;
