@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261021103035">
+<meta name="app-build" content="20261022092654">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1738,6 +1738,8 @@ var state = {
   adminTallerFilter: {docenteId:'', fechaInicio:'', fechaFin:'', asignatura:'', curso:''},
   consultaForm: {docenteId:'', pcaId:'', fecha:''},
   presentacionForm: {fechaInicio:'', fechaFin:''},
+  /* Mes del reporte propio que cada docente ve en Inicio (ver miPresentacionHtml). */
+  miPresentacionForm: null,
   presentacionTallerForm: {fechaInicio:'', fechaFin:''},
   /* Filtros del reporte "Planes no presentados" (ver renderAdminPresentacionFaltantes). */
   faltantesForm: {fechaInicio:'', fechaFin:'', banda:'', criterio:'habitual'},
@@ -2118,7 +2120,9 @@ var NAV_GROUPS = [
     {key:'admin_curricular', label:'Planificación Curricular', ic:'📘', adminOnly:true},
     {key:'admin_presentaciones', label:'Presentaciones', ic:'🖥️', adminOnly:true},
     {key:'admin_config', label:'Configuración', ic:'⚙️', adminOnly:true},
-    {key:'database', label:'Base de Datos', ic:'💾'}
+    /* Base de Datos descarga y fusiona la información de TODO el colegio: es exclusiva del
+       personal administrativo. */
+    {key:'database', label:'Base de Datos', ic:'💾', adminOnly:true}
   ]}
 ];
 /* Cada uno de los 4 ítems de arriba en realidad abre la misma página (subview 'admin'), solo que
@@ -2145,6 +2149,9 @@ function renderShell(){
      si por cualquier vía (estado viejo, enlace directo) queda apuntando a otra sección, lo manda
      de vuelta a Inicio. */
   if(esInspector && ['pcalist','pcaform','semanallist','semanalform','tallerlist','tallerform','evaluaciones','observacion','misasistencia','fichadeteccion','database','manualdocente','manualadmin'].indexOf(state.subview)!==-1){ state.subview = 'dashboard'; }
+  /* Base de Datos (respaldo de TODO el colegio) es solo del personal administrativo. Si un docente
+     la tenía abierta de antes —la vista se restaura al volver a entrar—, se lo manda a Inicio. */
+  if(!isStaffRole(d.role) && state.subview === 'database') state.subview = 'dashboard';
   function navItemActive(item){
     if(ADMIN_SIDEBAR_GROUPS[item.key]){
       var grupoKey = ADMIN_SIDEBAR_GROUPS[item.key];
@@ -3294,16 +3301,66 @@ function renderDashboard(d){
   + '  <button class="action-card" data-go="pcalist"><div class="ic">📘</div><h3>Plan Curricular Anual</h3><p>Crea o edita tus PCA siguiendo el formato institucional.</p></button>'
   + '  <button class="action-card" data-go="semanallist"><div class="ic">📅</div><h3>Planes Semanales</h3><p>Crea o revisa tus planes semanales de clase.</p></button>'
   + (tieneAsignaturaTallerPractico(d.id) ? '  <button class="action-card" data-go="tallerlist"><div class="ic">🛠️</div><h3>Taller Práctico</h3><p>Crea o revisa tus planes de taller práctico.</p></button>' : '')
-  + '  <button class="action-card" data-go="database"><div class="ic">💾</div><h3>Base de datos</h3><p>Exporta o importa un respaldo de la información.</p></button>'
+  + (isAdmin ? '  <button class="action-card" data-go="database"><div class="ic">💾</div><h3>Base de datos</h3><p>Exporta o importa un respaldo de la información.</p></button>' : '')
   + '  <button class="action-card" data-go="manualdocente"><div class="ic">📖</div><h3>Manual de Usuario</h3><p>Guía paso a paso de todas las funciones del sistema.</p></button>'
   + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
   + '</div>'
+  + miPresentacionHtml(d)
   + cronogramaHtml(d);
+}
+/* ---------- Mi presentación de planes (en Inicio) ----------
+   La misma vista que Administración usa para revisar la presentación de planes, pero acotada a los
+   planes del propio docente: así cada uno ve, sin pedírselo a nadie, cómo le quedó registrado cada
+   plan del mes — a tiempo, atrasado, incompleto, con observaciones — y si en ese plan quedó
+   registrado que envió tareas, talleres o lecciones. */
+function mesActualISO(){ return todayISO().slice(0,7); }
+function miPresentacionHtml(d){
+  var f = state.miPresentacionForm || (state.miPresentacionForm = {mes: mesActualISO()});
+  var mes = f.mes || mesActualISO();
+  var anio = parseInt(mes.slice(0,4),10), m = parseInt(mes.slice(5,7),10);
+  var ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+  var desde = mes + '-01', hasta = mes + '-' + String(ultimo).padStart(2,'0');
+  /* Sin filtro de banda: un docente puede tener cursos de Escuela y de Colegio a la vez. */
+  var filas = filasPresentacionDocente(d.id, desde, hasta, 'escuela')
+    .concat(filasPresentacionDocente(d.id, desde, hasta, 'colegio'))
+    .sort(function(a,b){ return (a.fechaInicio||'').localeCompare(b.fechaInicio||'') || (a.asignatura||'').localeCompare(b.asignatura||''); });
+  var cuerpo;
+  if(!filas.length){
+    cuerpo = '<div class="empty-state"><div class="ic">📅</div>No tienes planes semanales con fecha dentro de ese mes.</div>';
+  } else {
+    var filasHtml = filas.map(function(x){
+      return '<tr>'
+        + '<td class="tabular">' + (x.numero ? 'N.º ' + x.numero : '—') + '</td>'
+        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong></td>'
+        + '<td>' + escapeHtml(x.curso||'—') + '</td>'
+        + '<td>' + fmtDate(x.fechaInicio) + ' al ' + fmtDate(x.fechaFin) + '</td>'
+        + '<td class="tabular" style="text-align:center;">' + (x.dias||0) + '</td>'
+        + '<td style="text-align:center;">' + siNoBadge(x.tareas) + '</td>'
+        + '<td style="text-align:center;">' + siNoBadge(x.talleres) + '</td>'
+        + '<td style="text-align:center;">' + siNoBadge(x.lecciones) + '</td>'
+        + '<td>' + observacionSemanalHtml(x.plan) + '</td>'
+        + '<td>' + (x.updatedAt ? fmtDateTime(x.updatedAt) : '—') + '</td>'
+        + '</tr>';
+    }).join('');
+    cuerpo = '<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Asignatura</th><th>Curso</th><th>Fecha</th><th style="width:60px;">Días</th><th title="Deberes o tareas enviadas a casa">Tareas</th><th title="Talleres resueltos en clase">Talleres</th><th title="Lecciones tomadas en clase">Lecciones</th><th>Observación</th><th>Actualizado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+  }
+  return ''
+  + '<div class="card" style="margin-top:18px; border-top:4px solid var(--blue-100);">'
+  + '  <h2>Mi presentación de planes semanales</h2>'
+  + '  <div class="card-sub">Así queda registrada tu entrega de cada plan del mes. La puntualidad se mide contra la fecha y hora límite de la semana de cada plan.</div>'
+  + '  <div class="field" style="max-width:260px; margin-bottom:12px;"><label>Mes</label><input class="cell-input" type="month" id="miPresMes" value="' + escapeHtml(mes) + '" /></div>'
+  + cuerpo
+  + '</div>';
 }
 function bindDashboardEvents(){
   document.querySelectorAll('[data-go]').forEach(function(btn){ btn.onclick = function(){ go(btn.getAttribute('data-go')); }; });
   var btnCro = document.getElementById('btnEditarCronograma');
   if(btnCro) btnCro.onclick = function(){ abrirEditorCronograma(); };
+  var miMes = document.getElementById('miPresMes');
+  if(miMes) miMes.addEventListener('change', function(e){
+    state.miPresentacionForm.mes = e.target.value || mesActualISO();
+    render();
+  });
 }
 
 /* ============================= CRONOGRAMA ESCOLAR =============================
@@ -7939,13 +7996,17 @@ function renderPcaImportarPicker(d){
   var especialidades = especialidadesFor(f.nivel);
   var asignaturas = asignaturasFor(f.nivel, f.especialidad);
   var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
-  var candidatos = (f.nivel && f.asignatura)
-    ? load(LS.PCA).filter(function(p){
+  var disponibles = candidatosImportacion(LS.PCA, f.nivel);
+  var cargandoCandidatos = disponibles === null;
+  var candidatos = (!cargandoCandidatos && f.nivel && f.asignatura)
+    ? disponibles.filter(function(p){
         return p.docenteId !== d.id && p.nivel===f.nivel && (p.especialidad||'')===(f.especialidad||'') && p.asignatura===f.asignatura;
       }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
     : [];
   var candidatosHtml;
-  if(!f.nivel || !f.asignatura){
+  if(cargandoCandidatos){
+    candidatosHtml = '<div class="hint">Buscando los planes de otros docentes…</div>';
+  } else if(!f.nivel || !f.asignatura){
     candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los PCA de otros docentes disponibles para importar.</div>';
   } else if(!candidatos.length){
     candidatosHtml = '<div class="hint">Ningún otro docente tiene un PCA con ese nivel y asignatura todavía.</div>';
@@ -9885,18 +9946,56 @@ function bindSemanalListEvents(){
    Especialidad + Asignatura. El contenido (temas, niveles de logro, actividades, recursos,
    evaluación) se copia a un plan nuevo con fechas en blanco — el docente decide a qué semana
    corresponde — que se abre en el formulario para revisar y guardar, sin guardar nada solo. */
+/* ---------- Candidatos para "Importar de otro docente" ----------
+   Los docentes ya no reciben en memoria los PCA, planes semanales ni talleres de sus compañeros
+   (ver attachRealtimeListeners: cada uno sincroniza lo suyo). Para el buscador de importación se
+   piden una sola vez, y solo cuando el docente abre esa pantalla y elige un nivel. Mientras llega
+   la respuesta, el buscador muestra que está cargando. El personal administrativo y el jefe de
+   área siguen teniéndolos en memoria, así que para ellos no hay ninguna lectura extra. */
+var IMPORT_CANDIDATOS = {clave:'', lista:[], enCurso:''};
+function tieneCatalogoCompletoEnMemoria(){
+  var d = currentDocente();
+  return isStaffRole(d.role) || esJefeIngles(d.role);
+}
+function candidatosImportacion(coleccionKey, nivel){
+  if(tieneCatalogoCompletoEnMemoria()) return load(coleccionKey);
+  if(!nivel) return [];
+  var clave = coleccionKey + '|' + nivel;
+  if(IMPORT_CANDIDATOS.clave === clave) return IMPORT_CANDIDATOS.lista;
+  if(IMPORT_CANDIDATOS.enCurso !== clave){
+    IMPORT_CANDIDATOS.enCurso = clave;
+    window.FB.getDocs(window.FB.query(
+      window.FB.collection(window.FB.db, FS_COLLECTION[coleccionKey]),
+      window.FB.where('nivel', '==', nivel)
+    )).then(function(snap){
+      var arr = [];
+      snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
+      IMPORT_CANDIDATOS = {clave: clave, lista: arr, enCurso: ''};
+      render();
+    }).catch(function(e){
+      IMPORT_CANDIDATOS = {clave: clave, lista: [], enCurso: ''};
+      toast('No se pudieron consultar los planes de otros docentes (' + (e.message||e.code||e) + ').', 'error');
+      render();
+    });
+  }
+  return null;   // null = todavía cargando
+}
 function renderSemanalImportarPicker(d){
   var f = state.semanalImportFiltro || (state.semanalImportFiltro = {nivel:'', especialidad:'', asignatura:'', sourceId:''});
   var especialidades = especialidadesFor(f.nivel);
   var asignaturas = asignaturasFor(f.nivel, f.especialidad);
   var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
-  var candidatos = (f.nivel && f.asignatura)
-    ? load(LS.SEMANAL).filter(function(s){
+  var disponibles = candidatosImportacion(LS.SEMANAL, f.nivel);
+  var cargandoCandidatos = disponibles === null;
+  var candidatos = (!cargandoCandidatos && f.nivel && f.asignatura)
+    ? disponibles.filter(function(s){
         return s.docenteId !== d.id && s.nivel===f.nivel && (s.especialidad||'')===(f.especialidad||'') && s.asignatura===f.asignatura;
       }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
     : [];
   var candidatosHtml;
-  if(!f.nivel || !f.asignatura){
+  if(cargandoCandidatos){
+    candidatosHtml = '<div class="hint">Buscando los planes de otros docentes…</div>';
+  } else if(!f.nivel || !f.asignatura){
     candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los planes semanales de otros docentes disponibles para importar.</div>';
   } else if(!candidatos.length){
     candidatosHtml = '<div class="hint">Ningún otro docente tiene un plan semanal con ese nivel y asignatura todavía.</div>';
@@ -12413,13 +12512,17 @@ function renderTallerImportarPicker(d){
   var especialidades = especialidadesFor(f.nivel);
   var asignaturas = asignaturasFor(f.nivel, f.especialidad);
   var docentesById = {}; allDocentes().forEach(function(x){ docentesById[x.id] = x; });
-  var candidatos = (f.nivel && f.asignatura)
-    ? load(LS.TALLER).filter(function(t){
+  var disponibles = candidatosImportacion(LS.TALLER, f.nivel);
+  var cargandoCandidatos = disponibles === null;
+  var candidatos = (!cargandoCandidatos && f.nivel && f.asignatura)
+    ? disponibles.filter(function(t){
         return t.docenteId !== d.id && t.nivel===f.nivel && (t.especialidad||'')===(f.especialidad||'') && t.asignatura===f.asignatura;
       }).sort(function(a,b){ return (b.updatedAt||'').localeCompare(a.updatedAt||''); })
     : [];
   var candidatosHtml;
-  if(!f.nivel || !f.asignatura){
+  if(cargandoCandidatos){
+    candidatosHtml = '<div class="hint">Buscando los planes de otros docentes…</div>';
+  } else if(!f.nivel || !f.asignatura){
     candidatosHtml = '<div class="hint">Elige nivel y asignatura para ver los Talleres Prácticos de otros docentes disponibles para importar.</div>';
   } else if(!candidatos.length){
     candidatosHtml = '<div class="hint">Ningún otro docente tiene un Taller Práctico con ese nivel y asignatura todavía.</div>';
@@ -15078,6 +15181,8 @@ function purgarPapeleraVencida(){
   if(vigentes.length !== actuales.length) save(LS.PAPELERA, vigentes);
 }
 function renderDatabase(d){
+  /* Candado del lado del cliente: solo Administración/Directivo/DECE. El docente ve su Inicio. */
+  if(!isStaffRole(d.role)) return renderDashboard(d);
   purgarPapeleraVencida();
   var docentes = allDocentes();
   var carga = load(LS.CARGA);
@@ -15337,7 +15442,16 @@ async function attachRealtimeListeners(){
       });
       return;
     }
-    var acotarAPropio = !soyAdmin && (key === 'OBSERVACIONES' || key === 'FICHA_DETECCION' || key === 'EVAL' || (key === 'CONT' && !soyJefeIngles));
+    /* Un docente común solo sincroniza LO SUYO. Antes cada navegador descargaba los PCA, los
+       planes semanales y los talleres de todo el colegio (más de mil documentos), con dos
+       consecuencias: podía ver el trabajo de sus compañeros desde la pantalla de Base de Datos, y
+       cada carga de la página costaba miles de lecturas de Firestore. El personal administrativo y
+       el jefe de área de Inglés sí los necesitan completos para sus revisiones y reportes; para
+       "Importar de otro docente" se hace una consulta puntual en el momento (ver
+       candidatosImportacion). */
+    var soloLoPropio = ['OBSERVACIONES', 'FICHA_DETECCION', 'EVAL'];
+    var soloLoPropioSalvoJefe = ['CONT', 'SEMANAL', 'PCA', 'TALLER'];
+    var acotarAPropio = !soyAdmin && (soloLoPropio.indexOf(key) !== -1 || (soloLoPropioSalvoJefe.indexOf(key) !== -1 && !soyJefeIngles));
     var queryRef = acotarAPropio
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
       : colRef;
