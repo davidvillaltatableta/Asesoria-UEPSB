@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261022092654">
+<meta name="app-build" content="20261024184243">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -8055,8 +8055,8 @@ function bindPcaImportarPickerEvents(d){
    ver el aviso en pcaToolbarHtml. */
 async function importarPca(pcaId){
   var d = currentDocente();
-  var header = load(LS.PCA).find(function(p){ return p.id===pcaId; });
-  if(!header) return;
+  var header = documentoParaImportar(LS.PCA, pcaId);
+  if(!header){ toast('No se pudo abrir ese PCA para importarlo. Vuelve a elegirlo e inténtalo otra vez.', 'error'); return; }
   var docenteFuente = allDocentes().find(function(x){ return x.id===header.docenteId; });
   var cont = load(LS.CONT).filter(function(c){ return c.pcaId===pcaId; });
   /* Las semanas de un PCA AJENO ya no están en memoria: la sincronización en tiempo real de
@@ -9957,6 +9957,19 @@ function tieneCatalogoCompletoEnMemoria(){
   var d = currentDocente();
   return isStaffRole(d.role) || esJefeIngles(d.role);
 }
+/* El documento que el docente eligió para importar puede NO estar en memoria: desde que cada uno
+   sincroniza solo lo suyo, los planes ajenos llegan por la consulta puntual de arriba y viven en
+   IMPORT_CANDIDATOS, no en FS_CACHE. Sin esto, el buscador mostraba bien los candidatos pero al
+   pulsar "Importar" no pasaba absolutamente nada: la función no encontraba el plan y se salía sin
+   decir una palabra. */
+function documentoParaImportar(coleccionKey, id){
+  var enMemoria = load(coleccionKey).find(function(x){ return x.id===id; });
+  if(enMemoria) return enMemoria;
+  if(IMPORT_CANDIDATOS.clave && IMPORT_CANDIDATOS.clave.indexOf(coleccionKey + '|') === 0){
+    return IMPORT_CANDIDATOS.lista.find(function(x){ return x.id===id; }) || null;
+  }
+  return null;
+}
 function candidatosImportacion(coleccionKey, nivel){
   if(tieneCatalogoCompletoEnMemoria()) return load(coleccionKey);
   if(!nivel) return [];
@@ -10039,8 +10052,8 @@ function bindSemanalImportarPickerEvents(d){
 }
 function importarSemanal(semId){
   var d = currentDocente();
-  var s = load(LS.SEMANAL).find(function(x){ return x.id===semId; });
-  if(!s) return;
+  var s = documentoParaImportar(LS.SEMANAL, semId);
+  if(!s){ toast('No se pudo abrir ese plan para importarlo. Vuelve a elegirlo e inténtalo otra vez.', 'error'); return; }
   var docenteFuente = allDocentes().find(function(x){ return x.id===s.docenteId; });
   state.editingSemanal = {
     id: uid('sem'), docenteId: d.id, numero: siguienteNumeroSemanal(d.id, s.asignatura),
@@ -12568,8 +12581,8 @@ function bindTallerImportarPickerEvents(d){
 }
 function importarTaller(tallerId){
   var d = currentDocente();
-  var t = load(LS.TALLER).find(function(x){ return x.id===tallerId; });
-  if(!t) return;
+  var t = documentoParaImportar(LS.TALLER, tallerId);
+  if(!t){ toast('No se pudo abrir ese Taller Práctico para importarlo. Vuelve a elegirlo e inténtalo otra vez.', 'error'); return; }
   var docenteFuente = allDocentes().find(function(x){ return x.id===t.docenteId; });
   state.editingTaller = {
     id: uid('tp'), docenteId: d.id, numero: siguienteNumeroTaller(d.id, t.asignatura, t.curso),
