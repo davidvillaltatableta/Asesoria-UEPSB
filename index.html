@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261024185142">
+<meta name="app-build" content="20261026141749">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1743,6 +1743,8 @@ var state = {
   presentacionTallerForm: {fechaInicio:'', fechaFin:''},
   /* Filtros del reporte "Planes no presentados" (ver renderAdminPresentacionFaltantes). */
   faltantesForm: {fechaInicio:'', fechaFin:'', banda:'', criterio:'habitual'},
+  /* Hoja de Revisión de Diapositivas (ver renderAdminRevisionDiapositivas). */
+  revisionDiaposForm: null,
   presentacionResumenForm: {fechaInicio:'', fechaFin:'', incluir:{semanal:true, taller:true, pca:false}},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
   editingFechaLimiteId: null,
@@ -13361,6 +13363,7 @@ var ADMIN_TABS = [
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
   {key:'presentaciontaller', label:'Presentación de Talleres Prácticos'},
   {key:'presentacionfaltantes', label:'Planes no presentados'},
+  {key:'revisiondiapos', label:'Revisión de Diapositivas'},
   {key:'presentacionresumen', label:'Resumen por docente y mes'},
   {key:'presentacioncolegio', label:'Presentación de Planes (Colegio)'},
   {key:'presentacionpca', label:'Presentación de PCA (Escuela)'},
@@ -13381,6 +13384,7 @@ var ADMIN_TAB_PASTEL = {
   presentacion: 'var(--blue-100)',
   presentaciontaller: 'var(--teal-100)',
   presentacionfaltantes: 'var(--red-100)',
+  revisiondiapos: 'var(--lime-100)',
   presentacionresumen: 'var(--purple-100)',
   presentacioncolegio: 'var(--gold-100)',
   presentacionpca: 'var(--pink-100)',
@@ -13643,7 +13647,7 @@ function bindAdminDiapositivasEvents(){
 var ADMIN_GROUPS = [
   {key:'personal', label:'Personal', tabs:['docentes','carga']},
   {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller','diapositivas']},
-  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionfaltantes','presentacionpca','presentacionpcacolegio','presentacionresumen']},
+  {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionfaltantes','revisiondiapos','presentacionpca','presentacionpcacolegio','presentacionresumen']},
   {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
 ];
 function grupoDeAdminTab(tabKey){
@@ -13682,6 +13686,7 @@ function renderAdmin(d){
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
   else if(tab === 'presentaciontaller') body = renderAdminPresentacionTaller();
   else if(tab === 'presentacionfaltantes') body = renderAdminPresentacionFaltantes();
+  else if(tab === 'revisiondiapos') body = renderAdminRevisionDiapositivas();
   else if(tab === 'presentacionresumen') body = renderAdminPresentacionResumen();
   else if(tab === 'presentacionpca') body = renderAdminPresentacionPca('escuela');
   else if(tab === 'presentacionpcacolegio') body = renderAdminPresentacionPca('colegio');
@@ -13721,6 +13726,7 @@ function bindAdminEvents(){
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
   else if(tab === 'presentaciontaller') bindAdminPresentacionTallerEvents();
   else if(tab === 'presentacionfaltantes') bindAdminPresentacionFaltantesEvents();
+  else if(tab === 'revisiondiapos') bindAdminRevisionDiapositivasEvents();
   else if(tab === 'presentacionresumen') bindAdminPresentacionResumenEvents();
   else if(tab === 'presentacionpca') bindAdminPresentacionPcaEvents();
   else if(tab === 'presentacionpcacolegio') bindAdminPresentacionPcaEvents();
@@ -14534,6 +14540,333 @@ function renderAdminPresentacion(banda){
   if(!bloquesHtml) return formHtml + '<div class="card"><div class="empty-state"><div class="ic">📅</div>No hay planes semanales en el rango de fechas indicado.</div></div>';
   return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente o de un mes para mostrarlo u ocultarlo.') + bloquesHtml;
 }
+/* ============================= ADMIN: REVISIÓN DE DIAPOSITIVAS =============================
+   Hoja de trabajo del Asesor Pedagógico para revisar, una semana a la vez, las diapositivas que
+   cada docente enlazó en sus Actividades de Aprendizaje.
+
+   El sistema hace lo que puede resolver solo: busca en el plan los enlaces que son realmente de
+   diapositivas (Canva, Google Slides, PowerPoint en Drive/OneDrive, Genially…) separándolos de los
+   que no lo son (YouTube, Wordwall, formularios), dice en qué momento del método quedó cada uno
+   —normalmente Conceptualización en ERCA o Construcción en ACC— y arma la fila con la asignatura,
+   el curso y el método declarado.
+
+   Lo que exige criterio pedagógico —si los momentos están separados, si las actividades responden
+   a los temas planificados y si cierra con una actividad de consolidación— no lo puede decidir el
+   sistema leyendo el plan: hay que abrir la presentación. Por eso esas tres columnas quedan como
+   listas Sí/No que el asesor marca mientras revisa, con el enlace a un clic. Las marcas se guardan
+   en ESTE navegador (no viajan a la nube: son notas de trabajo del asesor, no datos del docente) y
+   se vuelcan al Excel con el mismo formato del acta en papel. */
+var DIAPO_DOMINIOS = /(canva\.link|canva\.com|docs\.google\.com\/presentation|slides\.google|drive\.google\.com|1drv\.ms|onedrive|sharepoint|genial\.ly|genially|prezi\.com|emaze|slideshare|\.pptx?(\?|$))/i;
+var DIAPO_NO_SON = /(youtube\.com|youtu\.be|wordwall|liveworksheets|educaplay|kahoot|quizizz|forms\.gle|docs\.google\.com\/forms|classroom\.google|meet\.google|wa\.me|whatsapp)/i;
+function esEnlaceDeDiapositiva(url){
+  if(!url) return false;
+  if(DIAPO_NO_SON.test(url)) return false;
+  return DIAPO_DOMINIOS.test(url);
+}
+function plataformaDeDiapositiva(url){
+  if(/canva/i.test(url)) return 'Canva';
+  if(/docs\.google\.com\/presentation|slides\.google/i.test(url)) return 'Google Slides';
+  if(/drive\.google\.com/i.test(url)) return 'Google Drive';
+  if(/1drv\.ms|onedrive|sharepoint/i.test(url)) return 'OneDrive';
+  if(/genial/i.test(url)) return 'Genially';
+  if(/prezi/i.test(url)) return 'Prezi';
+  return 'Otra';
+}
+/* Enlaces de diapositivas de un plan, con el momento del método en el que aparece cada uno. */
+function diapositivasDelPlan(s){
+  var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
+  var salida = [], vistos = {};
+  (s.dias||[]).forEach(function(dia, i){
+    enlacesPorMomento(dia.actividades, '', metodoKey).forEach(function(e){
+      if(!esEnlaceDeDiapositiva(e.url) || vistos[e.url]) return;
+      vistos[e.url] = 1;
+      salida.push({ url: e.url, momento: e.momento, dia: i + 1, plataforma: plataformaDeDiapositiva(e.url) });
+    });
+  });
+  /* Si en Actividades no hay ninguna, se mira Recursos: muchas veces la diapositiva existe y el
+     docente la pegó en la columna de al lado. Es mejor verlo en la hoja que darla por ausente. */
+  if(!salida.length){
+    (s.dias||[]).forEach(function(dia, i){
+      enlacesPorMomento('', dia.recursos, metodoKey).forEach(function(e){
+        if(!esEnlaceDeDiapositiva(e.url) || vistos[e.url]) return;
+        vistos[e.url] = 1;
+        salida.push({ url: e.url, momento: 'En Recursos, no en Actividades', dia: i + 1, plataforma: plataformaDeDiapositiva(e.url) });
+      });
+    });
+  }
+  return salida;
+}
+/* Marcas de revisión, guardadas en este navegador. */
+var REVISION_DIAPO_CLAVE = 'revisionDiapositivas_v1';
+function revisionDiapoTodas(){
+  try{ return JSON.parse(localStorage.getItem(REVISION_DIAPO_CLAVE) || '{}') || {}; }
+  catch(e){ return {}; }
+}
+function revisionDiapoDe(planId){
+  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', observacion:''};
+}
+function revisionDiapoGuardar(planId, campo, valor){
+  var todas = revisionDiapoTodas();
+  var reg = todas[planId] || {momentos:'', acordes:'', final:'', observacion:''};
+  reg[campo] = valor;
+  todas[planId] = reg;
+  try{ localStorage.setItem(REVISION_DIAPO_CLAVE, JSON.stringify(todas)); }
+  catch(e){ toast('No se pudo guardar la marca en este navegador.', 'error'); }
+}
+function semanaTextoLargo(lunes){
+  var viernes = addDays(lunes, 4);
+  var p1 = lunes.split('-'), p2 = viernes.split('-');
+  var mes1 = MESES_LARGO[parseInt(p1[1],10)-1], mes2 = MESES_LARGO[parseInt(p2[1],10)-1];
+  var anio = p2[0];
+  return (mes1 === mes2)
+    ? parseInt(p1[2],10) + ' al ' + parseInt(p2[2],10) + ' de ' + mes2 + ' de ' + anio
+    : parseInt(p1[2],10) + ' de ' + mes1 + ' al ' + parseInt(p2[2],10) + ' de ' + mes2 + ' de ' + anio;
+}
+/* Filas de la hoja: una por plan del docente en esa semana. */
+function filasRevisionDiapositivas(docenteId, lunes){
+  var fin = addDays(lunes, 6);
+  return load(LS.SEMANAL).filter(function(s){
+    return s.docenteId === docenteId && (s.fechaInicio||'') >= lunes && (s.fechaInicio||'') <= fin;
+  }).sort(function(a,b){
+    return (a.asignatura||'').localeCompare(b.asignatura||'') || (a.curso||'').localeCompare(b.curso||'');
+  }).map(function(s){
+    return {
+      plan: s, asignatura: s.asignatura||'', curso: s.curso||'',
+      metodo: metodoDeClase(metodoEfectivo(s.asignatura, s.metodo)).key,
+      diapositivas: diapositivasDelPlan(s),
+      /* Primer enlace que el servidor sí puede abrir para la revisión automática. */
+      enlaceIa: (diapositivasDelPlan(s).find(function(e){ return e.plataforma==='Canva' || e.plataforma==='Google Slides'; })||{}).url || '',
+      marca: revisionDiapoDe(s.id)
+    };
+  });
+}
+
+/* ---------- Revisión automática con IA ----------
+   El servidor abre la presentación (las imágenes públicas de Canva o el PDF de Google Slides),
+   se la muestra a Claude junto con el método y los temas que el docente planificó, y devuelve las
+   mismas tres respuestas que el asesor marcaría a mano, más una observación de una línea.
+   El resultado se guarda igual que una marca manual, pero queda señalado como hecho por IA para
+   que el asesor sepa qué revisó él y qué revisó el asistente. */
+function revisionDiapoMarcarIA(planId, veredicto){
+  revisionDiapoGuardar(planId, 'momentos', veredicto.momentos === 'Si' ? 'Si' : 'NO');
+  revisionDiapoGuardar(planId, 'acordes', veredicto.acordes === 'Si' ? 'Si' : 'NO');
+  revisionDiapoGuardar(planId, 'final', veredicto.final === 'Si' ? 'Si' : 'NO');
+  var obs = (veredicto.observacion || '').trim();
+  if(veredicto.portada === 'NO') obs = (obs ? obs + ' ' : '') + 'Portada institucional incompleta.';
+  revisionDiapoGuardar(planId, 'observacion', obs);
+  revisionDiapoGuardar(planId, 'origen', 'IA');
+}
+function datosRevisionDeFila(plan, enlace){
+  var temas = [];
+  (plan.dias||[]).forEach(function(dia){ splitItemsList(dia.contenidos).forEach(function(t){ if(temas.indexOf(t)===-1) temas.push(t); }); });
+  var d = allDocentes().find(function(x){ return x.id===plan.docenteId; });
+  return {
+    enlace: enlace,
+    metodo: metodoDeClase(metodoEfectivo(plan.asignatura, plan.metodo)).key,
+    asignatura: plan.asignatura || '',
+    curso: plan.curso || '',
+    docente: d ? nombreFormal(d) : '',
+    semana: fmtDate(plan.fechaInicio) + ' al ' + fmtDate(plan.fechaFin),
+    temas: temas.slice(0, 25)
+  };
+}
+/* Revisa una sola fila. Devuelve true si la IA respondió. */
+async function revisarDiapositivaConIA(planId, enlace){
+  var plan = load(LS.SEMANAL).find(function(x){ return x.id===planId; });
+  if(!plan) return false;
+  try{
+    var res = await llamarFuncionIA('revisarDiapositivas', datosRevisionDeFila(plan, enlace), 540000);
+    revisionDiapoMarcarIA(planId, res.veredicto || {});
+    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0 };
+  }catch(err){
+    revisionDiapoGuardar(planId, 'observacion', 'No se pudo revisar automáticamente: ' + ((err && err.message) || 'error'));
+    revisionDiapoGuardar(planId, 'origen', 'error');
+    return { ok:false, error: mensajeErrorIA(err) };
+  }
+}
+/* Revisa en fila todas las presentaciones visibles de la semana, una tras otra para no disparar el
+   costo ni chocar con los límites de Anthropic. Avisa del avance y deja el resumen al final. */
+async function revisarSemanaConIA(pendientes){
+  if(!pendientes.length){ toast('No hay diapositivas que revisar en esta semana.', 'error'); return; }
+  state.revisionIaEnCurso = true;
+  var ok = 0, fallos = 0, costo = 0;
+  for(var i = 0; i < pendientes.length; i++){
+    var p = pendientes[i];
+    toast('Revisando ' + (i+1) + ' de ' + pendientes.length + ': ' + p.etiqueta + '…', 'success');
+    var r = await revisarDiapositivaConIA(p.planId, p.enlace);
+    if(r && r.ok){ ok++; costo += (r.uso && r.uso.costoUsd) || 0; } else { fallos++; }
+  }
+  state.revisionIaEnCurso = false;
+  toast('Revisión terminada: ' + ok + ' presentaciones revisadas'
+    + (fallos ? ', ' + fallos + ' con problemas' : '')
+    + '. Costo aproximado: USD ' + costo.toFixed(2) + '.', fallos ? 'error' : 'success');
+  render();
+}
+function selectSiNoHtml(planId, campo, valor){
+  function op(v, etiqueta){ return '<option value="' + v + '"' + (valor===v?' selected':'') + '>' + etiqueta + '</option>'; }
+  return '<select class="cell-select rev-diapo" data-plan="' + planId + '" data-campo="' + campo + '" style="min-width:70px;">'
+    + op('', '—') + op('Si', 'Sí') + op('NO', 'NO') + '</select>';
+}
+function renderAdminRevisionDiapositivas(){
+  var f = state.revisionDiaposForm || (state.revisionDiaposForm = {semana:'', docenteId:''});
+  if(!f.semana) f.semana = lunesDeSemanaIso(todayISO());
+  var lunes = lunesDeSemanaIso(f.semana);
+  var pastel = ADMIN_TAB_PASTEL.revisiondiapos;
+  var docentes = allDocentes().slice().sort(function(a,b){
+    return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||''));
+  });
+  var formHtml = ''
+    + '<div class="card" style="background:'+pastel+';">'
+    + '  <h2>Revisión de Diapositivas</h2>'
+    + '  <div class="card-sub">Hoja de revisión por docente y semana. El sistema identifica cuál de los enlaces de las Actividades de Aprendizaje es una diapositiva y en qué momento del método quedó; tú abres cada presentación y marcas las tres columnas. Las marcas se guardan en este navegador y salen en el Excel.</div>'
+    + '  <div class="grid-3" style="max-width:760px;">'
+    + '    <div class="field"><label>Semana <span class="hint">(cualquier día de esa semana)</span></label><input class="cell-input" type="date" id="rdSemana" value="' + escapeHtml(lunes) + '" /></div>'
+    + '    <div class="field"><label>Docente</label><select class="cell-select" id="rdDocente">'
+    + '      <option value="">Todos los docentes</option>'
+    + docentes.map(function(d){ return '<option value="' + d.id + '"' + (f.docenteId===d.id?' selected':'') + '>' + escapeHtml(nombreFormal(d)) + '</option>'; }).join('')
+    + '    </select></div>'
+    + '    <div class="field" style="align-self:end; display:flex; gap:8px;">'
+    + '      <button class="btn btn-primary" id="btnRevDiapoExcel">Exportar Excel</button>'
+    + (iaDisponible() ? '      <button class="btn btn-gold" id="btnRevDiapoIaTodo">Revisar todo con IA</button>' : '')
+    + '    </div>'
+    + '  </div>'
+    + '  <div class="hint" style="margin-top:8px;">Semana del <b>' + escapeHtml(semanaTextoLargo(lunes)) + '</b>.</div>'
+    + '</div>';
+
+  var seleccionados = f.docenteId ? docentes.filter(function(d){ return d.id===f.docenteId; }) : docentes;
+  var bloques = seleccionados.map(function(doc){
+    var filas = filasRevisionDiapositivas(doc.id, lunes);
+    if(!filas.length) return null;
+    var filasHtml = filas.map(function(x){
+      var enlacesHtml = x.diapositivas.length
+        ? x.diapositivas.map(function(e){
+            return '<div style="margin-bottom:3px;"><a href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">' + escapeHtml(e.plataforma) + ' · Día ' + e.dia + '</a>'
+              + ' <span class="hint">(' + escapeHtml(e.momento) + ')</span></div>';
+          }).join('')
+        : (asignaturaExentaDiapositivas(x.asignatura)
+            ? '<span class="pill pill-muted">No requiere diapositivas</span>'
+            : '<span class="pill pill-red">Sin diapositiva enlazada</span>');
+      return '<tr>'
+        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong></td>'
+        + '<td>' + escapeHtml(x.curso||'—') + '</td>'
+        + '<td class="no-print"><span class="pill pill-muted">' + escapeHtml(x.metodo) + '</span></td>'
+        + '<td class="no-print">' + enlacesHtml + '</td>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'momentos', x.marca.momentos) + '</td>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'acordes', x.marca.acordes) + '</td>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'final', x.marca.final) + '</td>'
+        + '<td class="no-print"><input class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" value="' + escapeHtml(x.marca.observacion||'') + '" placeholder="Observación…" />'
+          + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA</span></div>' : '')
+          + (x.marca.origen === 'error' ? '<div><span class="pill pill-gold" style="margin-top:4px;">No se pudo leer</span></div>' : '')
+          + '</td>'
+        /* Solo se ofrece el botón cuando la plataforma se puede leer desde el servidor (ver
+           diapositivas.js en las funciones): Canva y Google Slides. */
+        + '<td class="no-print">' + (x.enlaceIa
+            ? '<button class="btn btn-ghost btn-sm rev-diapo-ia" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '">Revisar con IA</button>'
+            : '<span class="hint">—</span>') + '</td>'
+        + '</tr>';
+    }).join('');
+    var tabla = '<div class="table-wrap"><table>'
+      + '<thead><tr>'
+      + '<th>Asignatura</th><th>Curso / Grado</th>'
+      + '<th class="no-print">Método</th><th class="no-print">Diapositiva enlazada</th>'
+      + '<th>Tiene momentos separados del método</th>'
+      + '<th>Tiene actividades acordes los momentos del método</th>'
+      + '<th>Tiene una actividad final</th>'
+      + '<th class="no-print">Observación</th><th class="no-print">IA</th>'
+      + '</tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+    return {doc:doc, cuenta:filas.length, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
+      + grupoPlegableHtml('revdiapo|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' plan':' planes'), tabla)
+      + '</div>'};
+  }).filter(Boolean);
+
+  if(!bloques.length){
+    return formHtml + '<div class="card"><div class="empty-state"><div class="ic">🖥️</div>Ningún docente tiene planes semanales en esa semana.</div></div>';
+  }
+  return formHtml + grupoBotonesTodoHtml('Pulsa el nombre de un docente para mostrar u ocultar su hoja.') + bloques.map(function(b){ return b.html; }).join('');
+}
+/* Excel con el mismo formato del acta en papel: encabezado con la semana y el docente, y debajo la
+   tabla de columnas. Si no se eligió un docente, se exportan todos uno tras otro. */
+function exportarRevisionDiapositivas(){
+  var f = state.revisionDiaposForm;
+  var lunes = lunesDeSemanaIso(f.semana || todayISO());
+  var docentes = allDocentes().slice().sort(function(a,b){
+    return ((a.apellidos||'')+(a.nombres||'')).localeCompare((b.apellidos||'')+(b.nombres||''));
+  }).filter(function(d){ return !f.docenteId || d.id===f.docenteId; });
+  function esc(v){ v=(v===undefined||v===null)?'':String(v); if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"'; return v; }
+  var filasCsv = [], filasTxt = [], hojas = 0;
+  docentes.forEach(function(doc){
+    var filas = filasRevisionDiapositivas(doc.id, lunes);
+    if(!filas.length) return;
+    hojas++;
+    var bloque = [];
+    if(hojas > 1) bloque.push(['']);
+    bloque.push(['Semana del:', semanaTextoLargo(lunes)]);
+    bloque.push(['Docente:', nombreFormal(doc)]);
+    bloque.push(['']);
+    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Observación','Diapositiva']);
+    filas.forEach(function(x){
+      bloque.push([
+        x.asignatura, x.curso, x.marca.momentos||'', x.marca.acordes||'', x.marca.final||'',
+        x.marca.observacion||'', x.diapositivas.map(function(e){ return e.url; }).join(' | ')
+      ]);
+    });
+    bloque.forEach(function(cols){
+      filasCsv.push(cols.map(esc).join(','));
+      filasTxt.push(cols.join('\t'));
+    });
+  });
+  if(!hojas){ toast('No hay planes en esa semana para exportar.', 'error'); return; }
+  saveAttempts('REVISION_DIAPOSITIVAS_' + lunes, [
+    {ext:'csv', data:'﻿' + filasCsv.join('\r\n')},
+    {ext:'txt', data:'﻿' + filasTxt.join('\n')}
+  ]);
+}
+function bindAdminRevisionDiapositivasEvents(){
+  var sem = document.getElementById('rdSemana');
+  if(sem) sem.addEventListener('change', function(e){ state.revisionDiaposForm.semana = e.target.value || todayISO(); render(); });
+  var doc = document.getElementById('rdDocente');
+  if(doc) doc.addEventListener('change', function(e){ state.revisionDiaposForm.docenteId = e.target.value; render(); });
+  var btn = document.getElementById('btnRevDiapoExcel');
+  if(btn) btn.onclick = exportarRevisionDiapositivas;
+  /* Revisión con IA: una fila, o todas las de la pantalla en fila. Se avisa del costo antes de
+     lanzar el lote, porque cada presentación revisada se cobra a la clave del asesor. */
+  document.querySelectorAll('button.rev-diapo-ia').forEach(function(b){
+    b.onclick = async function(){
+      var textoOriginal = b.textContent;
+      b.disabled = true; b.textContent = 'Revisando…';
+      var r = await revisarDiapositivaConIA(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
+      b.disabled = false; b.textContent = textoOriginal;
+      if(r && r.ok) toast('Revisada: ' + r.paginas + ' diapositivas leídas.', 'success');
+      else toast(r && r.error ? r.error : 'No se pudo revisar.', 'error');
+      render();
+    };
+  });
+  var btnTodo = document.getElementById('btnRevDiapoIaTodo');
+  if(btnTodo) btnTodo.onclick = function(){
+    var pendientes = Array.from(document.querySelectorAll('button.rev-diapo-ia')).map(function(b){
+      var fila = b.closest('tr');
+      return { planId: b.getAttribute('data-plan'), enlace: b.getAttribute('data-enlace'),
+               etiqueta: fila ? fila.cells[0].innerText.trim() + ' · ' + fila.cells[1].innerText.trim() : '' };
+    });
+    if(!pendientes.length){ toast('No hay presentaciones que la IA pueda abrir en esta pantalla.', 'error'); return; }
+    confirmDialog('Se van a revisar ' + pendientes.length + ' presentaciones con IA, una tras otra. Tarda alrededor de ' + Math.max(1, Math.round(pendientes.length * 0.5)) + ' minutos y se cobra a tu clave de Anthropic (unos USD ' + (pendientes.length * 0.04).toFixed(2) + ' en total). ¿Continuar?', function(){
+      revisarSemanaConIA(pendientes);
+    }, 'Revisar todo');
+  };
+  /* Las marcas se guardan al instante y sin redibujar: el asesor va bajando por la hoja sin que la
+     pantalla salte bajo el cursor. */
+  document.querySelectorAll('select.rev-diapo').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      revisionDiapoGuardar(sel.getAttribute('data-plan'), sel.getAttribute('data-campo'), sel.value);
+    });
+  });
+  document.querySelectorAll('input.rev-diapo-obs').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      revisionDiapoGuardar(inp.getAttribute('data-plan'), 'observacion', inp.value);
+    });
+  });
+}
+
 /* ============================= ADMIN: PLANES NO PRESENTADOS =============================
    El reporte de Presentación muestra lo que SÍ se entregó; este muestra el hueco contrario: qué
    plan semanal debía existir y no existe. Se arma cruzando tres cosas:
