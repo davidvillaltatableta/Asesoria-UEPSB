@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261026141749">
+<meta name="app-build" content="20261027083058">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14633,6 +14633,9 @@ function filasRevisionDiapositivas(docenteId, lunes){
     return {
       plan: s, asignatura: s.asignatura||'', curso: s.curso||'',
       metodo: metodoDeClase(metodoEfectivo(s.asignatura, s.metodo)).key,
+      /* Un plan cuyos días caen TODOS en feriado o en actividad interna del colegio no tuvo clase:
+         no se le puede reclamar la diapositiva. Si al menos un día fue lectivo, sí se exige. */
+      sinClases: (s.dias||[]).length > 0 && (s.dias||[]).every(function(dia){ return !!tipoDiaSinClase(dia.fecha); }),
       diapositivas: diapositivasDelPlan(s),
       /* Primer enlace que el servidor sí puede abrir para la revisión automática. */
       enlaceIa: (diapositivasDelPlan(s).find(function(e){ return e.plataforma==='Canva' || e.plataforma==='Google Slides'; })||{}).url || '',
@@ -14743,9 +14746,11 @@ function renderAdminRevisionDiapositivas(){
             return '<div style="margin-bottom:3px;"><a href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">' + escapeHtml(e.plataforma) + ' · Día ' + e.dia + '</a>'
               + ' <span class="hint">(' + escapeHtml(e.momento) + ')</span></div>';
           }).join('')
-        : (asignaturaExentaDiapositivas(x.asignatura)
-            ? '<span class="pill pill-muted">No requiere diapositivas</span>'
-            : '<span class="pill pill-red">Sin diapositiva enlazada</span>');
+        : (x.sinClases
+            ? '<span class="pill pill-blue">Sin clases esa semana (feriado o actividad interna)</span>'
+            : (asignaturaExentaDiapositivas(x.asignatura)
+                ? '<span class="pill pill-muted">No requiere diapositivas</span>'
+                : '<span class="pill pill-red">Sin diapositiva enlazada</span>'));
       return '<tr>'
         + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong></td>'
         + '<td>' + escapeHtml(x.curso||'—') + '</td>'
@@ -14754,7 +14759,9 @@ function renderAdminRevisionDiapositivas(){
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'momentos', x.marca.momentos) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'acordes', x.marca.acordes) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'final', x.marca.final) + '</td>'
-        + '<td class="no-print"><input class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" value="' + escapeHtml(x.marca.observacion||'') + '" placeholder="Observación…" />'
+        /* Textarea, no input: la devolución del asesor viene en varias viñetas y tiene que poder
+           leerse y corregirse completa antes de exportarla. */
+        + '<td class="no-print" style="min-width:280px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="' + Math.min(8, Math.max(2, ((x.marca.observacion||'').split('\n').length))) + '" placeholder="Observación…" style="resize:vertical;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
           + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA</span></div>' : '')
           + (x.marca.origen === 'error' ? '<div><span class="pill pill-gold" style="margin-top:4px;">No se pudo leer</span></div>' : '')
           + '</td>'
@@ -14860,7 +14867,7 @@ function bindAdminRevisionDiapositivasEvents(){
       revisionDiapoGuardar(sel.getAttribute('data-plan'), sel.getAttribute('data-campo'), sel.value);
     });
   });
-  document.querySelectorAll('input.rev-diapo-obs').forEach(function(inp){
+  document.querySelectorAll('textarea.rev-diapo-obs').forEach(function(inp){
     inp.addEventListener('input', function(){
       revisionDiapoGuardar(inp.getAttribute('data-plan'), 'observacion', inp.value);
     });
