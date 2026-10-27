@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261027084543">
+<meta name="app-build" content="20261027124504">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14635,11 +14635,11 @@ function revisionDiapoTodas(){
   catch(e){ return {}; }
 }
 function revisionDiapoDe(planId){
-  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', observacion:''};
+  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', dua:'', observacion:''};
 }
 function revisionDiapoGuardar(planId, campo, valor){
   var todas = revisionDiapoTodas();
-  var reg = todas[planId] || {momentos:'', acordes:'', final:'', observacion:''};
+  var reg = todas[planId] || {momentos:'', acordes:'', final:'', dua:'', observacion:''};
   reg[campo] = valor;
   todas[planId] = reg;
   try{ localStorage.setItem(REVISION_DIAPO_CLAVE, JSON.stringify(todas)); }
@@ -14687,6 +14687,7 @@ function revisionDiapoMarcarIA(planId, veredicto){
   revisionDiapoGuardar(planId, 'momentos', veredicto.momentos === 'Si' ? 'Si' : 'NO');
   revisionDiapoGuardar(planId, 'acordes', veredicto.acordes === 'Si' ? 'Si' : 'NO');
   revisionDiapoGuardar(planId, 'final', veredicto.final === 'Si' ? 'Si' : 'NO');
+  revisionDiapoGuardar(planId, 'dua', veredicto.dua === 'Si' ? 'Si' : 'NO');
   var obs = (veredicto.observacion || '').trim();
   if(veredicto.portada === 'NO') obs = (obs ? obs + ' ' : '') + 'Portada institucional incompleta.';
   revisionDiapoGuardar(planId, 'observacion', obs);
@@ -14792,6 +14793,7 @@ function renderAdminRevisionDiapositivas(){
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'momentos', x.marca.momentos) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'acordes', x.marca.acordes) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'final', x.marca.final) + '</td>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'dua', x.marca.dua) + '</td>'
         /* Textarea, no input: la devolución del asesor viene en varias viñetas y tiene que poder
            leerse y corregirse completa antes de exportarla. */
         + '<td class="no-print" style="min-width:280px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="' + Math.min(8, Math.max(2, ((x.marca.observacion||'').split('\n').length))) + '" placeholder="Observación…" style="resize:vertical;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
@@ -14812,6 +14814,7 @@ function renderAdminRevisionDiapositivas(){
       + '<th>Tiene momentos separados del método</th>'
       + '<th>Tiene actividades acordes los momentos del método</th>'
       + '<th>Tiene una actividad final</th>'
+      + '<th>Aplica enfoque DUA</th>'
       + '<th class="no-print">Observación</th><th class="no-print">IA</th>'
       + '</tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
     return {doc:doc, cuenta:filas.length, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
@@ -14843,10 +14846,10 @@ function exportarRevisionDiapositivas(){
     bloque.push(['Semana del:', semanaTextoLargo(lunes)]);
     bloque.push(['Docente:', nombreFormal(doc)]);
     bloque.push(['']);
-    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Observación','Diapositiva']);
+    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Aplica enfoque DUA','Observación','Diapositiva']);
     filas.forEach(function(x){
       bloque.push([
-        x.asignatura, x.curso, x.marca.momentos||'', x.marca.acordes||'', x.marca.final||'',
+        x.asignatura, x.curso, x.marca.momentos||'', x.marca.acordes||'', x.marca.final||'', x.marca.dua||'',
         x.marca.observacion||'', x.diapositivas.map(function(e){ return e.url; }).join(' | ')
       ]);
     });
