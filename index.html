@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261027083058">
+<meta name="app-build" content="20261027084543">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14596,6 +14596,38 @@ function diapositivasDelPlan(s){
   }
   return salida;
 }
+/* ¿Ese día el docente tomó lección? Se lee el casillero de Evaluación, que es donde se declara el
+   instrumento ("Instrumento: Lección escrita de Lengua y Literatura"). Se exige la palabra completa
+   para no confundirla con "selección", "colección" o "minilección de la próxima clase", que
+   aparecen en los planes y no son días de lección. */
+function diaEsDeLeccion(dia){
+  var texto = normalizarTextoPlan(richTextToPlain((dia && dia.evaluacion) || ''));
+  return /\bleccion/.test(texto);
+}
+/* Lo mismo para las pruebas y exámenes: el día se dedica a que el estudiante rinda. La palabra
+   completa evita confundirlo con "se comprueba" dentro de una rúbrica. */
+function diaEsDePrueba(dia){
+  var texto = normalizarTextoPlan(richTextToPlain((dia && dia.evaluacion) || ''));
+  return /\bprueba|\bexamen/.test(texto);
+}
+/* Por qué un plan no tiene que presentar diapositiva, si es que no tiene que presentarla: devuelve
+   el motivo para mostrarlo, o cadena vacía si al menos un día fue de clase normal. */
+function motivoSinExigirDiapositiva(s){
+  var dias = s.dias || [];
+  if(!dias.length) return '';
+  var tipos = dias.map(function(dia){
+    if(tipoDiaSinClase(dia.fecha)) return 'sinclase';
+    if(diaEsDeLeccion(dia)) return 'leccion';
+    if(diaEsDePrueba(dia)) return 'prueba';
+    return 'clase';
+  });
+  if(tipos.indexOf('clase') !== -1) return '';
+  if(tipos.every(function(t){ return t === 'sinclase'; })) return 'Sin clases esa semana (feriado o actividad interna)';
+  var hayLeccion = tipos.indexOf('leccion') !== -1;
+  var hayPrueba = tipos.indexOf('prueba') !== -1;
+  var que = (hayLeccion && hayPrueba) ? 'lección o prueba' : (hayLeccion ? 'lección' : 'prueba');
+  return 'Día de ' + que + ': no se exige diapositiva';
+}
 /* Marcas de revisión, guardadas en este navegador. */
 var REVISION_DIAPO_CLAVE = 'revisionDiapositivas_v1';
 function revisionDiapoTodas(){
@@ -14633,9 +14665,10 @@ function filasRevisionDiapositivas(docenteId, lunes){
     return {
       plan: s, asignatura: s.asignatura||'', curso: s.curso||'',
       metodo: metodoDeClase(metodoEfectivo(s.asignatura, s.metodo)).key,
-      /* Un plan cuyos días caen TODOS en feriado o en actividad interna del colegio no tuvo clase:
-         no se le puede reclamar la diapositiva. Si al menos un día fue lectivo, sí se exige. */
-      sinClases: (s.dias||[]).length > 0 && (s.dias||[]).every(function(dia){ return !!tipoDiaSinClase(dia.fecha); }),
+      /* Cuándo NO se le puede reclamar la diapositiva (ver motivoSinExigirDiapositiva): feriado o
+         actividad interna, día de lección, día de prueba. Basta con que UN día haya sido de clase
+         normal para que se siga exigiendo. */
+      motivoExencion: motivoSinExigirDiapositiva(s),
       diapositivas: diapositivasDelPlan(s),
       /* Primer enlace que el servidor sí puede abrir para la revisión automática. */
       enlaceIa: (diapositivasDelPlan(s).find(function(e){ return e.plataforma==='Canva' || e.plataforma==='Google Slides'; })||{}).url || '',
@@ -14746,8 +14779,8 @@ function renderAdminRevisionDiapositivas(){
             return '<div style="margin-bottom:3px;"><a href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">' + escapeHtml(e.plataforma) + ' · Día ' + e.dia + '</a>'
               + ' <span class="hint">(' + escapeHtml(e.momento) + ')</span></div>';
           }).join('')
-        : (x.sinClases
-            ? '<span class="pill pill-blue">Sin clases esa semana (feriado o actividad interna)</span>'
+        : (x.motivoExencion
+            ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>'
             : (asignaturaExentaDiapositivas(x.asignatura)
                 ? '<span class="pill pill-muted">No requiere diapositivas</span>'
                 : '<span class="pill pill-red">Sin diapositiva enlazada</span>'));
