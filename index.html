@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261027124504">
+<meta name="app-build" content="20261028094347">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14635,11 +14635,11 @@ function revisionDiapoTodas(){
   catch(e){ return {}; }
 }
 function revisionDiapoDe(planId){
-  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', dua:'', observacion:''};
+  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', dua:'', inicio:'', previos:'', ejercicios:'', observacion:''};
 }
 function revisionDiapoGuardar(planId, campo, valor){
   var todas = revisionDiapoTodas();
-  var reg = todas[planId] || {momentos:'', acordes:'', final:'', dua:'', observacion:''};
+  var reg = todas[planId] || {momentos:'', acordes:'', final:'', dua:'', inicio:'', previos:'', ejercicios:'', observacion:''};
   reg[campo] = valor;
   todas[planId] = reg;
   try{ localStorage.setItem(REVISION_DIAPO_CLAVE, JSON.stringify(todas)); }
@@ -14665,6 +14665,8 @@ function filasRevisionDiapositivas(docenteId, lunes){
     return {
       plan: s, asignatura: s.asignatura||'', curso: s.curso||'',
       metodo: metodoDeClase(metodoEfectivo(s.asignatura, s.metodo)).key,
+      /* Matemática y Razonamiento matemático llevan dos exigencias propias (ver la hoja). */
+      esMatematica: /matem/i.test(s.asignatura||''),
       /* Cuándo NO se le puede reclamar la diapositiva (ver motivoSinExigirDiapositiva): feriado o
          actividad interna, día de lección, día de prueba. Basta con que UN día haya sido de clase
          normal para que se siga exigiendo. */
@@ -14683,13 +14685,37 @@ function filasRevisionDiapositivas(docenteId, lunes){
    mismas tres respuestas que el asesor marcaría a mano, más una observación de una línea.
    El resultado se guarda igual que una marca manual, pero queda señalado como hecho por IA para
    que el asesor sepa qué revisó él y qué revisó el asistente. */
+/* El recuadro de la observación se estira hasta que entra todo el texto: sin barra interna y sin
+   cortar la última viñeta. Se llama al dibujar y cada vez que el asesor escribe. */
+function ajustarAlturaObservacion(el){
+  if(!el) return;
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
+/* Cada recomendación en su propia línea. La IA ya las devuelve con viñeta, pero si llegaran
+   seguidas en un párrafo se separan aquí para que se lean como lista, tanto en pantalla como en
+   el Excel. */
+function normalizarViñetas(texto){
+  var t = String(texto || '').replace(/\r/g, '').trim();
+  if(!t) return '';
+  t = t.replace(/\s*[•·]\s*/g, '\n• ');
+  /* Si vino sin viñetas pero con saltos, se les pone viñeta a las líneas con contenido. */
+  if(t.indexOf('•') === -1){
+    t = t.split('\n').map(function(l){ l = l.trim(); return l ? '• ' + l.replace(/^[-*]\s*/, '') : ''; }).join('\n');
+  }
+  return t.split('\n').map(function(l){ return l.trim(); }).filter(Boolean).join('\n');
+}
 function revisionDiapoMarcarIA(planId, veredicto){
   revisionDiapoGuardar(planId, 'momentos', veredicto.momentos === 'Si' ? 'Si' : 'NO');
   revisionDiapoGuardar(planId, 'acordes', veredicto.acordes === 'Si' ? 'Si' : 'NO');
   revisionDiapoGuardar(planId, 'final', veredicto.final === 'Si' ? 'Si' : 'NO');
   revisionDiapoGuardar(planId, 'dua', veredicto.dua === 'Si' ? 'Si' : 'NO');
-  var obs = (veredicto.observacion || '').trim();
-  if(veredicto.portada === 'NO') obs = (obs ? obs + ' ' : '') + 'Portada institucional incompleta.';
+  revisionDiapoGuardar(planId, 'inicio', veredicto.inicio === 'Si' ? 'Si' : 'NO');
+  /* En las asignaturas que no son Matemática la IA responde NA y la casilla queda vacía. */
+  revisionDiapoGuardar(planId, 'previos', veredicto.previos === 'NA' ? '' : (veredicto.previos === 'Si' ? 'Si' : 'NO'));
+  revisionDiapoGuardar(planId, 'ejercicios', veredicto.ejercicios === 'NA' ? '' : (veredicto.ejercicios === 'Si' ? 'Si' : 'NO'));
+  var obs = normalizarViñetas(veredicto.observacion || '');
+  if(veredicto.portada === 'NO') obs = (obs ? obs + '\n' : '') + '• Complete la portada institucional: colegio, asignatura, fecha y nombre del docente.';
   revisionDiapoGuardar(planId, 'observacion', obs);
   revisionDiapoGuardar(planId, 'origen', 'IA');
 }
@@ -14739,9 +14765,16 @@ async function revisarSemanaConIA(pendientes){
     + '. Costo aproximado: USD ' + costo.toFixed(2) + '.', fallos ? 'error' : 'success');
   render();
 }
+/* El acta se lee de un vistazo por el color: verde lo que cumple, rojo lo que no, y marrón el
+   recuadro de las indicaciones que el docente tiene que incorporar. */
+function estiloSiNo(valor){
+  if(valor === 'Si') return 'background:#E3F5EC; color:#0F5132; border-color:#0F5132;';
+  if(valor === 'NO') return 'background:#FBE4E4; color:#D62828; border-color:#D62828;';
+  return '';
+}
 function selectSiNoHtml(planId, campo, valor){
   function op(v, etiqueta){ return '<option value="' + v + '"' + (valor===v?' selected':'') + '>' + etiqueta + '</option>'; }
-  return '<select class="cell-select rev-diapo" data-plan="' + planId + '" data-campo="' + campo + '" style="min-width:70px;">'
+  return '<select class="cell-select rev-diapo" data-plan="' + planId + '" data-campo="' + campo + '" style="min-width:70px; font-weight:700; ' + estiloSiNo(valor) + '">'
     + op('', '—') + op('Si', 'Sí') + op('NO', 'NO') + '</select>';
 }
 function renderAdminRevisionDiapositivas(){
@@ -14786,7 +14819,11 @@ function renderAdminRevisionDiapositivas(){
                 ? '<span class="pill pill-muted">No requiere diapositivas</span>'
                 : '<span class="pill pill-red">Sin diapositiva enlazada</span>'));
       return '<tr>'
-        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong></td>'
+        /* El asesor necesita el plan a la vista mientras juzga la diapositiva: desde aquí lo abre
+           y al volver cae otra vez en esta hoja, en la misma semana y con sus marcas intactas. */
+        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong>'
+          + '<div class="no-print" style="margin-top:4px;"><button class="btn btn-ghost btn-sm rev-diapo-plan" data-plan="' + x.plan.id + '" title="Abrir el Plan Semanal de esta fila">Ver plan de clase</button></div>'
+          + '</td>'
         + '<td>' + escapeHtml(x.curso||'—') + '</td>'
         + '<td class="no-print"><span class="pill pill-muted">' + escapeHtml(x.metodo) + '</span></td>'
         + '<td class="no-print">' + enlacesHtml + '</td>'
@@ -14794,9 +14831,15 @@ function renderAdminRevisionDiapositivas(){
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'acordes', x.marca.acordes) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'final', x.marca.final) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'dua', x.marca.dua) + '</td>'
-        /* Textarea, no input: la devolución del asesor viene en varias viñetas y tiene que poder
-           leerse y corregirse completa antes de exportarla. */
-        + '<td class="no-print" style="min-width:280px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="' + Math.min(8, Math.max(2, ((x.marca.observacion||'').split('\n').length))) + '" placeholder="Observación…" style="resize:vertical;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'inicio', x.marca.inicio) + '</td>'
+        /* Los dos criterios propios de Matemática: en las demás asignaturas no se ofrece la casilla,
+           para que nadie la marque por error ni quede contada en el acta. */
+        + '<td style="text-align:center;">' + (x.esMatematica ? selectSiNoHtml(x.plan.id, 'previos', x.marca.previos) : '<span class="hint">No aplica</span>') + '</td>'
+        + '<td style="text-align:center;">' + (x.esMatematica ? selectSiNoHtml(x.plan.id, 'ejercicios', x.marca.ejercicios) : '<span class="hint">No aplica</span>') + '</td>'
+        /* El recuadro crece hasta mostrar el texto COMPLETO (ver ajustarAlturaObservacion): la
+           devolución del asesor son varias viñetas y tiene que leerse entera, sin recortes ni
+           barra de desplazamiento interna. */
+        + '<td class="no-print" style="min-width:340px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="1" placeholder="Indicaciones para el docente…" style="resize:vertical; overflow:hidden; line-height:1.45; background:#F3E7D8; color:#5B3A1A; border-color:#A9744F;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
           + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA</span></div>' : '')
           + (x.marca.origen === 'error' ? '<div><span class="pill pill-gold" style="margin-top:4px;">No se pudo leer</span></div>' : '')
           + '</td>'
@@ -14815,10 +14858,24 @@ function renderAdminRevisionDiapositivas(){
       + '<th>Tiene actividades acordes los momentos del método</th>'
       + '<th>Tiene una actividad final</th>'
       + '<th>Aplica enfoque DUA</th>'
+      + '<th>Tiene actividad de inicio</th>'
+      + '<th>Matemática: activa conocimientos previos</th>'
+      + '<th title="Se revisa solo en Construcción o Conceptualización; en la actividad final sí puede ir una sola imagen con varios ejercicios">Matemática: un ejercicio por diapositiva</th>'
       + '<th class="no-print">Observación</th><th class="no-print">IA</th>'
       + '</tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+    /* La actividad de inicio (pausa activa, reflexión, dinámica) no se exige en TODOS los planes de
+       la semana, sino en alguno: por eso el veredicto es del docente, no de la fila. Se resume aquí
+       arriba para no tener que ir contándolo por la tabla. */
+    var conInicio = filas.filter(function(x){ return x.marca.inicio === 'Si'; }).length;
+    var revisadas = filas.filter(function(x){ return x.marca.inicio === 'Si' || x.marca.inicio === 'NO'; }).length;
+    var resumenInicio = !revisadas
+      ? '<span class="pill pill-muted">Actividad de inicio: sin revisar todavía</span>'
+      : (conInicio
+          ? '<span class="pill pill-green">Actividad de inicio: sí, en ' + conInicio + ' de ' + revisadas + ' plan' + (revisadas===1?'':'es') + ' revisado' + (revisadas===1?'':'s') + '</span>'
+          : '<span class="pill pill-red">Actividad de inicio: en ninguno de los ' + revisadas + ' planes revisados</span>');
     return {doc:doc, cuenta:filas.length, html:'<div class="card" style="border-top:4px solid '+pastel+';">'
-      + grupoPlegableHtml('revdiapo|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' plan':' planes'), tabla)
+      + grupoPlegableHtml('revdiapo|' + doc.id, 'docente', nombreFormal(doc), filas.length + (filas.length===1?' plan':' planes'),
+          '<div style="margin:2px 0 10px 18px;">' + resumenInicio + '</div>' + tabla)
       + '</div>'};
   }).filter(Boolean);
 
@@ -14846,10 +14903,11 @@ function exportarRevisionDiapositivas(){
     bloque.push(['Semana del:', semanaTextoLargo(lunes)]);
     bloque.push(['Docente:', nombreFormal(doc)]);
     bloque.push(['']);
-    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Aplica enfoque DUA','Observación','Diapositiva']);
+    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Aplica enfoque DUA','Tiene actividad de inicio','Matemática: activa conocimientos previos','Matemática: un ejercicio por diapositiva','Observación','Diapositiva']);
     filas.forEach(function(x){
       bloque.push([
         x.asignatura, x.curso, x.marca.momentos||'', x.marca.acordes||'', x.marca.final||'', x.marca.dua||'',
+        x.marca.inicio||'', x.esMatematica ? (x.marca.previos||'') : 'No aplica', x.esMatematica ? (x.marca.ejercicios||'') : 'No aplica',
         x.marca.observacion||'', x.diapositivas.map(function(e){ return e.url; }).join(' | ')
       ]);
     });
@@ -14871,6 +14929,12 @@ function bindAdminRevisionDiapositivasEvents(){
   if(doc) doc.addEventListener('change', function(e){ state.revisionDiaposForm.docenteId = e.target.value; render(); });
   var btn = document.getElementById('btnRevDiapoExcel');
   if(btn) btn.onclick = exportarRevisionDiapositivas;
+  /* Abrir el Plan Semanal de la fila. vistaDeRetornoLista devuelve 'admin' porque estamos dentro
+     de Administración, así que el botón "Volver a la lista" del plan trae de regreso a esta misma
+     pestaña con la semana y las marcas como estaban. */
+  document.querySelectorAll('button.rev-diapo-plan').forEach(function(b){
+    b.onclick = function(){ openSemanalForm(b.getAttribute('data-plan'), vistaDeRetornoLista('semanallist')); };
+  });
   /* Revisión con IA: una fila, o todas las de la pantalla en fila. Se avisa del costo antes de
      lanzar el lote, porque cada presentación revisada se cobra a la clave del asesor. */
   document.querySelectorAll('button.rev-diapo-ia').forEach(function(b){
@@ -14901,11 +14965,15 @@ function bindAdminRevisionDiapositivasEvents(){
   document.querySelectorAll('select.rev-diapo').forEach(function(sel){
     sel.addEventListener('change', function(){
       revisionDiapoGuardar(sel.getAttribute('data-plan'), sel.getAttribute('data-campo'), sel.value);
+      /* El color cambia en el momento, sin redibujar la hoja entera. */
+      sel.setAttribute('style', 'min-width:70px; font-weight:700; ' + estiloSiNo(sel.value));
     });
   });
   document.querySelectorAll('textarea.rev-diapo-obs').forEach(function(inp){
+    ajustarAlturaObservacion(inp);
     inp.addEventListener('input', function(){
       revisionDiapoGuardar(inp.getAttribute('data-plan'), 'observacion', inp.value);
+      ajustarAlturaObservacion(inp);
     });
   });
 }
