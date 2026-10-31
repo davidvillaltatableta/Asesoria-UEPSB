@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261028094347">
+<meta name="app-build" content="20261030191124">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -693,14 +693,18 @@ var LS = {
   CONFIG: 'CONFIG',
   PAPELERA: 'PAPELERA',
   TALLER: 'TALLER',
-  EVAL: 'EVAL'
+  EVAL: 'EVAL',
+  /* Revisión de las diapositivas de cada plan semanal: un documento por plan, escrito por el asesor
+     o por la Cloud Function que las revisa con IA, y leído por el docente en su Inicio. */
+  REVDIAPO: 'REVDIAPO'
 };
 var FS_COLLECTION = {
   DOCENTES: 'docentes', CARGA: 'carga', PCA: 'pca', CONT: 'contenidos', SEMANAL: 'semanal', FECHAS_LIMITE: 'fechaslimite',
   ESTUDIANTES: 'estudiantes', ASISTENCIA: 'asistencia', INCIDENTES: 'incidentes', OBSERVACIONES: 'observaciones', DECE: 'dece',
-  FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config', PAPELERA: 'papelera', TALLER: 'taller', EVAL: 'evaluaciones'
+  FICHA_DETECCION: 'fichadeteccion', CONFIG: 'config', PAPELERA: 'papelera', TALLER: 'taller', EVAL: 'evaluaciones',
+  REVDIAPO: 'revision_diapositivas'
 };
-var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [], PAPELERA: [], TALLER: [], EVAL: [] };
+var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS_LIMITE: [], ESTUDIANTES: [], ASISTENCIA: [], INCIDENTES: [], OBSERVACIONES: [], DECE: [], FICHA_DETECCION: [], CONFIG: [], PAPELERA: [], TALLER: [], EVAL: [], REVDIAPO: [] };
 /* Versión de los datos en memoria: sube cada vez que se reemplaza una colección (al guardar o al
    llegar un cambio de Firestore). Las cachés de validación la usan como sello: mientras no cambie,
    un plan ya revisado no se vuelve a revisar. Revisar un plan implica interpretar el HTML de cada
@@ -1745,6 +1749,10 @@ var state = {
   faltantesForm: {fechaInicio:'', fechaFin:'', banda:'', criterio:'habitual'},
   /* Hoja de Revisión de Diapositivas (ver renderAdminRevisionDiapositivas). */
   revisionDiaposForm: null,
+  /* Semana del acta propia que cada docente ve en Inicio (ver miRevisionDiapositivasHtml). */
+  miRevisionForm: null,
+  /* Ya se subieron a Firestore las marcas que quedaron guardadas en este navegador. */
+  revisionDiapoMigrada: false,
   presentacionResumenForm: {fechaInicio:'', fechaFin:'', incluir:{semanal:true, taller:true, pca:false}},
   presentacionPcaForm: {fechaInicio:'', fechaFin:''},
   editingFechaLimiteId: null,
@@ -2331,6 +2339,29 @@ function cargarEstadoIA(forzar){
     render();
   });
 }
+/* ---------- Qué clave paga la revisión de diapositivas ----------
+   Las revisiones automáticas no las paga el docente: las paga la institución con la clave de un
+   administrador, para que el docente reciba la devolución apenas termina su plan aunque no tenga
+   clave propia. Aquí el administrador declara que la suya es esa clave; queda anotado en
+   config/ia.claveInstitucionalUid y la Cloud Function la usa para toda revisión. */
+function uidClaveInstitucional(){
+  var cfg = load(LS.CONFIG).find(function(x){ return x.id === 'ia'; });
+  return (cfg && cfg.claveInstitucionalUid) || '';
+}
+function iaClaveInstitucionalHtml(){
+  var d = currentDocente();
+  if(!d || !isStaffRole(d.role)) return '';
+  var actual = uidClaveInstitucional();
+  if(actual === CURRENT_UID){
+    return '<div class="hint" style="margin-top:12px;"><span class="pill pill-green">Clave institucional</span> '
+      + 'Con esta clave se pagan todas las revisiones automáticas de diapositivas del colegio.</div>';
+  }
+  var otro = actual ? allDocentes().find(function(x){ return x.id === actual; }) : null;
+  return '<div class="hint" style="margin-top:12px;">'
+    + (otro ? 'Hoy las revisiones de diapositivas se pagan con la clave de <b>' + escapeHtml(nombreFormal(otro)) + '</b>. '
+            : 'Todavía no se ha declarado con qué clave se pagan las revisiones automáticas de diapositivas. ')
+    + '<button class="btn btn-ghost btn-sm" id="btnIaInstitucional" style="margin-left:6px;">Usar mi clave para las revisiones de diapositivas</button></div>';
+}
 function iaTarjetaPerfilHtml(){
   var e = state.iaEstado;
   var cuerpo;
@@ -2354,7 +2385,8 @@ function iaTarjetaPerfilHtml(){
       + '<div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">'
       + '  <button class="btn btn-ghost btn-sm" id="btnIaReemplazar">Reemplazar clave</button>'
       + '  <button class="btn btn-danger btn-sm" id="btnIaEliminar">Eliminar clave</button>'
-      + '</div>';
+      + '</div>'
+      + iaClaveInstitucionalHtml();
   } else {
     cuerpo = ''
       + '<div class="hint" style="margin-bottom:10px;">Para usar el asistente necesitas tu propia clave de API de Anthropic: crea tu cuenta en <a href="' + IA_CONSOLA_URL + '" target="_blank" rel="noopener noreferrer" style="color:var(--blue-600);">console.anthropic.com</a>, carga saldo y genera una clave en <b>API Keys</b>. Pégala aquí una sola vez; se guarda cifrada y nadie más puede verla.</div>'
@@ -2377,6 +2409,15 @@ function bindIaPerfilEvents(){
   var errEl = document.getElementById('iaError');
   function fail(msg){ if(errEl){ errEl.textContent = msg; errEl.classList.add('show'); } }
   if(errEl) errEl.classList.remove('show');
+
+  var btnInst = document.getElementById('btnIaInstitucional');
+  if(btnInst) btnInst.onclick = function(){
+    confirmDialog('Las revisiones automáticas de diapositivas de TODOS los docentes se cobrarán a tu clave de Anthropic (alrededor de USD 0,04 por presentación). ¿Confirmas?', function(){
+      window.FB.setDoc(window.FB.doc(window.FB.db, FS_COLLECTION.CONFIG, 'ia'), {id:'ia', claveInstitucionalUid: CURRENT_UID}, {merge:true})
+        .then(function(){ toast('Listo: las revisiones de diapositivas usarán tu clave.', 'success'); render(); })
+        .catch(function(e){ toast('No se pudo guardar: ' + (e.message||e.code||e), 'error'); });
+    }, 'Usar mi clave');
+  };
 
   var guardar = document.getElementById('btnIaGuardar');
   if(guardar) guardar.onclick = function(){
@@ -3308,6 +3349,7 @@ function renderDashboard(d){
   + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
   + '</div>'
   + miPresentacionHtml(d)
+  + miRevisionDiapositivasHtml(d)
   + cronogramaHtml(d);
 }
 /* ---------- Mi presentación de planes (en Inicio) ----------
@@ -3354,8 +3396,103 @@ function miPresentacionHtml(d){
   + cuerpo
   + '</div>';
 }
+/* ---------- Revisión de mis diapositivas (en Inicio) ----------
+   El mismo acta que ve el asesor pedagógico, pero de solo lectura y acotada a los planes del propio
+   docente: las mismas columnas, las mismas respuestas (verde/rojo) y la misma devolución en
+   viñetas. Se llena sola: al guardar un plan terminado, el servidor abre las diapositivas, las
+   revisa y escribe el resultado (ver revisionAutomaticaTrasGuardar), así que el docente recibe la
+   observación mientras todavía puede corregirla, sin tener que pedírsela a nadie. */
+function siNoRevisionBadge(valor){
+  if(valor === 'Si') return '<span class="pill pill-green">Sí</span>';
+  if(valor === 'NO') return '<span class="pill pill-red">NO</span>';
+  return '<span class="hint">—</span>';
+}
+function miRevisionDiapositivasHtml(d){
+  /* Quien no planifica con Plan Semanal (personal administrativo sin carga, por ejemplo) no ve esta
+     tarjeta: no tendría ninguna fila nunca. */
+  if(!load(LS.SEMANAL).some(function(x){ return x.docenteId === d.id; })) return '';
+  var f = state.miRevisionForm || (state.miRevisionForm = {semana: lunesDeSemanaIso(todayISO())});
+  var lunes = lunesDeSemanaIso(f.semana || todayISO());
+  var filas = filasRevisionDiapositivas(d.id, lunes);
+  var cuerpo;
+  if(!filas.length){
+    cuerpo = '<div class="empty-state"><div class="ic">🖥️</div>No tienes planes semanales en esa semana.</div>';
+  } else {
+    var filasHtml = filas.map(function(x){
+      var enCurso = !!REVISION_DIAPO_EN_CURSO[x.plan.id];
+      var error = REVISION_DIAPO_ERRORES[x.plan.id];
+      var revisada = x.marca.momentos || x.marca.acordes || x.marca.final || x.marca.dua || x.marca.ortografia || x.marca.inicio;
+      var estado;
+      if(enCurso) estado = '<span class="pill pill-gold">Revisando…</span>';
+      else if(revisada) estado = '<span class="pill pill-green">Revisada'
+        + (x.marca.origen === 'IA' ? ' por IA' : ' por el asesor') + '</span>';
+      else if(error) estado = '<span class="pill pill-red" title="' + escapeHtml(error) + '">No se pudo leer</span>';
+      else if(x.motivoExencion) estado = '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>';
+      else if(x.marca.sinDiapositiva) estado = '<span class="pill pill-blue">No se exige: ' + escapeHtml(textoMotivoManual(x.marca.sinDiapositiva)) + '</span>';
+      else if(asignaturaExentaDiapositivas(x.asignatura)) estado = '<span class="pill pill-muted">No requiere diapositivas</span>';
+      else if(!x.enlaceIa) estado = '<span class="pill pill-muted">Sin diapositiva que el sistema pueda abrir</span>';
+      else estado = '<span class="pill pill-muted">Pendiente de revisión</span>';
+      /* El botón solo aparece en lo que todavía no se revisó: lo que haría solo el guardado del
+         plan, para los planes guardados antes de que esto existiera. */
+      var botonHtml = (!revisada && !enCurso && x.enlaceIa && iaDisponible())
+        ? '<div class="no-print" style="margin-top:4px;"><button class="btn btn-ghost btn-sm mi-rev-ia" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '">Revisar mis diapositivas</button></div>'
+        : '';
+      return '<tr>'
+        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong><div>' + estado + '</div>' + botonHtml + '</td>'
+        + '<td>' + escapeHtml(x.curso||'—') + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.momentos) + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.acordes) + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.final) + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.dua) + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.ortografia) + '</td>'
+        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.inicio) + '</td>'
+        + '<td style="text-align:center;">' + (x.esMatematica ? siNoRevisionBadge(x.marca.previos) : '<span class="hint">No aplica</span>') + '</td>'
+        + '<td style="text-align:center;">' + (x.esMatematica ? siNoRevisionBadge(x.marca.ejercicios) : '<span class="hint">No aplica</span>') + '</td>'
+        /* Las indicaciones se leen completas, cada una en su línea: es lo que el docente tiene que
+           incorporar a su presentación. */
+        + '<td style="min-width:320px;">' + (x.marca.observacion
+            ? '<div style="white-space:pre-wrap; line-height:1.45; background:#F3E7D8; color:#5B3A1A; border:1px solid #A9744F; border-radius:8px; padding:8px 10px;">' + escapeHtml(x.marca.observacion) + '</div>'
+            : '<span class="hint">—</span>') + '</td>'
+        + '</tr>';
+    }).join('');
+    cuerpo = '<div class="table-wrap"><table><thead><tr>'
+      + '<th>Asignatura</th><th>Curso / Grado</th>'
+      + '<th>Tiene momentos separados del método</th>'
+      + '<th>Tiene actividades acordes los momentos del método</th>'
+      + '<th>Tiene una actividad final</th>'
+      + '<th>Aplica enfoque DUA</th>'
+      + '<th title="Sin faltas de ortografía, acentuación ni puntuación en las diapositivas">Ortografía correcta</th>'
+      + '<th>Tiene actividad de inicio</th>'
+      + '<th>Matemática: activa conocimientos previos</th>'
+      + '<th title="Se revisa solo en Construcción o Conceptualización; en la actividad final sí puede ir una sola imagen con varios ejercicios">Matemática: un ejercicio por diapositiva</th>'
+      + '<th>Indicaciones para mejorar</th>'
+      + '</tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+  }
+  return ''
+  + '<div class="card" style="margin-top:18px; border-top:4px solid var(--blue-100);">'
+  + '  <h2>Revisión de mis diapositivas</h2>'
+  + '  <div class="card-sub">Cuando guardas un plan completo, el sistema abre las diapositivas que enlazaste y las revisa solo: aquí ves el mismo acta que usa el asesor pedagógico, con las indicaciones que conviene incorporar. La actividad de inicio (pausa activa, reflexión, dinámica) no se exige en todos tus planes, pero sí en alguno de la semana.</div>'
+  + '  <div class="field" style="max-width:260px; margin-bottom:12px;"><label>Semana <span class="hint">(cualquier día de esa semana)</span></label><input class="cell-input" type="date" id="miRevSemana" value="' + escapeHtml(lunes) + '" /></div>'
+  + '  <div class="hint" style="margin-bottom:10px;">Semana del <b>' + escapeHtml(semanaTextoLargo(lunes)) + '</b>.</div>'
+  + cuerpo
+  + '</div>';
+}
 function bindDashboardEvents(){
   document.querySelectorAll('[data-go]').forEach(function(btn){ btn.onclick = function(){ go(btn.getAttribute('data-go')); }; });
+  var miRev = document.getElementById('miRevSemana');
+  if(miRev) miRev.addEventListener('change', function(e){
+    state.miRevisionForm.semana = e.target.value || todayISO();
+    render();
+  });
+  document.querySelectorAll('button.mi-rev-ia').forEach(function(b){
+    b.onclick = async function(){
+      b.disabled = true; b.textContent = 'Revisando…';
+      var r = await revisarDiapositivaConIA(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
+      if(r && r.ok) toast('Revisión lista: ' + r.paginas + ' diapositivas leídas.', 'success');
+      else toast((r && r.error ? r.error : 'No se pudo revisar.') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
+      render();
+    };
+  });
   var btnCro = document.getElementById('btnEditarCronograma');
   if(btnCro) btnCro.onclick = function(){ abrirEditorCronograma(); };
   var miMes = document.getElementById('miPresMes');
@@ -11813,6 +11950,9 @@ function saveSemanal(s, silent){
       if(vFinal.faltanEnlaces.length) pendientes.push('falta el enlace de las diapositivas en ' + vFinal.faltanEnlaces.join(', '));
       toast('Corregir: ' + pendientes.join('; '), 'error');
     }
+    /* Plan terminado y guardado a mano por su propio dueño: se le revisan las diapositivas solas y
+       la devolución le queda en Inicio (ver revisionAutomaticaTrasGuardar). */
+    if(completoAhora && record.docenteId === d.id) revisionAutomaticaTrasGuardar(record);
   }
 }
 
@@ -14610,6 +14750,33 @@ function diaEsDePrueba(dia){
   var texto = normalizarTextoPlan(richTextToPlain((dia && dia.evaluacion) || ''));
   return /\bprueba|\bexamen/.test(texto);
 }
+/* Clases en las que la diapositiva no es la herramienta: el día se va en que los estudiantes
+   expongan, experimenten o trabajen en el laboratorio. Se lee lo que el docente planificó HACER
+   (Actividades) y cómo lo evalúa.
+   En "exposición" se pide además alguna palabra que indique que exponen los ESTUDIANTES: la
+   "exposición dialogada" del docente es una técnica de clase normal y esa sí lleva diapositivas. */
+function tipoDiaPractico(dia){
+  var texto = normalizarTextoPlan(richTextToPlain((dia && dia.actividades) || '') + ' '
+    + richTextToPlain((dia && dia.contenidos) || '') + ' ' + richTextToPlain((dia && dia.evaluacion) || ''));
+  /* Solo se reconoce sola la práctica de laboratorio, que los docentes escriben siempre igual
+     ("práctica de laboratorio", "guía de laboratorio"). Las exposiciones y la experimentación NO se
+     detectan por texto: "triángulo de exposición" es un tema de Fotografía y "el experimento de
+     Millikan" aparece mencionado dentro de clases normales, así que adivinarlo apagaría avisos que
+     sí correspondían. Para esos casos el asesor lo declara con el selector de la hoja. */
+  if(/(practica|guia|clase|trabajo|sesion|informe|manual)\s+de\s+laboratorio/.test(texto)) return 'laboratorio';
+  return '';
+}
+/* Motivos que el asesor puede declarar a mano cuando la clase no llevaba diapositiva. */
+var MOTIVOS_SIN_DIAPOSITIVA = [
+  {clave:'exposiciones', texto:'Exposiciones de los estudiantes'},
+  {clave:'experimentacion', texto:'Experimentación'},
+  {clave:'laboratorio', texto:'Práctica de laboratorio'},
+  {clave:'practica', texto:'Otra clase práctica'}
+];
+function textoMotivoManual(clave){
+  var m = MOTIVOS_SIN_DIAPOSITIVA.filter(function(x){ return x.clave === clave; })[0];
+  return m ? m.texto : '';
+}
 /* Por qué un plan no tiene que presentar diapositiva, si es que no tiene que presentarla: devuelve
    el motivo para mostrarlo, o cadena vacía si al menos un día fue de clase normal. */
 function motivoSinExigirDiapositiva(s){
@@ -14619,31 +14786,75 @@ function motivoSinExigirDiapositiva(s){
     if(tipoDiaSinClase(dia.fecha)) return 'sinclase';
     if(diaEsDeLeccion(dia)) return 'leccion';
     if(diaEsDePrueba(dia)) return 'prueba';
-    return 'clase';
+    return tipoDiaPractico(dia) || 'clase';
   });
   if(tipos.indexOf('clase') !== -1) return '';
   if(tipos.every(function(t){ return t === 'sinclase'; })) return 'Sin clases esa semana (feriado o actividad interna)';
-  var hayLeccion = tipos.indexOf('leccion') !== -1;
-  var hayPrueba = tipos.indexOf('prueba') !== -1;
-  var que = (hayLeccion && hayPrueba) ? 'lección o prueba' : (hayLeccion ? 'lección' : 'prueba');
-  return 'Día de ' + que + ': no se exige diapositiva';
+  var ETIQUETAS = {leccion:'lección', prueba:'prueba', laboratorio:'práctica de laboratorio'};
+  var que = [];
+  tipos.forEach(function(t){
+    if(ETIQUETAS[t] && que.indexOf(ETIQUETAS[t]) === -1) que.push(ETIQUETAS[t]);
+  });
+  return 'Día de ' + que.join(' o ') + ': no se exige diapositiva';
 }
-/* Marcas de revisión, guardadas en este navegador. */
+/* ---------- Dónde viven las marcas de revisión ----------
+   En Firestore (colección revision_diapositivas, un documento por plan semanal), no en el navegador
+   del asesor como al principio. El motivo: el docente tiene que poder ver en su Inicio la revisión
+   de SUS diapositivas, y la revisión que hace la IA la escribe el servidor — las tres partes (el
+   acta del asesor, el reporte del docente y la Cloud Function) leen y escriben el mismo documento.
+
+   Quién escribe: solo el personal administrativo (firestore.rules). El docente únicamente lee; su
+   revisión automática la graba la función con permisos de servidor, no su navegador. */
 var REVISION_DIAPO_CLAVE = 'revisionDiapositivas_v1';
-function revisionDiapoTodas(){
-  try{ return JSON.parse(localStorage.getItem(REVISION_DIAPO_CLAVE) || '{}') || {}; }
-  catch(e){ return {}; }
-}
+var REVISION_DIAPO_VACIA = {momentos:'', acordes:'', final:'', dua:'', ortografia:'', inicio:'', previos:'', ejercicios:'', sinDiapositiva:'', observacion:'', origen:'', enlaceRevisado:''};
 function revisionDiapoDe(planId){
-  return revisionDiapoTodas()[planId] || {momentos:'', acordes:'', final:'', dua:'', inicio:'', previos:'', ejercicios:'', observacion:''};
+  var reg = load(LS.REVDIAPO).find(function(x){ return x.id === planId; });
+  return Object.assign({}, REVISION_DIAPO_VACIA, reg || {});
 }
-function revisionDiapoGuardar(planId, campo, valor){
-  var todas = revisionDiapoTodas();
-  var reg = todas[planId] || {momentos:'', acordes:'', final:'', dua:'', inicio:'', previos:'', ejercicios:'', observacion:''};
-  reg[campo] = valor;
-  todas[planId] = reg;
-  try{ localStorage.setItem(REVISION_DIAPO_CLAVE, JSON.stringify(todas)); }
-  catch(e){ toast('No se pudo guardar la marca en este navegador.', 'error'); }
+/* `campos` es un objeto: así una marca se guarda en UNA sola escritura aunque cambien varias
+   casillas a la vez. Se copian asignatura/curso/fecha del plan para que el documento se entienda
+   solo (y para poder filtrarlo por docente sin cargar los planes). */
+function revisionDiapoGuardar(planId, campos){
+  var plan = load(LS.SEMANAL).find(function(x){ return x.id === planId; });
+  var previo = revisionDiapoDe(planId);
+  var reg = Object.assign({}, previo, campos, {
+    id: planId, planId: planId,
+    docenteId: (plan && plan.docenteId) || previo.docenteId || '',
+    asignatura: (plan && plan.asignatura) || previo.asignatura || '',
+    curso: (plan && plan.curso) || previo.curso || '',
+    fechaInicio: (plan && plan.fechaInicio) || previo.fechaInicio || '',
+    actualizadoEn: nowISO()
+  });
+  var otras = load(LS.REVDIAPO).filter(function(x){ return x.id !== planId; });
+  otras.push(reg);
+  save(LS.REVDIAPO, otras);
+}
+/* La observación se escribe a mano, letra por letra. Se guarda cuando el asesor deja de escribir
+   (no en cada pulsación) para no mandar una escritura a Firestore por tecla. */
+var REVISION_DIAPO_TIMER = {};
+function revisionDiapoGuardarDiferido(planId, campos){
+  clearTimeout(REVISION_DIAPO_TIMER[planId]);
+  REVISION_DIAPO_TIMER[planId] = setTimeout(function(){ revisionDiapoGuardar(planId, campos); }, 900);
+}
+/* Las primeras revisiones se guardaron en el navegador del asesor, donde el docente no las veía.
+   La primera vez que se abre el acta se suben esas marcas a Firestore (sin pisar ninguna que ya
+   exista allí) y se deja constancia de que ya se migraron. */
+function migrarRevisionDiapoDelNavegador(){
+  var guardadas;
+  try{ guardadas = JSON.parse(localStorage.getItem(REVISION_DIAPO_CLAVE) || 'null'); }
+  catch(e){ guardadas = null; }
+  if(!guardadas || !Object.keys(guardadas).length) return;
+  var yaEnLaNube = {};
+  load(LS.REVDIAPO).forEach(function(x){ yaEnLaNube[x.id] = true; });
+  var pendientes = Object.keys(guardadas).filter(function(planId){ return !yaEnLaNube[planId]; });
+  pendientes.forEach(function(planId){
+    revisionDiapoGuardar(planId, Object.assign({}, REVISION_DIAPO_VACIA, guardadas[planId]));
+  });
+  try{
+    localStorage.setItem(REVISION_DIAPO_CLAVE + '_migrado', localStorage.getItem(REVISION_DIAPO_CLAVE) || '');
+    localStorage.removeItem(REVISION_DIAPO_CLAVE);
+  }catch(e){}
+  if(pendientes.length) toast('Se subieron ' + pendientes.length + ' revisiones guardadas en este navegador: ahora los docentes también las ven.', 'success');
 }
 function semanaTextoLargo(lunes){
   var viernes = addDays(lunes, 4);
@@ -14682,9 +14893,18 @@ function filasRevisionDiapositivas(docenteId, lunes){
 /* ---------- Revisión automática con IA ----------
    El servidor abre la presentación (las imágenes públicas de Canva o el PDF de Google Slides),
    se la muestra a Claude junto con el método y los temas que el docente planificó, y devuelve las
-   mismas tres respuestas que el asesor marcaría a mano, más una observación de una línea.
-   El resultado se guarda igual que una marca manual, pero queda señalado como hecho por IA para
-   que el asesor sepa qué revisó él y qué revisó el asistente. */
+   mismas respuestas que el asesor marcaría a mano, más una observación en viñetas. La función
+   ESCRIBE ella misma la marca en revision_diapositivas (ver index.js en las funciones), así que
+   aquí no hace falta guardar nada: el cambio llega por la sincronización en tiempo real y aparece
+   a la vez en el acta del asesor y en el Inicio del docente, señalado como hecho por IA.
+
+   Quién la dispara: el asesor desde el acta, y el propio docente sin pedirlo al guardar su plan
+   terminado (ver revisionAutomaticaTrasGuardar). En los dos casos paga la clave institucional. */
+/* Lo que no se guarda en la base: que una presentación no se pudo leer (enlace privado, caído o de
+   una plataforma que el servidor no abre). Es información del momento, no del plan, así que vive
+   en memoria hasta que se recargue la página. */
+var REVISION_DIAPO_ERRORES = {};
+var REVISION_DIAPO_EN_CURSO = {};
 /* El recuadro de la observación se estira hasta que entra todo el texto: sin barra interna y sin
    cortar la última viñeta. Se llama al dibujar y cada vez que el asesor escribe. */
 function ajustarAlturaObservacion(el){
@@ -14692,38 +14912,12 @@ function ajustarAlturaObservacion(el){
   el.style.height = 'auto';
   el.style.height = (el.scrollHeight + 2) + 'px';
 }
-/* Cada recomendación en su propia línea. La IA ya las devuelve con viñeta, pero si llegaran
-   seguidas en un párrafo se separan aquí para que se lean como lista, tanto en pantalla como en
-   el Excel. */
-function normalizarViñetas(texto){
-  var t = String(texto || '').replace(/\r/g, '').trim();
-  if(!t) return '';
-  t = t.replace(/\s*[•·]\s*/g, '\n• ');
-  /* Si vino sin viñetas pero con saltos, se les pone viñeta a las líneas con contenido. */
-  if(t.indexOf('•') === -1){
-    t = t.split('\n').map(function(l){ l = l.trim(); return l ? '• ' + l.replace(/^[-*]\s*/, '') : ''; }).join('\n');
-  }
-  return t.split('\n').map(function(l){ return l.trim(); }).filter(Boolean).join('\n');
-}
-function revisionDiapoMarcarIA(planId, veredicto){
-  revisionDiapoGuardar(planId, 'momentos', veredicto.momentos === 'Si' ? 'Si' : 'NO');
-  revisionDiapoGuardar(planId, 'acordes', veredicto.acordes === 'Si' ? 'Si' : 'NO');
-  revisionDiapoGuardar(planId, 'final', veredicto.final === 'Si' ? 'Si' : 'NO');
-  revisionDiapoGuardar(planId, 'dua', veredicto.dua === 'Si' ? 'Si' : 'NO');
-  revisionDiapoGuardar(planId, 'inicio', veredicto.inicio === 'Si' ? 'Si' : 'NO');
-  /* En las asignaturas que no son Matemática la IA responde NA y la casilla queda vacía. */
-  revisionDiapoGuardar(planId, 'previos', veredicto.previos === 'NA' ? '' : (veredicto.previos === 'Si' ? 'Si' : 'NO'));
-  revisionDiapoGuardar(planId, 'ejercicios', veredicto.ejercicios === 'NA' ? '' : (veredicto.ejercicios === 'Si' ? 'Si' : 'NO'));
-  var obs = normalizarViñetas(veredicto.observacion || '');
-  if(veredicto.portada === 'NO') obs = (obs ? obs + '\n' : '') + '• Complete la portada institucional: colegio, asignatura, fecha y nombre del docente.';
-  revisionDiapoGuardar(planId, 'observacion', obs);
-  revisionDiapoGuardar(planId, 'origen', 'IA');
-}
 function datosRevisionDeFila(plan, enlace){
   var temas = [];
   (plan.dias||[]).forEach(function(dia){ splitItemsList(dia.contenidos).forEach(function(t){ if(temas.indexOf(t)===-1) temas.push(t); }); });
   var d = allDocentes().find(function(x){ return x.id===plan.docenteId; });
   return {
+    planId: plan.id,
     enlace: enlace,
     metodo: metodoDeClase(metodoEfectivo(plan.asignatura, plan.metodo)).key,
     asignatura: plan.asignatura || '',
@@ -14733,19 +14927,48 @@ function datosRevisionDeFila(plan, enlace){
     temas: temas.slice(0, 25)
   };
 }
-/* Revisa una sola fila. Devuelve true si la IA respondió. */
+/* Revisa una sola presentación. El veredicto lo guarda el servidor; aquí solo se informa el
+   resultado a quien la pidió. */
 async function revisarDiapositivaConIA(planId, enlace){
   var plan = load(LS.SEMANAL).find(function(x){ return x.id===planId; });
-  if(!plan) return false;
+  if(!plan) return { ok:false, error:'Ese plan ya no existe.' };
+  delete REVISION_DIAPO_ERRORES[planId];
+  REVISION_DIAPO_EN_CURSO[planId] = true;
   try{
     var res = await llamarFuncionIA('revisarDiapositivas', datosRevisionDeFila(plan, enlace), 540000);
-    revisionDiapoMarcarIA(planId, res.veredicto || {});
+    delete REVISION_DIAPO_EN_CURSO[planId];
     return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0 };
   }catch(err){
-    revisionDiapoGuardar(planId, 'observacion', 'No se pudo revisar automáticamente: ' + ((err && err.message) || 'error'));
-    revisionDiapoGuardar(planId, 'origen', 'error');
+    delete REVISION_DIAPO_EN_CURSO[planId];
+    REVISION_DIAPO_ERRORES[planId] = mensajeErrorIA(err);
     return { ok:false, error: mensajeErrorIA(err) };
   }
+}
+/* ---------- La revisión que no hay que pedir ----------
+   En cuanto el docente da por terminado su plan (botón Guardar, con todos los casilleros llenos),
+   el servidor abre sus diapositivas y le deja la revisión en Inicio. Condiciones para no gastar de
+   más ni molestar: solo en el guardado explícito —no en el autoguardado cada 5 minutos—, solo sobre
+   el plan propio, solo si hay un enlace que el servidor pueda abrir y UNA SOLA VEZ por plan: en
+   cuanto ese plan tiene revisión (de la IA o del asesor), los guardados siguientes no vuelven a
+   pedirla, aunque se cambie la presentación. Si hace falta revisarla otra vez, el asesor la vuelve
+   a lanzar desde su acta. */
+function yaTieneRevision(planId){
+  return load(LS.REVDIAPO).some(function(x){ return x.id === planId; });
+}
+function revisionAutomaticaTrasGuardar(record){
+  if(!iaDisponible()) return;
+  if(REVISION_DIAPO_EN_CURSO[record.id]) return;
+  if(yaTieneRevision(record.id)) return;
+  var enlace = (diapositivasDelPlan(record).find(function(e){
+    return e.plataforma === 'Canva' || e.plataforma === 'Google Slides';
+  }) || {}).url || '';
+  if(!enlace) return;
+  toast('Tus diapositivas se están revisando. En unos minutos verás el resultado en Inicio → "Revisión de mis diapositivas".', 'success');
+  revisarDiapositivaConIA(record.id, enlace).then(function(r){
+    if(r && r.ok) toast('Revisión de tus diapositivas lista: mírala en Inicio → "Revisión de mis diapositivas".', 'success');
+    else toast('No se pudo revisar tu presentación automáticamente: ' + ((r && r.error) || 'error') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
+    render();
+  });
 }
 /* Revisa en fila todas las presentaciones visibles de la semana, una tras otra para no disparar el
    costo ni chocar con los límites de Anthropic. Avisa del avance y deja el resumen al final. */
@@ -14778,6 +15001,10 @@ function selectSiNoHtml(planId, campo, valor){
     + op('', '—') + op('Si', 'Sí') + op('NO', 'NO') + '</select>';
 }
 function renderAdminRevisionDiapositivas(){
+  /* Una sola vez por sesión: subir a Firestore las marcas que quedaron en este navegador de cuando
+     se guardaban aquí. Se hace al abrir el acta porque es el momento en que la colección ya está
+     sincronizada y se puede saber qué falta. */
+  if(!state.revisionDiapoMigrada){ state.revisionDiapoMigrada = true; migrarRevisionDiapoDelNavegador(); }
   var f = state.revisionDiaposForm || (state.revisionDiaposForm = {semana:'', docenteId:''});
   if(!f.semana) f.semana = lunesDeSemanaIso(todayISO());
   var lunes = lunesDeSemanaIso(f.semana);
@@ -14788,7 +15015,7 @@ function renderAdminRevisionDiapositivas(){
   var formHtml = ''
     + '<div class="card" style="background:'+pastel+';">'
     + '  <h2>Revisión de Diapositivas</h2>'
-    + '  <div class="card-sub">Hoja de revisión por docente y semana. El sistema identifica cuál de los enlaces de las Actividades de Aprendizaje es una diapositiva y en qué momento del método quedó; tú abres cada presentación y marcas las tres columnas. Las marcas se guardan en este navegador y salen en el Excel.</div>'
+    + '  <div class="card-sub">Hoja de revisión por docente y semana. El sistema identifica cuál de los enlaces de las Actividades de Aprendizaje es una diapositiva y en qué momento del método quedó; tú abres cada presentación y marcas las columnas. <b>Lo que marcas aquí lo ve el docente en su página de Inicio</b>, junto con lo que ya revisó la IA sola al guardar él su plan.</div>'
     + '  <div class="grid-3" style="max-width:760px;">'
     + '    <div class="field"><label>Semana <span class="hint">(cualquier día de esa semana)</span></label><input class="cell-input" type="date" id="rdSemana" value="' + escapeHtml(lunes) + '" /></div>'
     + '    <div class="field"><label>Docente</label><select class="cell-select" id="rdDocente">'
@@ -14817,7 +15044,17 @@ function renderAdminRevisionDiapositivas(){
             ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>'
             : (asignaturaExentaDiapositivas(x.asignatura)
                 ? '<span class="pill pill-muted">No requiere diapositivas</span>'
-                : '<span class="pill pill-red">Sin diapositiva enlazada</span>'));
+                : (x.marca.sinDiapositiva
+                    ? '<span class="pill pill-blue">No se exige: ' + escapeHtml(textoMotivoManual(x.marca.sinDiapositiva)) + '</span>'
+                    : '<span class="pill pill-red">Sin diapositiva enlazada</span>')
+                  /* Las exposiciones y la experimentación no se pueden deducir del texto del plan
+                     sin equivocarse (ver tipoDiaPractico), así que el asesor las declara aquí. */
+                  + '<div class="no-print" style="margin-top:4px;"><select class="cell-select rev-diapo-motivo" data-plan="' + x.plan.id + '" style="font-size:11.5px;">'
+                    + '<option value="">¿No llevaba diapositiva? Indica por qué…</option>'
+                    + MOTIVOS_SIN_DIAPOSITIVA.map(function(m){
+                        return '<option value="' + m.clave + '"' + (x.marca.sinDiapositiva===m.clave?' selected':'') + '>' + escapeHtml(m.texto) + '</option>';
+                      }).join('')
+                    + '</select></div>'));
       return '<tr>'
         /* El asesor necesita el plan a la vista mientras juzga la diapositiva: desde aquí lo abre
            y al volver cae otra vez en esta hoja, en la misma semana y con sus marcas intactas. */
@@ -14831,6 +15068,7 @@ function renderAdminRevisionDiapositivas(){
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'acordes', x.marca.acordes) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'final', x.marca.final) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'dua', x.marca.dua) + '</td>'
+        + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'ortografia', x.marca.ortografia) + '</td>'
         + '<td style="text-align:center;">' + selectSiNoHtml(x.plan.id, 'inicio', x.marca.inicio) + '</td>'
         /* Los dos criterios propios de Matemática: en las demás asignaturas no se ofrece la casilla,
            para que nadie la marque por error ni quede contada en el acta. */
@@ -14840,8 +15078,9 @@ function renderAdminRevisionDiapositivas(){
            devolución del asesor son varias viñetas y tiene que leerse entera, sin recortes ni
            barra de desplazamiento interna. */
         + '<td class="no-print" style="min-width:340px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="1" placeholder="Indicaciones para el docente…" style="resize:vertical; overflow:hidden; line-height:1.45; background:#F3E7D8; color:#5B3A1A; border-color:#A9744F;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
-          + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA</span></div>' : '')
-          + (x.marca.origen === 'error' ? '<div><span class="pill pill-gold" style="margin-top:4px;">No se pudo leer</span></div>' : '')
+          + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA'
+              + (x.marca.editadaPorAsesor ? ' · ajustado a mano' : '') + '</span></div>' : '')
+          + (REVISION_DIAPO_ERRORES[x.plan.id] ? '<div><span class="pill pill-gold" style="margin-top:4px;" title="' + escapeHtml(REVISION_DIAPO_ERRORES[x.plan.id]) + '">No se pudo leer la presentación</span></div>' : '')
           + '</td>'
         /* Solo se ofrece el botón cuando la plataforma se puede leer desde el servidor (ver
            diapositivas.js en las funciones): Canva y Google Slides. */
@@ -14858,6 +15097,7 @@ function renderAdminRevisionDiapositivas(){
       + '<th>Tiene actividades acordes los momentos del método</th>'
       + '<th>Tiene una actividad final</th>'
       + '<th>Aplica enfoque DUA</th>'
+      + '<th title="Sin faltas de ortografía, acentuación ni puntuación en las diapositivas">Ortografía correcta</th>'
       + '<th>Tiene actividad de inicio</th>'
       + '<th>Matemática: activa conocimientos previos</th>'
       + '<th title="Se revisa solo en Construcción o Conceptualización; en la actividad final sí puede ir una sola imagen con varios ejercicios">Matemática: un ejercicio por diapositiva</th>'
@@ -14903,12 +15143,14 @@ function exportarRevisionDiapositivas(){
     bloque.push(['Semana del:', semanaTextoLargo(lunes)]);
     bloque.push(['Docente:', nombreFormal(doc)]);
     bloque.push(['']);
-    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Aplica enfoque DUA','Tiene actividad de inicio','Matemática: activa conocimientos previos','Matemática: un ejercicio por diapositiva','Observación','Diapositiva']);
+    bloque.push(['Asignatura','Curso/ Grado','Tiene momentos separados del método','Tiene actividades acordes los momentos del método','Tiene una actividad final','Aplica enfoque DUA','Ortografía correcta','Tiene actividad de inicio','Matemática: activa conocimientos previos','Matemática: un ejercicio por diapositiva','Observación','Diapositiva']);
     filas.forEach(function(x){
       bloque.push([
         x.asignatura, x.curso, x.marca.momentos||'', x.marca.acordes||'', x.marca.final||'', x.marca.dua||'',
-        x.marca.inicio||'', x.esMatematica ? (x.marca.previos||'') : 'No aplica', x.esMatematica ? (x.marca.ejercicios||'') : 'No aplica',
-        x.marca.observacion||'', x.diapositivas.map(function(e){ return e.url; }).join(' | ')
+        x.marca.ortografia||'', x.marca.inicio||'', x.esMatematica ? (x.marca.previos||'') : 'No aplica', x.esMatematica ? (x.marca.ejercicios||'') : 'No aplica',
+        x.marca.observacion||'',
+        x.diapositivas.length ? x.diapositivas.map(function(e){ return e.url; }).join(' | ')
+          : (x.motivoExencion || (x.marca.sinDiapositiva ? 'No se exige: ' + textoMotivoManual(x.marca.sinDiapositiva) : (asignaturaExentaDiapositivas(x.asignatura) ? 'No requiere diapositivas' : 'Sin diapositiva enlazada')))
       ]);
     });
     bloque.forEach(function(cols){
@@ -14932,6 +15174,12 @@ function bindAdminRevisionDiapositivasEvents(){
   /* Abrir el Plan Semanal de la fila. vistaDeRetornoLista devuelve 'admin' porque estamos dentro
      de Administración, así que el botón "Volver a la lista" del plan trae de regreso a esta misma
      pestaña con la semana y las marcas como estaban. */
+  document.querySelectorAll('select.rev-diapo-motivo').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      revisionDiapoGuardar(sel.getAttribute('data-plan'), {sinDiapositiva: sel.value});
+      render();
+    });
+  });
   document.querySelectorAll('button.rev-diapo-plan').forEach(function(b){
     b.onclick = function(){ openSemanalForm(b.getAttribute('data-plan'), vistaDeRetornoLista('semanallist')); };
   });
@@ -14964,7 +15212,11 @@ function bindAdminRevisionDiapositivasEvents(){
      pantalla salte bajo el cursor. */
   document.querySelectorAll('select.rev-diapo').forEach(function(sel){
     sel.addEventListener('change', function(){
-      revisionDiapoGuardar(sel.getAttribute('data-plan'), sel.getAttribute('data-campo'), sel.value);
+      /* No se toca "origen": si la fila la había revisado la IA, el asesor corrige una casilla y
+         sigue constando quién la revisó primero, más que fue ajustada a mano. */
+      var cambio = {editadaPorAsesor: true};
+      cambio[sel.getAttribute('data-campo')] = sel.value;
+      revisionDiapoGuardar(sel.getAttribute('data-plan'), cambio);
       /* El color cambia en el momento, sin redibujar la hoja entera. */
       sel.setAttribute('style', 'min-width:70px; font-weight:700; ' + estiloSiNo(sel.value));
     });
@@ -14972,8 +15224,13 @@ function bindAdminRevisionDiapositivasEvents(){
   document.querySelectorAll('textarea.rev-diapo-obs').forEach(function(inp){
     ajustarAlturaObservacion(inp);
     inp.addEventListener('input', function(){
-      revisionDiapoGuardar(inp.getAttribute('data-plan'), 'observacion', inp.value);
+      revisionDiapoGuardarDiferido(inp.getAttribute('data-plan'), {observacion: inp.value, editadaPorAsesor: true});
       ajustarAlturaObservacion(inp);
+    });
+    inp.addEventListener('blur', function(){
+      var planId = inp.getAttribute('data-plan');
+      clearTimeout(REVISION_DIAPO_TIMER[planId]);
+      revisionDiapoGuardar(planId, {observacion: inp.value, editadaPorAsesor: true});
     });
   });
 }
@@ -15925,7 +16182,10 @@ async function attachRealtimeListeners(){
        "Importar de otro docente" se hace una consulta puntual en el momento (ver
        candidatosImportacion). */
     var soloLoPropio = ['OBSERVACIONES', 'FICHA_DETECCION', 'EVAL'];
-    var soloLoPropioSalvoJefe = ['CONT', 'SEMANAL', 'PCA', 'TALLER'];
+    /* REVDIAPO va aquí para que cada docente baje la revisión de SUS diapositivas (la que lee en
+       Inicio) y no la de todo el colegio; el asesor y el jefe de área las necesitan completas para
+       el acta. Las reglas de Firestore exigen exactamente este where() para el docente. */
+    var soloLoPropioSalvoJefe = ['CONT', 'SEMANAL', 'PCA', 'TALLER', 'REVDIAPO'];
     var acotarAPropio = !soyAdmin && (soloLoPropio.indexOf(key) !== -1 || (soloLoPropioSalvoJefe.indexOf(key) !== -1 && !soyJefeIngles));
     var queryRef = acotarAPropio
       ? window.FB.query(colRef, window.FB.where('docenteId', '==', CURRENT_UID))
