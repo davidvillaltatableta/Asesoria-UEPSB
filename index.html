@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261031210120">
+<meta name="app-build" content="20261031220041">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -10864,9 +10864,19 @@ function validarPlanSemanalCalculo(s){
     return etiqueta ? ('Día ' + (i+1) + (dia.fecha ? ' (' + fmtDate(dia.fecha) + ')' : '') + ' — ' + etiqueta.toLowerCase()) : null;
   }).filter(Boolean);
   var actividadesRepetidas = actividadesRepetidasPlan(s);
+  /* Días cuya fecha cae fuera de la semana del plan. No es un "Corregir" —hay planes antiguos
+     así y no se trata de llenar de rojo lo ya entregado—, pero sí un aviso dentro del formulario:
+     cuando pasa, el plan se archiva en una semana distinta de la que el docente cree y después no
+     lo encuentra en el reporte del mes. */
+  var diasFueraDeSemana = (s.fechaInicio ? dias.map(function(dia, i){
+    if(!dia.fecha) return null;
+    if(dia.fecha >= s.fechaInicio && (!s.fechaFin || dia.fecha <= s.fechaFin)) return null;
+    return 'Día ' + (i+1) + ' (' + fmtDate(dia.fecha) + ')';
+  }).filter(Boolean) : []);
   var metodoOk = completo && !problemasMetodo.length && !faltanEnlaces.length && !actividadesRepetidas.length;
   return {
     completo: completo,
+    diasFueraDeSemana: diasFueraDeSemana,
     metodoOk: metodoOk,
     actividadesRepetidas: actividadesRepetidas,
     /* Días del plan que caen en un feriado del cronograma (ver esFeriadoEscolar). */
@@ -11102,6 +11112,12 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
        que el docente no se quede buscando qué le falta. */
     + ((v.diasFeriado||[]).length
         ? '<div class="hint" style="margin-top:6px;">' + escapeHtml(te('Según el cronograma escolar: ', isIngles) + v.diasFeriado.join(', ') + '. ' + te('En esos días basta con escribir en los casilleros qué se hizo (p.ej. “Feriado” o el nombre del programa) — no se exige el método ni el enlace de las diapositivas.', isIngles)) + '</div>'
+        : '')
+    /* Días fuera de la semana del plan: el plan queda archivado en la semana de la Fecha, no en la
+       de sus días, y después el docente no lo encuentra donde lo busca. */
+    + ((v.diasFueraDeSemana||[]).length
+        ? '<div style="margin-top:6px; font-size:12.5px; color:var(--gold-600);"><b>' + escapeHtml(te('Revise la Fecha del plan: ', isIngles)) + '</b>'
+          + escapeHtml(v.diasFueraDeSemana.join(', ') + te(' queda fuera de la semana del plan. Este plan se guarda en la semana de su Fecha, así que lo buscará en el mes equivocado.', isIngles)) + '</div>'
         : '')
     + '<div class="hint" style="margin-top:6px;">'
     + (v.metodo.key === METODO_TALLER ? 'Momentos del Taller Práctico' : te('Método ', isIngles) + v.metodo.key) + ': ' + escapeHtml(momentos)
@@ -11362,8 +11378,21 @@ function applyFechaSelection(s){
 }
 function recomputeSemanalPca(s){
   var pca = findMiPca(s.docenteId, s.nivel, s.especialidad, s.curso, s.asignatura);
-  if(pca) applySemanaSelection(s, pca.id, (semanasDePca(pca.id)[0]||{}).id);
-  else { s.pcaId=''; s.semanaRowId=''; s.unidadDidactica=''; }
+  if(!pca){ s.pcaId=''; s.semanaRowId=''; s.unidadDidactica=''; return; }
+  /* Si el plan YA tiene su semana elegida, se respeta: se busca en el PCA nuevo la semana que
+     contenga esa fecha y, si ninguna calza, se vincula la primera SIN tocar las fechas.
+     Antes se saltaba siempre a la primera semana del PCA, que además reescribía Fecha Inicio,
+     Fecha Fin y la fecha del Día 1. Resultado: corregirle la asignatura a un plan ya escrito lo
+     mandaba a la primera semana del año lectivo — el plan desaparecía de noviembre y reaparecía
+     en agosto, con el día 1 cambiado de fecha. La precarga de la primera semana se mantiene solo
+     donde tiene sentido: en un plan nuevo, que todavía no tiene fecha. */
+  if(s.fechaInicio){
+    s.pcaId = pca.id;
+    s.semanaRowId = '';
+    applyFechaSelection(s);
+    return;
+  }
+  applySemanaSelection(s, pca.id, (semanasDePca(pca.id)[0]||{}).id);
 }
 
 function openSemanalForm(semId, returnTo){
