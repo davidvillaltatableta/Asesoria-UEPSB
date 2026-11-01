@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261030191124">
+<meta name="app-build" content="20261031203442">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -8665,7 +8665,9 @@ var PCA_EN = {
   ' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.':
     ' needs Learning Activities, Resources, Assessment Instruments and a link to the slides.',
   ' necesita Actividades, Recursos e Instrumentos de evaluación. Esta asignatura no requiere enlace de diapositivas.':
-    ' needs Learning Activities, Resources and Assessment Instruments. This subject does not require a slides link.'
+    ' needs Learning Activities, Resources and Assessment Instruments. This subject does not require a slides link.',
+  'cada día desarrolla al menos uno de esos momentos y la semana completa debe cubrirlos todos (por ejemplo: Presentation el día 1, Practice el día 2 y Production el día 3).':
+    'each day develops at least one of those stages and the whole week must cover them all (for example: Presentation on day 1, Practice on day 2 and Production on day 3).'
 };
 function te(txt, isIngles){ return (isIngles && PCA_EN[txt]!==undefined) ? PCA_EN[txt] : txt; }
 function pcaToolbarHtml(p){
@@ -10464,8 +10466,16 @@ function analizarMetodoBloque(actividades, metodoKey){
 /* Núcleo compartido por el Plan Semanal (un bloque = un día) y el Taller Práctico (un bloque = una
    semana de una fase). Cada bloque llega ya normalizado como
    {etiqueta, actividades, recursos, evaluacion, etiquetaEvaluacion}. */
-function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
+function validarBloquesPlan(bloques, metodoKey, exigirEnlace, momentosPorSemana){
   var metodo = metodoDeClase(metodoKey);
+  /* Por cobertura: el ciclo del método no se exige dentro de cada bloque, sino a lo largo de todo
+     el documento — cada bloque desarrolla al menos uno de los momentos y el conjunto los cubre
+     todos. Es así siempre en el Taller Práctico, y también en los Planes Semanales de los docentes
+     a los que el asesor les activó "momentos a lo largo de la semana" (ver
+     docenteDesarrollaMomentosPorSemana). No se aplica al método combinado ERCA+ACC, que ya tiene su
+     propia regla de conjunto y no lleva lista propia de momentos. */
+  var porCobertura = !!(metodo.coberturaMomentos || (momentosPorSemana && !metodo.combina && metodo.momentos.length));
+  var esTaller = metodoKey === METODO_TALLER;
   var faltanCasilleros = [], problemasMetodo = [], faltanEnlaces = [];
   var aplicadosEnPlan = {};
   bloques.forEach(function(b){
@@ -10480,7 +10490,7 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
     if(b.exento) return;
     /* Método por cobertura (Taller Práctico): basta con que el bloque desarrolle UNO de los
        momentos; los que desarrolle se anotan para el control del conjunto, más abajo. */
-    if(metodo.coberturaMomentos){
+    if(porCobertura){
       var anTP = analizarMomentosMetodo(b.actividades, metodoKey);
       var desarrollados = anTP.metodo.momentos.map(function(m){ return m.label; }).filter(function(l){
         return anTP.faltantes.indexOf(l) === -1 && anTP.sinDesarrollar.indexOf(l) === -1;
@@ -10489,7 +10499,8 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
       if(!desarrollados.length){
         problemasMetodo.push(anTP.sinDesarrollar.length
           ? b.etiqueta + ': ' + anTP.sinDesarrollar.join(', ') + ' sin desarrollar'
-          : b.etiqueta + ': no desarrolla ninguno de los momentos del taller');
+          : b.etiqueta + (esTaller ? ': no desarrolla ninguno de los momentos del taller'
+                                   : ': no desarrolla ninguno de los momentos del método ' + metodoKey));
       }
       if(exigirEnlace && !tieneEnlaceDiapositivas(b.actividades, b.recursos)) faltanEnlaces.push(b.etiqueta);
       return;
@@ -10521,9 +10532,9 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace){
   }
   /* Cierre del método por cobertura: los tres momentos deben aparecer al menos una vez en todo el
      taller, aunque ninguna semana los tenga los tres juntos. */
-  if(metodo.coberturaMomentos && bloques.length && !faltanCasilleros.length){
+  if(porCobertura && bloques.length && !faltanCasilleros.length){
     metodo.momentos.forEach(function(m){
-      if(!aplicadosEnPlan[m.label]) problemasMetodo.push('Ninguna semana desarrolla ' + m.label);
+      if(!aplicadosEnPlan[m.label]) problemasMetodo.push((esTaller ? 'Ninguna semana desarrolla ' : 'Ningún día desarrolla ') + m.label);
     });
   }
   return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
@@ -10790,10 +10801,36 @@ function actividadesRepetidasTaller(t){
    se cachea: su contenido cambia mientras el docente escribe y el recuadro de arriba tiene que
    responder en vivo. */
 var VALIDACION_CACHE = {}, VALIDACION_CACHE_CUENTA = 0;
+/* Versión del cronograma escolar. La revisión de un plan NO depende solo del plan y de su serie:
+   también de qué días son feriado o actividad interna, que es lo que exime a ese día de desarrollar
+   el método y de llevar el enlace de las diapositivas. El cronograma vive en otra colección y llega
+   al navegador unos instantes DESPUÉS de los planes, así que sin esta parte en la clave el primer
+   dibujado —hecho con el cronograma todavía vacío— dejaba cacheado un "Corregir" falso en los
+   planes con un día de feriado o de actividad interna, y ya no se arreglaba en toda la sesión.
+   Era exactamente lo que veían algunos docentes y el asesor no: dependía del orden en que cada
+   navegador terminó de bajar las colecciones. */
+function selloCronograma(){
+  var rec = cronogramaRecord();
+  return rec ? (rec.updatedAt || 'guardado') : 'semilla';
+}
+/* ---------- Momentos a lo largo de la semana ----------
+   Con grupos de niños pequeños o de nivel inicial, un ciclo completo del método no entra en una
+   sola clase: el lunes se presenta, el martes se practica y el miércoles se produce. Para esos
+   docentes el asesor activa esta casilla en su ficha (Administración → Docentes → Editar) y su
+   Plan Semanal se revisa por COBERTURA: cada día desarrolla al menos uno de los momentos y la
+   semana completa debe cubrirlos todos. Es una decisión pedagógica del asesor sobre un docente
+   concreto, no una regla general: por eso vive en su ficha y no en el código. */
+function docenteDesarrollaMomentosPorSemana(docenteId){
+  var d = allDocentes().find(function(x){ return x.id === docenteId; });
+  return !!(d && d.momentosPorSemana);
+}
 function validarPlanSemanal(s){
   var editando = state.editingSemanal && state.editingSemanal.id === s.id;
   if(editando) return validarPlanSemanalCalculo(s);
-  var clave = s.id + '|' + (s.updatedAt||'') + '|' + selloSeriePlan(s);
+  /* La clave lleva también cómo se le revisa el método a este docente: si el asesor cambia la
+     casilla, los planes ya revisados tienen que volver a revisarse. */
+  var clave = s.id + '|' + (s.updatedAt||'') + '|' + selloSeriePlan(s) + '|' + selloCronograma()
+    + '|' + (docenteDesarrollaMomentosPorSemana(s.docenteId) ? 'semana' : 'dia');
   /* Tope de memoria para sesiones largas. */
   if(VALIDACION_CACHE_CUENTA > 4000){ VALIDACION_CACHE = {}; VALIDACION_CACHE_CUENTA = 0; }
   var memo = VALIDACION_CACHE[clave];
@@ -10807,11 +10844,12 @@ function validarPlanSemanalCalculo(s){
   var dias = s.dias || [];
   var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
   var exigirEnlace = !asignaturaExentaDiapositivas(s.asignatura);
+  var porSemana = docenteDesarrollaMomentosPorSemana(s.docenteId);
   var r = validarBloquesPlan(dias.map(function(dia, i){
     return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion,
              /* Ver esFeriadoEscolar: los feriados del cronograma no exigen método ni diapositivas. */
              exento: esFeriadoEscolar(dia.fecha) };
-  }), metodoKey, exigirEnlace);
+  }), metodoKey, exigirEnlace, porSemana);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
   var completo = dias.length > 0 && !faltanCasilleros.length;
   var diasFeriado = dias.map(function(dia, i){
@@ -10833,6 +10871,9 @@ function validarPlanSemanalCalculo(s){
     faltanEnlaces: faltanEnlaces,
     metodo: metodoDeClase(metodoKey),
     exigeEnlace: exigirEnlace,
+    /* Para el panel del formulario: avisa que a este docente el método se le revisa a lo largo de
+       la semana y no dentro de cada día. */
+    momentosPorSemana: porSemana,
     metodoImpuesto: asignaturaEsIngles(s.asignatura)
   };
 }
@@ -11058,6 +11099,12 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
     + '<div class="hint" style="margin-top:6px;">'
     + (v.metodo.key === METODO_TALLER ? 'Momentos del Taller Práctico' : te('Método ', isIngles) + v.metodo.key) + ': ' + escapeHtml(momentos)
     + (v.metodo.key === METODO_INGLES ? te(' (obligatorio en Inglés)', isIngles) : '')
+    /* Docente con los momentos repartidos en la semana: se le dice explícitamente, porque si no
+       leería que "cada día" debe desarrollar el método completo, que es justo lo que no se le
+       pide. */
+    + (v.momentosPorSemana
+        ? ' · ' + escapeHtml(te('cada día desarrolla al menos uno de esos momentos y la semana completa debe cubrirlos todos (por ejemplo: Presentation el día 1, Practice el día 2 y Production el día 3).', isIngles))
+        : '')
     + ' · ' + escapeHtml(te(etiquetaCadaBloque, isIngles))
     + (v.exigeEnlace
         ? te(' necesita Actividades, Recursos, Instrumentos de evaluación y un enlace a las diapositivas.', isIngles)
@@ -13881,7 +13928,9 @@ function renderAdminDocentes(){
     + '<tr>'
     + '  <td class="tabular">' + (i+1) + '</td>'
     + '  <td>' + escapeHtml(x.titulo||'—') + '</td>'
-    + '  <td>' + escapeHtml(x.nombres) + ' ' + escapeHtml(x.apellidos) + '</td>'
+    + '  <td>' + escapeHtml(x.nombres) + ' ' + escapeHtml(x.apellidos)
+    + (x.momentosPorSemana ? '<div><span class="pill pill-blue" title="Sus planes se revisan por cobertura: cada día desarrolla al menos uno de los momentos y la semana completa los cubre todos.">Momentos a lo largo de la semana</span></div>' : '')
+    + '</td>'
     + '  <td class="tabular">' + escapeHtml(x.ci) + '</td>'
     + '  <td>' + escapeHtml(x.email) + '</td>'
     + '  <td class="tabular">' + escapeHtml(x.usuarioId) + '</td>'
@@ -13944,6 +13993,16 @@ function renderAdminEditDocente(){
   + '  <div class="field"><label>E-mail institucional (correo de acceso)</label><input type="email" id="adTEmail" value="' + escapeHtml(target.email) + '" disabled /><div class="hint">El correo de acceso no se puede cambiar desde aquí una vez creada la cuenta.</div></div>'
   + '  <div class="field"><label>ID a usar <span class="required">*</span></label><input type="text" id="adTUserId" value="' + escapeHtml(target.usuarioId) + '" /></div>'
   + '  <div class="field"><label>Rol</label><select class="cell-select" id="adTRol">' + optionsHtml(['docente','jefeingles','admin','directivo','dece','inspector'],target.role||'docente', null, function(r){ return ROLE_LABELS[r]; }) + '</select></div>'
+  /* Decisión pedagógica del asesor sobre este docente en particular (ver
+     docenteDesarrollaMomentosPorSemana): con niños pequeños el ciclo del método no cabe en una
+     clase y se reparte entre los días de la semana. */
+  + '  <div class="field"><label>Desarrollo del método</label>'
+  + '    <label style="display:flex; align-items:flex-start; gap:8px; font-weight:500; cursor:pointer;">'
+  + '      <input type="checkbox" id="adTMomentosSemana" style="margin-top:3px;"' + (target.momentosPorSemana ? ' checked' : '') + ' />'
+  + '      <span>Los momentos del método se desarrollan <b>a lo largo de la semana</b>, no en cada día.</span>'
+  + '    </label>'
+  + '    <div class="hint">Para grupos de niños pequeños o de nivel inicial, donde un ciclo completo no entra en una sola clase: por ejemplo Presentation el día 1, Practice el día 2 y Production el día 3. Se le exige que cada día desarrolle al menos uno de los momentos y que la semana completa los cubra todos. Sin marcar, cada día debe desarrollar el método entero.</div>'
+  + '  </div>'
   + '  <div class="field"><label>Contraseña</label><button type="button" class="btn btn-ghost btn-sm" id="btnResetPwAdminDocente">Enviar correo para restablecer contraseña</button></div>'
   + '  <div style="display:flex; gap:10px; margin-top:10px;">'
   + '    <button class="btn btn-primary" id="btnSaveAdminDocente">Guardar cambios</button>'
@@ -13977,6 +14036,7 @@ async function doSaveAdminDocente(){
 
   target.titulo=titulo; target.nombres=nombres; target.apellidos=apellidos; target.ci=ci; target.telefono=telefono;
   target.usuarioId=usuarioId; target.role=role;
+  target.momentosPorSemana = !!target.momentosPorSemana;
   save(LS.DOCENTES, all.map(function(x){ return x.id===target.id ? target : x; }));
   state.editingAdminDocente = null;
   toast('Docente actualizado correctamente.', 'success');
@@ -13992,6 +14052,8 @@ function bindAdminEditDocenteEvents(){
     el.addEventListener('input', function(){ target[pair[1]] = el.value; });
   });
   document.getElementById('adTRol').addEventListener('change', function(e){ target.role = e.target.value; });
+  var chkMomentos = document.getElementById('adTMomentosSemana');
+  if(chkMomentos) chkMomentos.addEventListener('change', function(){ target.momentosPorSemana = chkMomentos.checked; });
   var prevBtn = document.getElementById('btnPrevDocente');
   if(prevBtn && !prevBtn.disabled) prevBtn.onclick = function(){ state.editingAdminDocente=null; state.adminEditingDocenteId = prevBtn.getAttribute('data-prev-id'); render(); };
   var nextBtn = document.getElementById('btnNextDocente');
