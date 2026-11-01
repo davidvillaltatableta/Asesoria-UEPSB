@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261031203442">
+<meta name="app-build" content="20261031210120">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -10533,9 +10533,16 @@ function validarBloquesPlan(bloques, metodoKey, exigirEnlace, momentosPorSemana)
   /* Cierre del método por cobertura: los tres momentos deben aparecer al menos una vez en todo el
      taller, aunque ninguna semana los tenga los tres juntos. */
   if(porCobertura && bloques.length && !faltanCasilleros.length){
-    metodo.momentos.forEach(function(m){
-      if(!aplicadosEnPlan[m.label]) problemasMetodo.push((esTaller ? 'Ninguna semana desarrolla ' : 'Ningún día desarrolla ') + m.label);
-    });
+    /* Semana recortada por feriados o actividades internas: si quedan menos días de clase que
+       momentos tiene el método, cubrirlos todos es imposible y no se le puede reclamar. En esas
+       semanas basta con que cada día que sí hubo clase desarrolle uno de los momentos; el ciclo
+       completo se le exige cuando la semana tiene días suficientes. */
+    var utiles = bloques.filter(function(b){ return !b.exento; }).length;
+    if(utiles >= metodo.momentos.length){
+      metodo.momentos.forEach(function(m){
+        if(!aplicadosEnPlan[m.label]) problemasMetodo.push((esTaller ? 'Ninguna semana desarrolla ' : 'Ningún día desarrolla ') + m.label);
+      });
+    }
   }
   return { faltanCasilleros: faltanCasilleros, problemasMetodo: problemasMetodo, faltanEnlaces: faltanEnlaces };
 }
