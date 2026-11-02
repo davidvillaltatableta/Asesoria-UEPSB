@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261102093005">
+<meta name="app-build" content="20261102093938">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -15106,6 +15106,14 @@ async function revisarSemanaConIA(pendientes){
     toast('Revisando ' + (i+1) + ' de ' + pendientes.length + ': ' + p.etiqueta + '…', 'success');
     var r = await revisarDiapositivaConIA(p.planId, p.enlace);
     if(r && r.ok){ ok++; costo += (r.uso && r.uso.costoUsd) || 0; } else { fallos++; }
+    /* Sin saldo no tiene sentido seguir: se pararía una por una en todas las que faltan y el acta
+       quedaría llena de fallos que no son de los docentes. */
+    if(r && !r.ok && /saldo|tope mensual|resource-exhausted/i.test(r.error || '')){
+      state.revisionIaEnCurso = false;
+      toast('Lote detenido en la ' + (i+1) + ' de ' + pendientes.length + ': ' + r.error, 'error');
+      render();
+      return;
+    }
     /* Respiro entre una presentación y la siguiente: pedidas en ráfaga, Canva empieza a devolver
        páginas sin imágenes y la revisión falla por culpa del ritmo, no del contenido. */
     if(i < pendientes.length - 1) await new Promise(function(res){ setTimeout(res, 4000); });
