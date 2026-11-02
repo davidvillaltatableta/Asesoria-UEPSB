@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261102093938">
+<meta name="app-build" content="20261102095310">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -3349,6 +3349,7 @@ function renderDashboard(d){
   + (isAdmin ? '  <button class="action-card" data-go="manualadmin"><div class="ic">📘</div><h3>Manual del Administrador</h3><p>Guía de todas las funciones exclusivas de administración.</p></button>' : '')
   + '</div>'
   + miPresentacionHtml(d)
+  + misNoPresentadosHtml(d)
   + miRevisionDiapositivasHtml(d)
   + cronogramaHtml(d);
 }
@@ -3393,6 +3394,48 @@ function miPresentacionHtml(d){
   + '  <h2>Mi presentación de planes semanales</h2>'
   + '  <div class="card-sub">Así queda registrada tu entrega de cada plan del mes. La puntualidad se mide contra la fecha y hora límite de la semana de cada plan.</div>'
   + '  <div class="field" style="max-width:260px; margin-bottom:12px;"><label>Mes</label><input class="cell-input" type="month" id="miPresMes" value="' + escapeHtml(mes) + '" /></div>'
+  + cuerpo
+  + '</div>';
+}
+/* ---------- Mis planes no presentados (en Inicio) ----------
+   La contracara de la tarjeta anterior: aquella muestra lo que el docente SÍ entregó; esta, lo que
+   debía entregar y no aparece. Se calcula con la misma función que usa el reporte del asesor
+   (filasNoPresentadasDocente) y con su criterio recomendado —los pares asignatura + curso que ESE
+   docente ya presentó alguna vez—, así que el docente ve exactamente lo que ve el asesor y puede
+   ponerse al día antes de que se lo reclamen. Solo entran semanas cuya fecha límite ya venció:
+   mientras el plazo siga abierto no se le reclama nada a nadie. */
+function misNoPresentadosHtml(d){
+  if(!load(LS.SEMANAL).some(function(x){ return x.docenteId === d.id; })) return '';
+  var f = state.miPresentacionForm || (state.miPresentacionForm = {mes: mesActualISO()});
+  var mes = f.mes || mesActualISO();
+  var anio = parseInt(mes.slice(0,4),10), m = parseInt(mes.slice(5,7),10);
+  var ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+  var desde = mes + '-01', hasta = mes + '-' + String(ultimo).padStart(2,'0');
+  var filas = filasNoPresentadasDocente(d.id, desde, hasta, '', 'habitual').sort(function(a,b){
+    return (a.semanaInicio||'').localeCompare(b.semanaInicio||'') || (a.asignatura||'').localeCompare(b.asignatura||'');
+  });
+  var cuerpo, borde;
+  if(!filas.length){
+    borde = 'var(--green-600)';
+    cuerpo = '<div class="empty-state"><div class="ic">✅</div>Estás al día: no tienes planes pendientes de las semanas de este mes cuyo plazo ya venció.</div>';
+  } else {
+    borde = 'var(--red-600)';
+    var filasHtml = filas.map(function(x){
+      return '<tr>'
+        + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong></td>'
+        + '<td>' + escapeHtml(x.curso||'—') + '</td>'
+        + '<td>' + fmtDate(x.semanaInicio) + ' al ' + fmtDate(x.semanaFin) + '</td>'
+        + '<td><span class="pill pill-red">No presentado</span>'
+        + '<div class="hint" style="margin-top:3px;">Venció el ' + escapeHtml(fmtDateTimeLocal(x.limite)) + '</div></td>'
+        + '</tr>';
+    }).join('');
+    cuerpo = '<div class="table-wrap"><table><thead><tr><th>Asignatura</th><th>Curso</th><th>Semana</th><th>Estado</th></tr></thead><tbody>' + filasHtml + '</tbody></table></div>';
+  }
+  return ''
+  + '<div class="card" style="margin-top:18px; border-top:4px solid ' + borde + ';">'
+  + '  <h2>Mis planes no presentados</h2>'
+  + '  <div class="card-sub">Lo que el sistema esperaba de ti en las semanas de este mes y no encuentra. Se compara con lo que sueles presentar (cada asignatura y curso que ya planificaste alguna vez) y solo aparecen las semanas cuyo plazo ya venció; las asignaturas de Taller Práctico no entran aquí. Es el mismo listado que ve el asesor pedagógico.</div>'
+  + '  <div class="hint" style="margin-bottom:10px;">Mes: <b>' + escapeHtml(mes) + '</b> — se cambia en el selector de la tarjeta de arriba.</div>'
   + cuerpo
   + '</div>';
 }
