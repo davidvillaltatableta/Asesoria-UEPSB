@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261101204418">
+<meta name="app-build" content="20261102093005">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -5774,7 +5774,10 @@ function normCursoCmp(c){
   var clave = c || '';
   var memo = NORM_CURSO_CACHE.get(clave);
   if(memo !== undefined) return memo;
-  var calculado = clave.replace(/[°º]/g, '').replace(/./g, '').replace(/s+/g, ' ').trim().toUpperCase();
+  /* Ojo con las barras invertidas: \. es "un punto" y \s+ es "espacios". Sin ellas, /./ significa
+     CUALQUIER carácter y la función devolvía siempre cadena vacía — con lo que todos los cursos
+     se comparaban como si fueran el mismo. */
+  var calculado = clave.replace(/[°º]/g, '').replace(/\./g, '').replace(/\s+/g, ' ').trim().toUpperCase();
   if(NORM_CURSO_CACHE.size > 500) NORM_CURSO_CACHE.clear();
   NORM_CURSO_CACHE.set(clave, calculado);
   return calculado;
