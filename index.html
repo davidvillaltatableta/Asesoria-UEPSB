@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261102095310">
+<meta name="app-build" content="20261103184619">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14857,6 +14857,16 @@ function plataformaDeDiapositiva(url){
   if(/prezi/i.test(url)) return 'Prezi';
   return 'Otra';
 }
+/* ¿Este enlace lo puede abrir el servidor por su cuenta para la revisión automática? (ver
+   diapositivas.js en las funciones). Canva y Google Slides siempre; de Google Drive, solo los
+   enlaces que apuntan a UN archivo —hay docentes que arman las diapositivas en LaTeX o PowerPoint
+   y suben el PDF a Drive—, nunca una carpeta, que no dice cuál de los archivos hay que revisar. */
+function enlaceRevisablePorIa(e){
+  if(e.plataforma === 'Canva' || e.plataforma === 'Google Slides') return true;
+  if(e.plataforma !== 'Google Drive') return false;
+  if(/\/drive\/(u\/\d+\/)?folders\//i.test(e.url)) return false;
+  return /\/file\/d\/|[?&]id=/.test(e.url);
+}
 /* Enlaces de diapositivas de un plan, con el momento del método en el que aparece cada uno. */
 function diapositivasDelPlan(s){
   var metodoKey = metodoEfectivo(s.asignatura, s.metodo);
@@ -15029,7 +15039,7 @@ function filasRevisionDiapositivas(docenteId, lunes){
       motivoExencion: motivoSinExigirDiapositiva(s),
       diapositivas: diapositivasDelPlan(s),
       /* Primer enlace que el servidor sí puede abrir para la revisión automática. */
-      enlaceIa: (diapositivasDelPlan(s).find(function(e){ return e.plataforma==='Canva' || e.plataforma==='Google Slides'; })||{}).url || '',
+      enlaceIa: (diapositivasDelPlan(s).find(enlaceRevisablePorIa)||{}).url || '',
       /* ¿Este plan ya tiene revisión guardada (de la IA o del asesor)? */
       revisada: yaTieneRevision(s.id),
       marca: revisionDiapoDe(s.id)
@@ -15038,7 +15048,8 @@ function filasRevisionDiapositivas(docenteId, lunes){
 }
 
 /* ---------- Revisión automática con IA ----------
-   El servidor abre la presentación (las imágenes públicas de Canva o el PDF de Google Slides),
+   El servidor abre la presentación (las imágenes públicas de Canva, el PDF de Google Slides o el
+   PDF suelto compartido en Google Drive),
    se la muestra a Claude junto con el método y los temas que el docente planificó, y devuelve las
    mismas respuestas que el asesor marcaría a mano, más una observación en viñetas. La función
    ESCRIBE ella misma la marca en revision_diapositivas (ver index.js en las funciones), así que
@@ -15118,9 +15129,7 @@ function revisionAutomaticaTrasGuardar(record){
   if(REVISION_DIAPO_EN_CURSO[record.id]) return;
   /* Solo hacia adelante: un plan de una semana que ya empezó no se revisa (ver semanaPorDelante). */
   if(!semanaPorDelante(record)) return;
-  var enlace = (diapositivasDelPlan(record).find(function(e){
-    return e.plataforma === 'Canva' || e.plataforma === 'Google Slides';
-  }) || {}).url || '';
+  var enlace = (diapositivasDelPlan(record).find(enlaceRevisablePorIa) || {}).url || '';
   if(!enlace) return;
   /* Se revisa cuando no hay nada, cuando el intento anterior falló, o cuando la presentación
      enlazada cambió respecto de la que se revisó. Nunca se pisa una revisión hecha a mano por el
@@ -15273,7 +15282,7 @@ function renderAdminRevisionDiapositivas(){
               ? '<div><span class="pill pill-gold" style="margin-top:4px;" title="' + escapeHtml(REVISION_DIAPO_ERRORES[x.plan.id] || x.marca.error || '') + '">No se pudo leer la presentación</span></div>' : '')
           + '</td>'
         /* Solo se ofrece el botón cuando la plataforma se puede leer desde el servidor (ver
-           diapositivas.js en las funciones): Canva y Google Slides.
+           enlaceRevisablePorIa): Canva, Google Slides y los PDF sueltos de Google Drive.
            La fila ya revisada lleva otra clase para que "Revisar todo con IA" NO la vuelva a
            pagar: el lote es para lo que falta. Volver a revisarla sigue siendo posible, pero de a
            una y a propósito. */
