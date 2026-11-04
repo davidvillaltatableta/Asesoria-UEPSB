@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261103184619">
+<meta name="app-build" content="20261103203059">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -14926,8 +14926,35 @@ var MOTIVOS_SIN_DIAPOSITIVA = [
   {clave:'exposiciones', texto:'Exposiciones de los estudiantes'},
   {clave:'experimentacion', texto:'Experimentación'},
   {clave:'laboratorio', texto:'Práctica de laboratorio'},
+  {clave:'taller', texto:'Taller: los estudiantes trabajan toda la clase'},
   {clave:'practica', texto:'Otra clase práctica'}
 ];
+/* ¿La semana de este plan cae dentro de un Taller Práctico del mismo docente, asignatura y curso?
+   El Taller Práctico se trabaja por semanas dentro de cada fase y la clase se va en que los
+   estudiantes construyan el producto, así que esa semana no se exige diapositiva ni se manda nada
+   a revisar. Se compara contra las semanas declaradas en las fases; si una fase no tiene fechas
+   propias, vale el rango del taller completo.
+   Se mira el TALLER, que es un dato del sistema, y no la palabra "taller" escrita en el plan: esa
+   aparece en el casillero de Evaluación de uno de cada cuatro días del año ("Taller en clase:
+   pág. 9 del libro") y casi siempre es la consolidación de una clase normal, con diapositivas que
+   sí hay que revisar. */
+function semanaDeTallerPractico(s){
+  if(!s || !s.fechaInicio) return false;
+  var desde = s.fechaInicio, hasta = s.fechaFin || addDays(s.fechaInicio, 4);
+  return load(LS.TALLER).some(function(t){
+    if(t.docenteId !== s.docenteId) return false;
+    if((t.asignatura||'') !== (s.asignatura||'')) return false;
+    if(normCursoCmp(t.curso) !== normCursoCmp(s.curso)) return false;
+    var rangos = [];
+    (t.fases||[]).forEach(function(f){
+      (f.semanas||[]).forEach(function(w){
+        if(w && w.fechaInicio && w.fechaFin) rangos.push([w.fechaInicio, w.fechaFin]);
+      });
+    });
+    if(!rangos.length && t.fechaInicio && t.fechaFin) rangos.push([t.fechaInicio, t.fechaFin]);
+    return rangos.some(function(r){ return !(hasta < r[0] || desde > r[1]); });
+  });
+}
 function textoMotivoManual(clave){
   var m = MOTIVOS_SIN_DIAPOSITIVA.filter(function(x){ return x.clave === clave; })[0];
   return m ? m.texto : '';
@@ -14937,6 +14964,7 @@ function textoMotivoManual(clave){
 function motivoSinExigirDiapositiva(s){
   var dias = s.dias || [];
   if(!dias.length) return '';
+  if(semanaDeTallerPractico(s)) return 'Semana de Taller Práctico: no se exige diapositiva';
   var tipos = dias.map(function(dia){
     if(tipoDiaSinClase(dia.fecha)) return 'sinclase';
     if(diaEsDeLeccion(dia)) return 'leccion';
@@ -15033,13 +15061,17 @@ function filasRevisionDiapositivas(docenteId, lunes){
       metodo: metodoDeClase(metodoEfectivo(s.asignatura, s.metodo)).key,
       /* Matemática y Razonamiento matemático llevan dos exigencias propias (ver la hoja). */
       esMatematica: /matem/i.test(s.asignatura||''),
-      /* Cuándo NO se le puede reclamar la diapositiva (ver motivoSinExigirDiapositiva): feriado o
-         actividad interna, día de lección, día de prueba. Basta con que UN día haya sido de clase
-         normal para que se siga exigiendo. */
+      /* Cuándo NO se le puede reclamar la diapositiva (ver motivoSinExigirDiapositiva): semana de
+         Taller Práctico, feriado o actividad interna, día de lección, día de prueba, práctica de
+         laboratorio. Salvo la semana de taller, basta con que UN día haya sido de clase normal
+         para que se siga exigiendo. */
       motivoExencion: motivoSinExigirDiapositiva(s),
       diapositivas: diapositivasDelPlan(s),
-      /* Primer enlace que el servidor sí puede abrir para la revisión automática. */
-      enlaceIa: (diapositivasDelPlan(s).find(enlaceRevisablePorIa)||{}).url || '',
+      /* Primer enlace que el servidor sí puede abrir para la revisión automática. Un plan exento
+         —feriado, lección, prueba, laboratorio, semana de Taller Práctico— no se manda a la IA:
+         esa semana no debía llevar diapositiva, así que juzgarla es gastar dinero en reprochar
+         algo que no se exigía. */
+      enlaceIa: motivoSinExigirDiapositiva(s) ? '' : (diapositivasDelPlan(s).find(enlaceRevisablePorIa)||{}).url || '',
       /* ¿Este plan ya tiene revisión guardada (de la IA o del asesor)? */
       revisada: yaTieneRevision(s.id),
       marca: revisionDiapoDe(s.id)
@@ -15129,6 +15161,9 @@ function revisionAutomaticaTrasGuardar(record){
   if(REVISION_DIAPO_EN_CURSO[record.id]) return;
   /* Solo hacia adelante: un plan de una semana que ya empezó no se revisa (ver semanaPorDelante). */
   if(!semanaPorDelante(record)) return;
+  /* Semana sin clase normal (feriado, lección, prueba, laboratorio, Taller Práctico): no se le
+     exigía diapositiva, así que tampoco se la revisa. */
+  if(motivoSinExigirDiapositiva(record)) return;
   var enlace = (diapositivasDelPlan(record).find(enlaceRevisablePorIa) || {}).url || '';
   if(!enlace) return;
   /* Se revisa cuando no hay nada, cuando el intento anterior falló, o cuando la presentación
@@ -15231,10 +15266,14 @@ function renderAdminRevisionDiapositivas(){
     if(!filas.length) return null;
     var filasHtml = filas.map(function(x){
       var enlacesHtml = x.diapositivas.length
+        /* Un plan exento puede traer igual un enlace (en la semana de Taller Práctico el docente
+           suele dejar la guía del taller). Se muestra el enlace Y el motivo, porque si no el
+           asesor ve el enlace, no ve el botón de IA y no entiende por qué falta. */
         ? x.diapositivas.map(function(e){
             return '<div style="margin-bottom:3px;"><a href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">' + escapeHtml(e.plataforma) + ' · Día ' + e.dia + '</a>'
               + ' <span class="hint">(' + escapeHtml(e.momento) + ')</span></div>';
           }).join('')
+          + (x.motivoExencion ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>' : '')
         : (x.motivoExencion
             ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>'
             : (asignaturaExentaDiapositivas(x.asignatura)
@@ -15501,6 +15540,20 @@ function cargaQueExigePlanSemanal(docenteId, banda){
      por grupo, así que exigirles uno por curso inflaba el reporte con planes que nunca existieron.
    · 'carga': un plan por cada Asignatura + Curso de la carga horaria. El más estricto.
    · 'asignatura': un plan por asignatura, sin importar en cuántos cursos la dicte. */
+/* Etiquetas de curso que el docente DEJÓ de usar. Varios cambiaron a mitad de año cómo escriben el
+   curso —Elizabeth Gómez pasó de "Basica Elemental (2.° EGB)" a "2.º EGB A"; los de ENGLISH pasaron
+   del curso suelto al grupo de nivel—, y el criterio 'habitual', que mira todo lo que presentaron
+   alguna vez, les seguía reclamando la etiqueta vieja todas las semanas para siempre.
+   Se considera abandonada cuando hace un mes que no se usa Y en esa misma asignatura sí hay planes
+   más nuevos: entonces no es que el docente dejara de entregar, es que ese curso ya no existe con
+   ese nombre. Con un mes de margen no se toca a quien alterna etiquetas cada dos o tres semanas
+   (Dorys Cañas presenta "2.º BGU" y "2.º BGU/2.º DIS" en semanas distintas, y las dos siguen
+   vivas). */
+var SEMANAS_PARA_ABANDONAR_CURSO = 4;
+function etiquetaDeCursoAbandonada(ultimaDelCurso, ultimaDeLaAsignatura){
+  if(!ultimaDelCurso || !ultimaDeLaAsignatura) return false;
+  return ultimaDelCurso < addDays(ultimaDeLaAsignatura, -7 * SEMANAS_PARA_ABANDONAR_CURSO);
+}
 function combosExigiblesDocente(docenteId, banda, criterio){
   var out = [], vistos = {};
   function agregar(asignatura, curso, nivel){
@@ -15518,14 +15571,21 @@ function combosExigiblesDocente(docenteId, banda, criterio){
       if(s.docenteId!==docenteId || !s.fechaInicio || !s.asignatura) return;
       if(esAsignaturaTallerPractico(s.nivel, s.asignatura)) return;
       if(banda && esEscuelaPorNivelCurso(s.nivel, s.curso) !== (banda==='escuela')) return;
-      var reg = porAsignatura[s.asignatura] || (porAsignatura[s.asignatura] = {cursos:{}, nivel:s.nivel||''});
-      if((s.curso||'').trim()) reg.cursos[normCursoCmp(s.curso)] = s.curso;
+      var reg = porAsignatura[s.asignatura] || (porAsignatura[s.asignatura] = {cursos:{}, nivel:s.nivel||'', ultima:''});
+      if(s.fechaInicio > reg.ultima) reg.ultima = s.fechaInicio;
+      if(!(s.curso||'').trim()) return;
+      var clave = normCursoCmp(s.curso);
+      var cur = reg.cursos[clave] || (reg.cursos[clave] = {etiqueta:s.curso, ultima:''});
+      cur.etiqueta = s.curso;
+      if(s.fechaInicio > cur.ultima) cur.ultima = s.fechaInicio;
     });
     Object.keys(porAsignatura).forEach(function(a){
       var reg = porAsignatura[a];
-      var claves = Object.keys(reg.cursos);
+      var claves = Object.keys(reg.cursos).filter(function(k){
+        return !etiquetaDeCursoAbandonada(reg.cursos[k].ultima, reg.ultima);
+      });
       if(!claves.length) agregar(a, '', reg.nivel);
-      else claves.forEach(function(k){ agregar(a, reg.cursos[k], reg.nivel); });
+      else claves.forEach(function(k){ agregar(a, reg.cursos[k].etiqueta, reg.nivel); });
     });
     return out;
   }
