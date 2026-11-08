@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261108150530">
+<meta name="app-build" content="20261108175824">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -3484,10 +3484,12 @@ function miRevisionDiapositivasHtml(d){
       var aprobada = revisionAprobada(x.marca, x.esMatematica);
       var estado;
       if(enCurso) estado = '<span class="pill pill-gold">Revisando…</span>';
-      else if(aprobada) estado = '<span class="pill pill-green">✓ Aprobada</span>';
+      else if(aprobada) estado = '<span class="pill pill-green">✓ Aprobada</span>'
+        + (x.marca.revisadaEn ? ' <span class="hint">(' + escapeHtml(fmtDateTime(x.marca.revisadaEn)) + ')</span>' : '');
       else if(revisada) estado = '<span class="pill pill-gold">Por corregir: ' + rojos.length
         + (rojos.length === 1 ? ' punto' : ' puntos') + '</span>'
-        + ' <span class="hint">(' + (x.marca.origen === 'IA' ? 'revisó la IA' : 'revisó el asesor') + ')</span>';
+        + ' <span class="hint">(' + (x.marca.origen === 'IA' ? 'revisó la IA' : 'revisó el asesor')
+        + (x.marca.revisadaEn ? ' el ' + escapeHtml(fmtDateTime(x.marca.revisadaEn)) : '') + ')</span>';
       else if(error) estado = '<span class="pill pill-red" title="' + escapeHtml(error) + '">No se pudo leer</span>';
       else if(x.motivoExencion) estado = '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>';
       else if(x.marca.sinDiapositiva) estado = '<span class="pill pill-blue">No se exige: ' + escapeHtml(textoMotivoManual(x.marca.sinDiapositiva)) + '</span>';
@@ -3582,10 +3584,16 @@ function bindDashboardEvents(){
       if(r && r.ok && r.sinCambios){
         toast('Tus diapositivas siguen siendo las mismas que se revisaron: no hay nada nuevo que comprobar. Corrígelas con las indicaciones, guárdalas y vuelve a pulsar.', 'error');
       } else if(r && r.ok){
-        var fila = filasRevisionDiapositivas(currentDocente().id, lunesDeSemanaIso((load(LS.SEMANAL).find(function(x){ return x.id===planId; })||{}).fechaInicio || todayISO()))
-          .find(function(x){ return x.plan.id === planId; });
-        var ok = fila && revisionAprobada(fila.marca, fila.esMatematica);
-        toast(ok ? '¡Listo! Tus diapositivas quedaron aprobadas.' : 'Revisadas de nuevo. Todavía quedan puntos por corregir: míralos abajo.', ok ? 'success' : 'error');
+        /* El veredicto se lee de lo que acaba de devolver el servidor, no de la copia en memoria:
+           el eco de Firestore todavía no ha llegado y leerla daría el resultado ANTERIOR. */
+        var plan = load(LS.SEMANAL).find(function(x){ return x.id===planId; }) || {};
+        var mate = /matem/i.test(plan.asignatura||'');
+        var marca = marcaSegunElPlan(Object.assign({origen:'IA'}, r.marca || {}), plan);
+        var rojos = criteriosEnRojo(marca, mate);
+        toast(revisionAprobada(marca, mate)
+          ? '¡Listo! Tus diapositivas quedaron aprobadas.'
+          : 'Revisadas de nuevo: todavía quedan ' + rojos.length + (rojos.length === 1 ? ' punto' : ' puntos') + ' por corregir. Míralos abajo.',
+          revisionAprobada(marca, mate) ? 'success' : 'error');
       } else {
         toast((r && r.error ? r.error : 'No se pudo comprobar.') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
       }
@@ -15175,6 +15183,20 @@ function ajustarAlturaObservacion(el){
   el.style.height = 'auto';
   el.style.height = (el.scrollHeight + 2) + 'px';
 }
+/* Instrumentos de evaluación que el plan declara, uno por día, sin los enlaces (que no aportan
+   nada al juicio y gastan espacio). Es la prueba de que la tarea de cierre existe aunque no esté
+   dentro de las diapositivas. */
+function cierresDeclaradosDelPlan(plan){
+  var fuera = {};
+  var salida = [];
+  (plan.dias||[]).forEach(function(dia){
+    var t = richTextToPlain(dia.evaluacion||'').replace(/https?:\/\/\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    if(!t || fuera[t]) return;
+    fuera[t] = 1;
+    salida.push(t.slice(0, 220));
+  });
+  return salida.slice(0, 6);
+}
 function datosRevisionDeFila(plan, enlace){
   var temas = [];
   (plan.dias||[]).forEach(function(dia){ splitItemsList(dia.contenidos).forEach(function(t){ if(temas.indexOf(t)===-1) temas.push(t); }); });
@@ -15188,6 +15210,11 @@ function datosRevisionDeFila(plan, enlace){
     docente: d ? nombreFormal(d) : '',
     semana: fmtDate(plan.fechaInicio) + ' al ' + fmtDate(plan.fechaFin),
     temas: temas.slice(0, 25),
+    /* Lo que el docente declara como cierre de cada día. Muchas clases consolidan con el taller de
+       una página del libro o una ficha impresa: la diapositiva solo lo anuncia, y sin este dato la
+       IA daba por ausente la Consolidación. Sale del casillero de Evaluación, que es donde se
+       declara el instrumento. */
+    cierres: cierresDeclaradosDelPlan(plan),
     /* Un plan replanificado retoma a propósito contenidos de otra semana (ver
        MOTIVOS_REPLANIFICACION), así que no se le juzga la correspondencia con los temas de ESTA
        semana. El servidor lo vuelve a comprobar contra la base; esto es solo para que pueda
@@ -15220,12 +15247,79 @@ async function revisarDiapositivaConIA(planId, enlace, soloSiCambio){
     if(soloSiCambio) datos.soloSiCambio = true;
     var res = await llamarFuncionIA('revisarDiapositivas', datos, 540000);
     delete REVISION_DIAPO_EN_CURSO[planId];
-    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0, sinCambios: !!res.sinCambios };
+    /* El acta la escribe el servidor y llega por la sincronización en tiempo real, pero eso tarda
+       un instante: si no se adelanta aquí, el docente pulsa el botón y sigue viendo el veredicto
+       viejo hasta que llegue el eco. Se coloca de una vez en la copia en memoria. */
+    if(!res.sinCambios && res.marca){
+      anotarRevisionLocal(planId, Object.assign({}, res.marca, {
+        origen: 'IA', enlaceRevisado: enlace, revisadaEn: new Date().toISOString(), error: ''
+      }));
+    }
+    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0, sinCambios: !!res.sinCambios, marca: res.marca || null };
   }catch(err){
     delete REVISION_DIAPO_EN_CURSO[planId];
     REVISION_DIAPO_ERRORES[planId] = mensajeErrorIA(err);
     return { ok:false, error: mensajeErrorIA(err) };
   }
+}
+/* ---------- ¿El docente ya tocó su presentación? ----------
+   El acta guarda una huella de las diapositivas que se juzgaron (ver huellaDeBloques en las
+   funciones). Comprobar si cambiaron es abrir la presentación y comparar esa huella: leer una
+   página pública NO CUESTA NADA, así que esto se puede pedir fila por fila o para toda la semana
+   sin gastar un centavo y aunque la cuenta esté sin saldo.
+   El resultado vive en memoria —es información del momento, no del plan— hasta que se recargue. */
+var REVISION_DIAPO_CAMBIO = {};
+/* Deja el acta recién emitida en la copia en memoria, sin escribir nada en la base: a esta
+   colección solo escribe la Cloud Function (con permisos de servidor), el docente no tiene
+   permiso. Cuando llegue el eco de Firestore la sobrescribirá con la versión autoritativa, que es
+   esta misma. Sirve para que la fila y el mensaje muestren el resultado NUEVO en el acto, tanto en
+   el Inicio del docente como en el acta del asesor que tenga la pantalla abierta. */
+function anotarRevisionLocal(planId, marca){
+  if(!marca) return;
+  var lista = load(LS.REVDIAPO).slice();
+  var i = -1;
+  lista.forEach(function(x, n){ if(x.id === planId) i = n; });
+  var fusionada = Object.assign({}, i === -1 ? {} : lista[i], marca, {id: planId, planId: planId});
+  if(i === -1) lista.push(fusionada); else lista[i] = fusionada;
+  FS_CACHE[LS.REVDIAPO] = lista;
+  marcarDatosCambiados();
+  /* La comprobación "¿la cambió?" que el asesor tuviera en pantalla ya no significa nada: esa
+     presentación acaba de volver a juzgarse. */
+  delete REVISION_DIAPO_CAMBIO[planId];
+  delete REVISION_DIAPO_ERRORES[planId];
+}
+async function comprobarCambioDiapositiva(planId, enlace){
+  var plan = load(LS.SEMANAL).find(function(x){ return x.id===planId; });
+  if(!plan) return { ok:false, error:'Ese plan ya no existe.' };
+  try{
+    var datos = datosRevisionDeFila(plan, enlace);
+    datos.soloComprobar = true;
+    var res = await llamarFuncionIA('revisarDiapositivas', datos, 300000);
+    anotarComprobacion(planId, res.primeraVez ? 'primera' : (res.cambio ? 'cambio' : 'igual'));
+    return { ok:true, cambio: !!res.cambio, primeraVez: !!res.primeraVez };
+  }catch(err){
+    anotarComprobacion(planId, 'error');
+    return { ok:false, error: mensajeErrorIA(err) };
+  }
+}
+/* El resultado se guarda junto al sello de la revisión contra la que se comparó. Si después esa
+   presentación se vuelve a revisar —por ejemplo porque el docente pulsó su botón desde su propia
+   pantalla—, el acta cambia de sello y esta respuesta deja de valer sola, sin que el asesor tenga
+   que acordarse de recargar. */
+function anotarComprobacion(planId, estado){
+  REVISION_DIAPO_CAMBIO[planId] = { estado: estado, revisadaEn: (revisionDiapoDe(planId).revisadaEn || '') };
+}
+function comprobacionVigente(planId){
+  var reg = REVISION_DIAPO_CAMBIO[planId];
+  if(!reg) return '';
+  if(reg.revisadaEn !== (revisionDiapoDe(planId).revisadaEn || '')) return '';
+  return reg.estado;
+}
+/* Señal que no necesita abrir nada: el docente enlazó OTRA presentación distinta de la que se
+   revisó. Sale de lo que ya está guardado, así que vale también para las actas antiguas. */
+function cambioElEnlaceTrasRevisar(x){
+  var revisado = (x.marca && x.marca.enlaceRevisado) || '';
+  return !!(revisado && x.enlaceIa && revisado !== x.enlaceIa);
 }
 /* ---------- La revisión que no hay que pedir ----------
    En cuanto el docente da por terminado su plan (botón Guardar, con todos los casilleros llenos),
@@ -15316,6 +15410,27 @@ function selectSiNoHtml(planId, campo, valor){
   return '<select class="cell-select rev-diapo" data-plan="' + planId + '" data-campo="' + campo + '" style="min-width:70px; font-weight:700; ' + estiloSiNo(valor) + '">'
     + op('', '—') + op('Si', 'Sí') + op('NO', 'NO') + '</select>';
 }
+/* Lo que el asesor ve en cada fila sobre si el docente movió su presentación después de que se la
+   revisaran. Dos señales distintas:
+   · Cambió el ENLACE: se sabe sin abrir nada, comparando lo guardado. Vale para cualquier acta,
+     incluidas las de antes de que existiera la huella.
+   · Cambió el CONTENIDO del mismo enlace: hay que abrir la presentación y comparar la huella. Es
+     gratis, pero hay que pedirlo (botón "¿La cambió?" o el lote de la cabecera). */
+function cambioDesdeLaRevisionHtml(x){
+  if(!x.revisada || !x.enlaceIa) return '';
+  if(cambioElEnlaceTrasRevisar(x)){
+    return '<div style="margin-top:4px;"><span class="pill pill-gold" title="La revisión se hizo sobre otra presentación: ' + escapeHtml(x.marca.enlaceRevisado || '') + '">Enlazó otra presentación</span></div>';
+  }
+  var estado = comprobacionVigente(x.plan.id);
+  var pill = '';
+  if(estado === 'cambio') pill = '<span class="pill pill-gold">La cambió después de revisarla</span>';
+  else if(estado === 'igual') pill = '<span class="pill pill-muted">Sin tocar desde la revisión</span>';
+  else if(estado === 'primera') pill = '<span class="pill pill-blue" title="Esta acta es anterior a que se guardara la huella de las diapositivas. Queda registrada la de hoy: a partir de ahora sí se puede comparar.">Punto de partida registrado</span>';
+  else if(estado === 'error') pill = '<span class="pill pill-red">No se pudo abrir para comparar</span>';
+  return '<div style="margin-top:4px;">'
+    + '<button class="btn btn-ghost btn-sm rev-diapo-cambio" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '" title="Abre la presentación y la compara con la que se revisó. No cuesta nada: no se llama a la IA.">¿La cambió?</button>'
+    + (pill ? ' ' + pill : '') + '</div>';
+}
 function renderAdminRevisionDiapositivas(){
   /* Una sola vez por sesión: subir a Firestore las marcas que quedaron en este navegador de cuando
      se guardaban aquí. Se hace al abrir el acta porque es el momento en que la colección ya está
@@ -15345,6 +15460,9 @@ function renderAdminRevisionDiapositivas(){
        sí se puede revisar siempre, a propósito, desde su propio botón. */
     + '    <div class="field" style="align-self:end; display:flex; gap:8px;">'
     + '      <button class="btn btn-primary" id="btnRevDiapoExcel">Exportar Excel</button>'
+    /* Comprobar cambios no cuesta nada y sirve en cualquier semana, también en las ya dictadas:
+       es justo ahí donde el asesor quiere saber si el docente hizo caso de las indicaciones. */
+    + '      <button class="btn btn-ghost" id="btnRevDiapoCambios" title="Abre todas las presentaciones ya revisadas de esta semana y dice cuáles cambió el docente. No llama a la IA: no cuesta nada.">¿Quién corrigió sus diapositivas?</button>'
     + (iaDisponible() && semanaFutura ? '      <button class="btn btn-gold" id="btnRevDiapoIaTodo">Revisar todo con IA</button>' : '')
     + '    </div>'
     + '  </div>'
@@ -15405,7 +15523,10 @@ function renderAdminRevisionDiapositivas(){
            devolución del asesor son varias viñetas y tiene que leerse entera, sin recortes ni
            barra de desplazamiento interna. */
         + '<td class="no-print" style="min-width:340px;"><textarea class="cell-input rev-diapo-obs" data-plan="' + x.plan.id + '" rows="1" placeholder="Indicaciones para el docente…" style="resize:vertical; overflow:hidden; line-height:1.45; background:#F3E7D8; color:#5B3A1A; border-color:#A9744F;">' + escapeHtml(x.marca.observacion||'') + '</textarea>'
+          /* La fecha de la revisión deja ver de un vistazo que el acta se actualizó: cuando el
+             docente corrige y pulsa su botón, esta fila cambia sola y el sello es más nuevo. */
           + (x.marca.origen === 'IA' ? '<div><span class="pill pill-blue" style="margin-top:4px;">Revisado por IA'
+              + (x.marca.revisadaEn ? ' · ' + escapeHtml(fmtDateTime(x.marca.revisadaEn)) : '')
               + (x.marca.copiadaDe ? ' · misma presentación de otro paralelo' : '')
               + (x.marca.editadaPorAsesor ? ' · ajustado a mano' : '') + '</span></div>' : '')
           /* El fallo puede venir guardado del servidor (origen 'error') o de un intento hecho en
@@ -15421,6 +15542,7 @@ function renderAdminRevisionDiapositivas(){
         + '<td class="no-print">' + (x.enlaceIa
             ? '<button class="btn btn-ghost btn-sm ' + (x.revisada ? 'rev-diapo-ia-otra' : 'rev-diapo-ia') + '" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '">'
               + (x.revisada ? 'Revisar otra vez' : 'Revisar con IA') + '</button>'
+              + cambioDesdeLaRevisionHtml(x)
             : '<span class="hint">—</span>') + '</td>'
         + '</tr>';
     }).join('');
@@ -15542,6 +15664,38 @@ function bindAdminRevisionDiapositivasEvents(){
       render();
     };
   });
+  document.querySelectorAll('button.rev-diapo-cambio').forEach(function(b){
+    b.onclick = async function(){
+      b.disabled = true; b.textContent = 'Comprobando…';
+      var r = await comprobarCambioDiapositiva(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
+      if(r && !r.ok) toast(r.error || 'No se pudo abrir la presentación para compararla.', 'error');
+      render();
+    };
+  });
+  /* Lote de comprobación: barre todas las filas ya revisadas de la semana. No llama a la IA, así
+     que no se pide confirmación de costo; sí se deja un respiro entre una y otra para no hacer que
+     Canva empiece a devolver páginas vacías. */
+  var btnCambios = document.getElementById('btnRevDiapoCambios');
+  if(btnCambios) btnCambios.onclick = async function(){
+    var botones = Array.from(document.querySelectorAll('button.rev-diapo-cambio'));
+    if(!botones.length){ toast('En esta semana no hay presentaciones ya revisadas que comparar.', 'error'); return; }
+    btnCambios.disabled = true;
+    var cambiaron = 0, iguales = 0, primeras = 0, fallos = 0;
+    for(var i = 0; i < botones.length; i++){
+      btnCambios.textContent = 'Comprobando ' + (i+1) + ' de ' + botones.length + '…';
+      var r = await comprobarCambioDiapositiva(botones[i].getAttribute('data-plan'), botones[i].getAttribute('data-enlace'));
+      if(!r.ok) fallos++;
+      else if(r.primeraVez) primeras++;
+      else if(r.cambio) cambiaron++;
+      else iguales++;
+      if(i < botones.length - 1) await new Promise(function(res){ setTimeout(res, 1500); });
+    }
+    toast(cambiaron + ' corrigieron sus diapositivas · ' + iguales + ' siguen igual'
+      + (primeras ? ' · ' + primeras + ' sin punto de comparación (queda registrado desde hoy)' : '')
+      + (fallos ? ' · ' + fallos + ' no se pudieron abrir' : '')
+      + '. No se gastó nada.', cambiaron ? 'success' : 'error');
+    render();
+  };
   var btnTodo = document.getElementById('btnRevDiapoIaTodo');
   if(btnTodo) btnTodo.onclick = function(){
     var pendientes = Array.from(document.querySelectorAll('button.rev-diapo-ia')).map(function(b){
@@ -16730,6 +16884,12 @@ function mostrarBannerActualizacion(){
 }
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') verificarVersionNueva(); });
 setTimeout(verificarVersionNueva, 8000);
+/* Y cada diez minutos mientras la pestaña siga abierta. Sin esto, la comprobación dependía de que
+   el docente saliera de la pestaña y volviera: quien deja el sistema abierto toda la mañana (o
+   trabaja en el teléfono, donde ese evento no siempre llega) se quedaba con la versión vieja sin
+   enterarse — pasó con el botón de "Comprobar si ya la corregí", que ya estaba publicado y una
+   docente seguía sin verlo. */
+setInterval(verificarVersionNueva, 600000);
 
 /* ============================= INIT ============================= */
 render();
