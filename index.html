@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261103203059">
+<meta name="app-build" content="20261108150530">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -3450,6 +3450,21 @@ function siNoRevisionBadge(valor){
   if(valor === 'NO') return '<span class="pill pill-red">NO</span>';
   return '<span class="hint">—</span>';
 }
+/* Criterios que se le exigen a una presentación. Los dos últimos solo se juzgan en Matemática y
+   Razonamiento matemático; en el resto llegan vacíos y no cuentan. */
+var CRITERIOS_REVISION = ['momentos', 'acordes', 'final', 'dua', 'ortografia', 'inicio'];
+function criteriosEnRojo(marca, esMatematica){
+  var claves = CRITERIOS_REVISION.concat(esMatematica ? ['previos', 'ejercicios'] : []);
+  return claves.filter(function(k){ return marca[k] === 'NO'; });
+}
+/* "Aprobada" = la revisión existe y no dejó ningún NO. Es lo que el docente quiere saber de un
+   vistazo: si ya puede dejar de corregir sus diapositivas. */
+function revisionAprobada(marca, esMatematica){
+  if(!marca || marca.origen === 'error') return false;
+  var claves = CRITERIOS_REVISION.concat(esMatematica ? ['previos', 'ejercicios'] : []);
+  if(!claves.some(function(k){ return marca[k] === 'Si' || marca[k] === 'NO'; })) return false;
+  return !claves.some(function(k){ return marca[k] === 'NO'; });
+}
 function miRevisionDiapositivasHtml(d){
   /* Quien no planifica con Plan Semanal (personal administrativo sin carga, por ejemplo) no ve esta
      tarjeta: no tendría ninguna fila nunca. */
@@ -3465,10 +3480,14 @@ function miRevisionDiapositivasHtml(d){
       var enCurso = !!REVISION_DIAPO_EN_CURSO[x.plan.id];
       var error = REVISION_DIAPO_ERRORES[x.plan.id] || (x.marca.origen === 'error' ? (x.marca.error || 'No se pudo leer la presentación') : '');
       var revisada = x.marca.momentos || x.marca.acordes || x.marca.final || x.marca.dua || x.marca.ortografia || x.marca.inicio;
+      var rojos = criteriosEnRojo(x.marca, x.esMatematica);
+      var aprobada = revisionAprobada(x.marca, x.esMatematica);
       var estado;
       if(enCurso) estado = '<span class="pill pill-gold">Revisando…</span>';
-      else if(revisada) estado = '<span class="pill pill-green">Revisada'
-        + (x.marca.origen === 'IA' ? ' por IA' : ' por el asesor') + '</span>';
+      else if(aprobada) estado = '<span class="pill pill-green">✓ Aprobada</span>';
+      else if(revisada) estado = '<span class="pill pill-gold">Por corregir: ' + rojos.length
+        + (rojos.length === 1 ? ' punto' : ' puntos') + '</span>'
+        + ' <span class="hint">(' + (x.marca.origen === 'IA' ? 'revisó la IA' : 'revisó el asesor') + ')</span>';
       else if(error) estado = '<span class="pill pill-red" title="' + escapeHtml(error) + '">No se pudo leer</span>';
       else if(x.motivoExencion) estado = '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>';
       else if(x.marca.sinDiapositiva) estado = '<span class="pill pill-blue">No se exige: ' + escapeHtml(textoMotivoManual(x.marca.sinDiapositiva)) + '</span>';
@@ -3476,16 +3495,30 @@ function miRevisionDiapositivasHtml(d){
       else if(!x.enlaceIa) estado = '<span class="pill pill-muted">Sin diapositiva que el sistema pueda abrir</span>';
       else if(!semanaPorDelante(x.plan)) estado = '<span class="pill pill-muted">Sin revisión (semana ya dictada)</span>';
       else estado = '<span class="pill pill-muted">Pendiente de revisión</span>';
-      /* El botón solo aparece en lo que todavía no se revisó y además corresponde a una semana que
-         no ha empezado: lo que haría solo el guardado del plan. */
-      var botonHtml = (!revisada && !enCurso && x.enlaceIa && iaDisponible() && semanaPorDelante(x.plan))
-        ? '<div class="no-print" style="margin-top:4px;"><button class="btn btn-ghost btn-sm mi-rev-ia" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '">Revisar mis diapositivas</button></div>'
-        : '';
+      /* Dos botones distintos, nunca los dos a la vez:
+         · "Revisar mis diapositivas" en lo que todavía nadie revisó y cuya semana no ha empezado:
+           es lo mismo que haría solo el guardado del plan.
+         · "Comprobar si ya la corregí" en lo que la IA revisó y dejó con algún NO. Este NO se
+           limita a las semanas por delante: el docente corrige DESPUÉS de leer la observación, y
+           para entonces la semana suele haber empezado — si se escondiera el botón ahí, aparecería
+           justo cuando ya no sirve. Pulsarlo sin haber cambiado nada no cuesta: el servidor abre
+           la presentación, la compara con la que juzgó y contesta sin gastar (ver soloSiCambio en
+           la Cloud Function). */
+      var botonHtml = '';
+      if(!enCurso && x.enlaceIa && iaDisponible()){
+        if(!revisada && semanaPorDelante(x.plan)){
+          botonHtml = '<div class="no-print" style="margin-top:4px;"><button class="btn btn-ghost btn-sm mi-rev-ia" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '">Revisar mis diapositivas</button></div>';
+        } else if(revisada && !aprobada && x.marca.origen === 'IA'){
+          botonHtml = '<div class="no-print" style="margin-top:4px;"><button class="btn btn-primary btn-sm mi-rev-comprobar" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '" title="Corrige tus diapositivas con las indicaciones de abajo y pulsa aquí: se vuelven a leer y se te dice si ya están aprobadas.">Comprobar si ya la corregí</button></div>';
+        }
+      }
       return '<tr>'
         + '<td><strong>' + escapeHtml(x.asignatura||'—') + '</strong><div>' + estado + '</div>' + botonHtml + '</td>'
         + '<td>' + escapeHtml(x.curso||'—') + '</td>'
         + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.momentos) + '</td>'
-        + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.acordes) + '</td>'
+        + '<td style="text-align:center;">' + (x.esReplanificacion
+            ? '<span class="hint" title="Replanificar sirve para retomar contenidos de otra semana, así que aquí no se te exige que coincidan con los temas de esta.">No aplica<br/>(replanificación)</span>'
+            : siNoRevisionBadge(x.marca.acordes)) + '</td>'
         + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.final) + '</td>'
         + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.dua) + '</td>'
         + '<td style="text-align:center;">' + siNoRevisionBadge(x.marca.ortografia) + '</td>'
@@ -3516,6 +3549,7 @@ function miRevisionDiapositivasHtml(d){
   + '<div class="card" style="margin-top:18px; border-top:4px solid var(--blue-100);">'
   + '  <h2>Revisión de mis diapositivas</h2>'
   + '  <div class="card-sub">Cuando guardas un plan completo, el sistema abre las diapositivas que enlazaste y las revisa solo: aquí ves el mismo acta que usa el asesor pedagógico, con las indicaciones que conviene incorporar. La actividad de inicio (pausa activa, reflexión, dinámica) no se exige en todos tus planes, pero sí en alguno de la semana.</div>'
+  + '  <div class="card-sub">Si te quedó algún <b>NO</b>, corrige tus diapositivas con las indicaciones y pulsa <b>“Comprobar si ya la corregí”</b>: se vuelven a leer y se te dice si ya están aprobadas. No hace falta cambiar el enlace —basta con editar la misma presentación— y puedes pulsarlo cuantas veces quieras: mientras no hayas cambiado nada, el sistema te lo avisa sin volver a revisarlas.</div>'
   + '  <div class="field" style="max-width:260px; margin-bottom:12px;"><label>Semana <span class="hint">(cualquier día de esa semana)</span></label><input class="cell-input" type="date" id="miRevSemana" value="' + escapeHtml(lunes) + '" /></div>'
   + '  <div class="hint" style="margin-bottom:10px;">Semana del <b>' + escapeHtml(semanaTextoLargo(lunes)) + '</b>.</div>'
   + cuerpo
@@ -3534,6 +3568,27 @@ function bindDashboardEvents(){
       var r = await revisarDiapositivaConIA(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
       if(r && r.ok) toast('Revisión lista: ' + r.paginas + ' diapositivas leídas.', 'success');
       else toast((r && r.error ? r.error : 'No se pudo revisar.') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
+      render();
+    };
+  });
+  /* Comprobar correcciones: se vuelve a leer la presentación y, solo si cambió, se la vuelve a
+     juzgar. Los tres desenlaces se le dicen al docente con todas las letras, porque de eso
+     depende lo que haga a continuación. */
+  document.querySelectorAll('button.mi-rev-comprobar').forEach(function(b){
+    b.onclick = async function(){
+      var planId = b.getAttribute('data-plan');
+      b.disabled = true; b.textContent = 'Comprobando…';
+      var r = await revisarDiapositivaConIA(planId, b.getAttribute('data-enlace'), true);
+      if(r && r.ok && r.sinCambios){
+        toast('Tus diapositivas siguen siendo las mismas que se revisaron: no hay nada nuevo que comprobar. Corrígelas con las indicaciones, guárdalas y vuelve a pulsar.', 'error');
+      } else if(r && r.ok){
+        var fila = filasRevisionDiapositivas(currentDocente().id, lunesDeSemanaIso((load(LS.SEMANAL).find(function(x){ return x.id===planId; })||{}).fechaInicio || todayISO()))
+          .find(function(x){ return x.plan.id === planId; });
+        var ok = fila && revisionAprobada(fila.marca, fila.esMatematica);
+        toast(ok ? '¡Listo! Tus diapositivas quedaron aprobadas.' : 'Revisadas de nuevo. Todavía quedan puntos por corregir: míralos abajo.', ok ? 'success' : 'error');
+      } else {
+        toast((r && r.error ? r.error : 'No se pudo comprobar.') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
+      }
       render();
     };
   });
@@ -10709,6 +10764,17 @@ function motivoReplanificacionTexto(s){
 /* Solo se relaja el control si el docente declaró un motivo en el que la clase no llegó a darse o
    no se alcanzó a avanzar. Sin motivo declarado (planes viejos) NO se relaja nada: se mantiene lo
    que ya estaba, es decir, avisar solo cuando la copia es literal. */
+/* Desde cuándo se le puede exigir el motivo: el selector se estrenó el 27/09/2026 a la 01:50, y
+   las 65 replanificaciones anteriores a esa noche no tuvieron dónde declararlo. Ponerles
+   "Incompleto" ahora sería reclamarles algo que no pudieron llenar, así que el corte deja fuera
+   todo lo nacido antes del 28. De ese día en adelante, las 116 replanificaciones que existen ya
+   declaran motivo: la exigencia no marca ningún plan viejo en rojo, solo rige para los nuevos. */
+var DESDE_MOTIVO_REPLAN_OBLIGATORIO = '2026-09-28';
+function faltaMotivoReplanificacion(s){
+  if(!planEsReplanificacion(s)) return false;
+  if((s.createdAt || '') < DESDE_MOTIVO_REPLAN_OBLIGATORIO) return false;
+  return !motivoReplanificacionTexto(s).trim();
+}
 function replanRepetirEsValido(s){
   var m = motivoReplanificacion(s && s.motivoReplanificacion);
   return !!(m && m.repetirEsValido);
@@ -10724,12 +10790,13 @@ function motivoReplanificacionFieldHtml(s, prefijo, isIngles){
         return '<option value="' + m.clave + '"' + (m.clave===clave?' selected':'') + '>' + escapeHtml(te(m.texto, isIngles)) + '</option>';
       }).join('');
   var m = motivoReplanificacion(clave);
-  var nota = !m ? te('Declara el motivo: define si se te exige cambiar las Actividades de Aprendizaje.', isIngles)
+  var nota = !m ? te('Obligatorio: mientras no lo declares, el plan queda INCOMPLETO. El motivo define si se te exige cambiar las Actividades de Aprendizaje.', isIngles)
     : (m.repetirEsValido
         ? te('La clase no llegó a darse o no se avanzó: puedes conservar las mismas actividades del plan anterior.', isIngles)
         : te('Para este motivo, las Actividades de Aprendizaje no pueden ser copia literal del plan anterior.', isIngles));
   return ''
-    + '      <div class="field"><label>' + te('Motivo de la replanificación', isIngles) + '</label>'
+    + '      <div class="field"><label>' + te('Motivo de la replanificación', isIngles)
+    + (m ? '' : ' <span class="pill pill-red">' + te('obligatorio', isIngles) + '</span>') + '</label>'
     + '        <select class="cell-input" id="' + prefijo + 'MotivoReplan">' + opciones + '</select>'
     + '        <input class="cell-input" id="' + prefijo + 'MotivoReplanOtro" style="margin-top:6px;' + (esOtro?'':'display:none;') + '" placeholder="' + te('Escribe el motivo', isIngles) + '" value="' + escapeHtml(esOtro ? (s.motivoReplanificacionTexto||'') : '') + '" />'
     + '        <div class="hint" style="margin-top:4px;">' + escapeHtml(nota) + '</div>'
@@ -10905,6 +10972,11 @@ function validarPlanSemanalCalculo(s){
              exento: esFeriadoEscolar(dia.fecha) };
   }), metodoKey, exigirEnlace, porSemana);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
+  /* El Motivo de la replanificación es obligatorio: decide si se le exige al docente cambiar las
+     Actividades de Aprendizaje y, desde que las replanificaciones quedaron exentas del criterio de
+     correspondencia con los temas de la semana, también qué se le revisa en las diapositivas. Un
+     plan replanificado sin motivo deja al sistema sin con qué juzgarlo. */
+  if(faltaMotivoReplanificacion(s)) faltanCasilleros = faltanCasilleros.concat(['Falta declarar el Motivo de la replanificación']);
   var completo = dias.length > 0 && !faltanCasilleros.length;
   var diasFeriado = dias.map(function(dia, i){
     var etiqueta = etiquetaDiaSinClase(dia.fecha);
@@ -15072,9 +15144,10 @@ function filasRevisionDiapositivas(docenteId, lunes){
          esa semana no debía llevar diapositiva, así que juzgarla es gastar dinero en reprochar
          algo que no se exigía. */
       enlaceIa: motivoSinExigirDiapositiva(s) ? '' : (diapositivasDelPlan(s).find(enlaceRevisablePorIa)||{}).url || '',
+      esReplanificacion: planEsReplanificacion(s),
       /* ¿Este plan ya tiene revisión guardada (de la IA o del asesor)? */
       revisada: yaTieneRevision(s.id),
-      marca: revisionDiapoDe(s.id)
+      marca: marcaSegunElPlan(revisionDiapoDe(s.id), s)
     };
   });
 }
@@ -15114,20 +15187,40 @@ function datosRevisionDeFila(plan, enlace){
     curso: plan.curso || '',
     docente: d ? nombreFormal(d) : '',
     semana: fmtDate(plan.fechaInicio) + ' al ' + fmtDate(plan.fechaFin),
-    temas: temas.slice(0, 25)
+    temas: temas.slice(0, 25),
+    /* Un plan replanificado retoma a propósito contenidos de otra semana (ver
+       MOTIVOS_REPLANIFICACION), así que no se le juzga la correspondencia con los temas de ESTA
+       semana. El servidor lo vuelve a comprobar contra la base; esto es solo para que pueda
+       mostrarle el motivo declarado a la IA. */
+    esReplanificacion: planEsReplanificacion(plan),
+    motivoReplanificacion: motivoReplanificacionTexto(plan)
   };
+}
+function planEsReplanificacion(plan){
+  if(!plan) return false;
+  return !!plan.replanificadoDe || String(plan.numero||'').indexOf('.') !== -1;
+}
+/* En una replanificación no se juzga si las actividades corresponden a los temas de la semana:
+   replanificar es precisamente retomar lo de otra semana. Se apaga aquí, al mostrar, y no solo en
+   la Cloud Function, para que las actas ya emitidas dejen de reclamarlo sin tener que pagar por
+   volver a revisarlas. */
+function marcaSegunElPlan(marca, plan){
+  if(!planEsReplanificacion(plan) || !marca.acordes) return marca;
+  return Object.assign({}, marca, {acordes: ''});
 }
 /* Revisa una sola presentación. El veredicto lo guarda el servidor; aquí solo se informa el
    resultado a quien la pidió. */
-async function revisarDiapositivaConIA(planId, enlace){
+async function revisarDiapositivaConIA(planId, enlace, soloSiCambio){
   var plan = load(LS.SEMANAL).find(function(x){ return x.id===planId; });
   if(!plan) return { ok:false, error:'Ese plan ya no existe.' };
   delete REVISION_DIAPO_ERRORES[planId];
   REVISION_DIAPO_EN_CURSO[planId] = true;
   try{
-    var res = await llamarFuncionIA('revisarDiapositivas', datosRevisionDeFila(plan, enlace), 540000);
+    var datos = datosRevisionDeFila(plan, enlace);
+    if(soloSiCambio) datos.soloSiCambio = true;
+    var res = await llamarFuncionIA('revisarDiapositivas', datos, 540000);
     delete REVISION_DIAPO_EN_CURSO[planId];
-    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0 };
+    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0, sinCambios: !!res.sinCambios };
   }catch(err){
     delete REVISION_DIAPO_EN_CURSO[planId];
     REVISION_DIAPO_ERRORES[planId] = mensajeErrorIA(err);
