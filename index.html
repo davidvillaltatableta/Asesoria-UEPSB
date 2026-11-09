@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261108175824">
+<meta name="app-build" content="20261108223328">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -15431,6 +15431,32 @@ function cambioDesdeLaRevisionHtml(x){
     + '<button class="btn btn-ghost btn-sm rev-diapo-cambio" data-plan="' + x.plan.id + '" data-enlace="' + escapeHtml(x.enlaceIa) + '" title="Abre la presentación y la compara con la que se revisó. No cuesta nada: no se llama a la IA.">¿La cambió?</button>'
     + (pill ? ' ' + pill : '') + '</div>';
 }
+/* Nombre corto de la fila (asignatura · curso) para los avisos del lote. */
+function etiquetaDeFila(boton){
+  var fila = boton && boton.closest('tr');
+  return fila ? (fila.cells[0].innerText.replace(/Ver plan de clase/,'').trim() + ' · ' + fila.cells[1].innerText.trim()) : '';
+}
+/* Detectar que el docente cambió su presentación es gratis, pero saber SI quedó bien exige volver
+   a juzgarla, y eso sí se cobra. Por eso el acta no se actualiza sola: se ofrece hacerlo, con la
+   cuenta por delante. Al aceptar, las casillas Sí/NO y la observación quedan con el veredicto de
+   las diapositivas de hoy. */
+function ofrecerActualizarActas(cambiados){
+  if(!cambiados || !cambiados.length) return;
+  if(!iaDisponible()){
+    toast('Hay ' + cambiados.length + ' presentación(es) corregida(s), pero no hay clave de IA disponible para volver a juzgarlas.', 'error');
+    return;
+  }
+  var cuantos = cambiados.length;
+  confirmDialog(
+    (cuantos === 1
+      ? 'El docente cambió su presentación (' + cambiados[0].etiqueta + ').'
+      : cuantos + ' docentes cambiaron sus diapositivas.')
+    + ' Para que el acta muestre el veredicto nuevo —por ejemplo, que la ortografía pase de NO a Sí— hay que volver a leerlas con IA. '
+    + 'Se cobra a la clave institucional: unos USD ' + (cuantos * 0.05).toFixed(2) + ' en total. ¿Actualizar ' + (cuantos === 1 ? 'el acta' : 'las ' + cuantos + ' actas') + '?',
+    function(){ revisarSemanaConIA(cambiados); },
+    'Actualizar'
+  );
+}
 function renderAdminRevisionDiapositivas(){
   /* Una sola vez por sesión: subir a Firestore las marcas que quedaron en este navegador de cuando
      se guardaban aquí. Se hace al abrir el acta porque es el momento en que la colección ya está
@@ -15666,10 +15692,16 @@ function bindAdminRevisionDiapositivasEvents(){
   });
   document.querySelectorAll('button.rev-diapo-cambio').forEach(function(b){
     b.onclick = async function(){
+      var planId = b.getAttribute('data-plan'), enlace = b.getAttribute('data-enlace');
+      var etiqueta = etiquetaDeFila(b);
       b.disabled = true; b.textContent = 'Comprobando…';
-      var r = await comprobarCambioDiapositiva(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
-      if(r && !r.ok) toast(r.error || 'No se pudo abrir la presentación para compararla.', 'error');
+      var r = await comprobarCambioDiapositiva(planId, enlace);
+      if(r && !r.ok){ toast(r.error || 'No se pudo abrir la presentación para compararla.', 'error'); render(); return; }
       render();
+      /* La comparación sola no sirve de mucho: lo que el asesor quiere ver es el veredicto nuevo
+         —que la ortografía que estaba en NO pase a Sí—, así que en cuanto se detecta el cambio se
+         ofrece actualizar el acta. Esto sí se cobra, por eso se pregunta. */
+      if(r.cambio) ofrecerActualizarActas([{planId: planId, enlace: enlace, etiqueta: etiqueta}]);
     };
   });
   /* Lote de comprobación: barre todas las filas ya revisadas de la semana. No llama a la IA, así
@@ -15680,21 +15712,24 @@ function bindAdminRevisionDiapositivasEvents(){
     var botones = Array.from(document.querySelectorAll('button.rev-diapo-cambio'));
     if(!botones.length){ toast('En esta semana no hay presentaciones ya revisadas que comparar.', 'error'); return; }
     btnCambios.disabled = true;
-    var cambiaron = 0, iguales = 0, primeras = 0, fallos = 0;
+    var iguales = 0, primeras = 0, fallos = 0, cambiados = [];
     for(var i = 0; i < botones.length; i++){
       btnCambios.textContent = 'Comprobando ' + (i+1) + ' de ' + botones.length + '…';
-      var r = await comprobarCambioDiapositiva(botones[i].getAttribute('data-plan'), botones[i].getAttribute('data-enlace'));
+      var planId = botones[i].getAttribute('data-plan'), enlace = botones[i].getAttribute('data-enlace');
+      var etiqueta = etiquetaDeFila(botones[i]);
+      var r = await comprobarCambioDiapositiva(planId, enlace);
       if(!r.ok) fallos++;
       else if(r.primeraVez) primeras++;
-      else if(r.cambio) cambiaron++;
+      else if(r.cambio) cambiados.push({planId: planId, enlace: enlace, etiqueta: etiqueta});
       else iguales++;
       if(i < botones.length - 1) await new Promise(function(res){ setTimeout(res, 1500); });
     }
-    toast(cambiaron + ' corrigieron sus diapositivas · ' + iguales + ' siguen igual'
+    toast(cambiados.length + ' corrigieron sus diapositivas · ' + iguales + ' siguen igual'
       + (primeras ? ' · ' + primeras + ' sin punto de comparación (queda registrado desde hoy)' : '')
       + (fallos ? ' · ' + fallos + ' no se pudieron abrir' : '')
-      + '. No se gastó nada.', cambiaron ? 'success' : 'error');
+      + '. Comprobar no costó nada.', cambiados.length ? 'success' : 'error');
     render();
+    ofrecerActualizarActas(cambiados);
   };
   var btnTodo = document.getElementById('btnRevDiapoIaTodo');
   if(btnTodo) btnTodo.onclick = function(){
