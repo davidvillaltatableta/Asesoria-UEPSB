@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261108223328">
+<meta name="app-build" content="20261109163918">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1221,6 +1221,42 @@ function misNiveles(docenteId){
 function misEspecialidadesPara(docenteId, nivel){
   var set = {};
   load(LS.CARGA).filter(function(r){ return r.docenteId===docenteId && r.nivel===nivel; }).forEach(function(r){ if(r.especialidad) set[r.especialidad]=1; });
+  return Object.keys(set).sort();
+}
+/* ---------- Nivel / Curso / Asignatura sacados de los PCA del propio docente ----------
+   Normalmente esas listas salen de la Carga Horaria. Pero un docente puede llegar al Plan Semanal
+   SIN carga registrada: pasa con quien se incorpora a mitad de año e IMPORTA los PCA de la docente
+   a la que reemplaza —el import trae los PCA y sus contenidos, no la carga horaria—. En ese caso
+   las listas caían al catálogo general del colegio, y ahí es facilísimo elegir el paralelo que no
+   es ("3.º EGB B" en vez de "3.º EGB A"): el sistema no encuentra el PCA y no aparece ni un Nivel
+   de Logro ni un Contenido Esencial, sin que se entienda por qué.
+   Sus propios PCA sí saben exactamente para qué nivel, curso y asignatura son, así que se usan como
+   segunda opción antes de caer al catálogo general. */
+function misPcaRows(docenteId){
+  return load(LS.PCA).filter(function(p){ return p.docenteId===docenteId; });
+}
+function cursoDePca(p){ return (p.curso==='Otro…' ? p.cursoManual : p.curso) || ''; }
+function asignaturaDePca(p){ return (p.asignatura==='Otra…' ? p.asignaturaManual : p.asignatura) || ''; }
+function nivelesDeMisPca(docenteId){
+  var set = {};
+  misPcaRows(docenteId).forEach(function(p){ if(p.nivel) set[p.nivel]=1; });
+  return Object.keys(set).sort();
+}
+function cursosDeMisPca(docenteId, nivel, especialidad){
+  var set = {};
+  misPcaRows(docenteId).forEach(function(p){
+    if(p.nivel!==nivel || (especialidad && (p.especialidad||'')!==especialidad)) return;
+    if(cursoDePca(p)) set[cursoDePca(p)]=1;
+  });
+  return Object.keys(set).sort();
+}
+function asignaturasDeMisPca(docenteId, nivel, especialidad, curso){
+  var set = {};
+  misPcaRows(docenteId).forEach(function(p){
+    if(p.nivel!==nivel || (especialidad && (p.especialidad||'')!==especialidad)) return;
+    if(curso && cursoDePca(p)!==curso) return;
+    if(asignaturaDePca(p)) set[asignaturaDePca(p)]=1;
+  });
   return Object.keys(set).sort();
 }
 function findMiPca(docenteId, nivel, especialidad, curso, asignatura){
@@ -3568,7 +3604,7 @@ function bindDashboardEvents(){
     b.onclick = async function(){
       b.disabled = true; b.textContent = 'Revisando…';
       var r = await revisarDiapositivaConIA(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
-      if(r && r.ok) toast('Revisión lista: ' + r.paginas + ' diapositivas leídas.', 'success');
+      if(r && r.ok) toast('Revisión lista: ' + r.leidas + '.', 'success');
       else toast((r && r.error ? r.error : 'No se pudo revisar.') + ' Comprueba que el enlace se pueda abrir sin iniciar sesión.', 'error');
       render();
     };
@@ -11670,10 +11706,19 @@ function renderSemanalForm(d){
      Horaria del DUEÑO del plan (s.docenteId), no de quien lo está viendo, o un administrador que
      abre el plan de otro docente ve las listas vacías (su propia Carga, sin registros). */
   var ownerId = s.docenteId || d.id;
-  var niveles = misNiveles(ownerId); if(!niveles.length) niveles = NIVELES;
+  /* Si no hay Carga Horaria registrada, se usan los PCA del propio docente antes de caer al
+     catálogo general del colegio (ver nivelesDeMisPca): es lo que le pasa a quien importa los PCA
+     de otro docente, porque el import no trae la carga horaria. */
+  var niveles = misNiveles(ownerId);
+  if(!niveles.length) niveles = nivelesDeMisPca(ownerId);
+  if(!niveles.length) niveles = NIVELES;
   var especialidades = misEspecialidadesPara(ownerId, s.nivel); if(!especialidades.length) especialidades = especialidadesFor(s.nivel);
-  var cursos = misCursosPara(ownerId, s.nivel, s.especialidad); if(!cursos.length) cursos = cursosFor(s.nivel, s.especialidad);
-  var asignaturas = misAsignaturasPara(ownerId, s.nivel, s.especialidad, s.curso); if(!asignaturas.length) asignaturas = asignaturasFor(s.nivel, s.especialidad);
+  var cursos = misCursosPara(ownerId, s.nivel, s.especialidad);
+  if(!cursos.length) cursos = cursosDeMisPca(ownerId, s.nivel, s.especialidad);
+  if(!cursos.length) cursos = cursosFor(s.nivel, s.especialidad);
+  var asignaturas = misAsignaturasPara(ownerId, s.nivel, s.especialidad, s.curso);
+  if(!asignaturas.length) asignaturas = asignaturasDeMisPca(ownerId, s.nivel, s.especialidad, s.curso);
+  if(!asignaturas.length) asignaturas = asignaturasFor(s.nivel, s.especialidad);
 
   var semanasDelPca = s.pcaId ? semanasDePca(s.pcaId) : [];
   var semanaActual = s.semanaRowId ? semanasDelPca.find(function(r){ return r.id===s.semanaRowId; }) : null;
@@ -11683,7 +11728,12 @@ function renderSemanalForm(d){
     ? (!semanasDelPca.length
         ? te('El Plan Curricular Anual (PCA) vinculado todavía no tiene semanas registradas en Contenidos.', isIngles)
         : (!semanaActual ? te('La fecha ingresada no coincide con el rango Fecha Inicio/Fin de ninguna semana del PCA. Revisa esas fechas en el PCA, o corrige la fecha aquí.', isIngles) : null))
-    : te('No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".', isIngles);
+    /* Sin Carga Horaria registrada, decirle "créalo primero" es desorientador cuando el docente SÍ
+       tiene PCA (típicamente importados de otro docente) y lo único que pasa es que todavía no ha
+       elegido el curso o la asignatura exactos. Se le dice lo que de verdad le falta. */
+    : (misPcaRows(ownerId).length && !misCargaRows(ownerId).length
+        ? te('Todavía no registraste tu Carga Horaria, así que las listas de Curso y Asignatura salen de tus PCA. Elige el nivel, el curso y la asignatura que correspondan y aparecerán los Niveles de Logro y los Contenidos Esenciales. Mejor aún: registra tu Carga Horaria en "Mi Carga Horaria" y se completarán solas.', isIngles)
+        : te('No se encontró un Plan Curricular Anual (PCA) para este nivel, curso y asignatura. Créalo primero en "Planes Curriculares (PCA)".', isIngles));
 
   // La semana vinculada (semanaRowId) se conserva a propósito aunque la fecha actual ya no
   // encaje exactamente en su rango (para no perder el enlace por un simple desajuste — ver
@@ -15220,8 +15270,42 @@ function datosRevisionDeFila(plan, enlace){
        semana. El servidor lo vuelve a comprobar contra la base; esto es solo para que pueda
        mostrarle el motivo declarado a la IA. */
     esReplanificacion: planEsReplanificacion(plan),
-    motivoReplanificacion: motivoReplanificacionTexto(plan)
+    motivoReplanificacion: motivoReplanificacionTexto(plan),
+    /* Aviso de que esta presentación NO es solo de esta semana: el docente ya la había enlazado en
+       semanas anteriores y le va agregando la clase de cada una. Se calcula aquí porque el navegador
+       tiene todos los planes en memoria y el servidor tendría que leer decenas de documentos para
+       averiguarlo. Sirve para que la revisión se ciña a la clase de esta semana desde la PRIMERA vez
+       que se revisa el archivo, cuando todavía no hay ninguna acta anterior que lo delate. */
+    acumulada: enlaceYaUsadoEnSemanasAnteriores(plan, enlace)
   };
+}
+/* Cuántas diapositivas se leyeron, dicho de forma que el asesor entienda qué se juzgó: en un
+   archivo acumulado lo que importa no es cuántas tiene el archivo, sino cuántas son de esta semana. */
+function textoDiapositivasLeidas(res){
+  var b = res && res.bloque;
+  if(b && b.soloLaSemana && b.hasta){
+    return (b.hasta - (b.desde||1) + 1) + ' diapositivas de esta semana (de ' + (res.paginas||b.hasta) + ' que tiene el archivo)';
+  }
+  return (res && res.paginas ? res.paginas : 0) + ' diapositivas leídas';
+}
+/* Qué tramo del archivo se juzgó, cuando no fue el archivo entero. */
+function tramoJuzgadoHtml(marca){
+  if(!marca || !marca.bloqueDeLaSemana || !marca.bloqueHasta) return '';
+  var cuantas = Number(marca.bloqueHasta) - Number(marca.bloqueDesde||1) + 1;
+  return '<div style="margin-top:3px;"><span class="pill pill-blue" title="El docente usa un solo archivo'
+    + ' para toda la asignatura y le agrega la clase de cada semana. Se juzgaron solo las diapositivas'
+    + ' que agregó para esta semana.">Archivo acumulado: se juzgaron las ' + cuantas
+    + ' diapositivas de esta semana (N.º ' + Number(marca.bloqueDesde||1) + ' a ' + Number(marca.bloqueHasta)
+    + ' de ' + (marca.paginasTotales || marca.bloqueHasta) + ')</span></div>';
+}
+/* ¿El mismo enlace aparece en un plan anterior del mismo docente? */
+function enlaceYaUsadoEnSemanasAnteriores(plan, enlace){
+  if(!plan || !enlace || !plan.fechaInicio) return false;
+  return load(LS.SEMANAL).some(function(otro){
+    if(otro.id === plan.id || otro.docenteId !== plan.docenteId) return false;
+    if(!otro.fechaInicio || otro.fechaInicio >= plan.fechaInicio) return false;
+    return diapositivasDelPlan(otro).some(function(e){ return e.url === enlace; });
+  });
 }
 function planEsReplanificacion(plan){
   if(!plan) return false;
@@ -15255,7 +15339,8 @@ async function revisarDiapositivaConIA(planId, enlace, soloSiCambio){
         origen: 'IA', enlaceRevisado: enlace, revisadaEn: new Date().toISOString(), error: ''
       }));
     }
-    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0, sinCambios: !!res.sinCambios, marca: res.marca || null };
+    return { ok:true, uso: res.uso || {}, paginas: res.paginas || 0, sinCambios: !!res.sinCambios,
+      marca: res.marca || null, bloque: res.bloque || null, leidas: textoDiapositivasLeidas(res) };
   }catch(err){
     delete REVISION_DIAPO_EN_CURSO[planId];
     REVISION_DIAPO_ERRORES[planId] = mensajeErrorIA(err);
@@ -15511,6 +15596,11 @@ function renderAdminRevisionDiapositivas(){
               + ' <span class="hint">(' + escapeHtml(e.momento) + ')</span></div>';
           }).join('')
           + (x.motivoExencion ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>' : '')
+          /* Muchos docentes trabajan con UNA sola presentación por asignatura y curso a la que le
+             agregan la clase de cada semana. Cuando es así, la IA juzga solo las diapositivas de
+             esta semana, y el acta tiene que decir cuáles fueron: si no, el asesor ve "12 de 83" y
+             no sabe si la revisión se quedó corta o se ciñó a lo que tocaba. */
+          + tramoJuzgadoHtml(x.marca)
         : (x.motivoExencion
             ? '<span class="pill pill-blue">' + escapeHtml(x.motivoExencion) + '</span>'
             : (asignaturaExentaDiapositivas(x.asignatura)
@@ -15685,7 +15775,7 @@ function bindAdminRevisionDiapositivasEvents(){
       b.disabled = true; b.textContent = 'Revisando…';
       var r = await revisarDiapositivaConIA(b.getAttribute('data-plan'), b.getAttribute('data-enlace'));
       b.disabled = false; b.textContent = textoOriginal;
-      if(r && r.ok) toast('Revisada: ' + r.paginas + ' diapositivas leídas.', 'success');
+      if(r && r.ok) toast('Revisada: ' + r.leidas + '.', 'success');
       else toast(r && r.error ? r.error : 'No se pudo revisar.', 'error');
       render();
     };
