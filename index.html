@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261109163918">
+<meta name="app-build" content="20261118142806">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -8693,6 +8693,22 @@ function semanalEsIngles(s){
   return /inglés|english/i.test(s.asignatura||'');
 }
 var PCA_EN = {
+  /* Lo que se exige desde la semana del 16-11-2026 (ver SEMANAL_EXIGE_SELECCION_DESDE). */
+  'Obligatorio: marca al menos uno.': 'Required: select at least one.',
+  'Pon la fecha de este día de clase.': 'Enter the date of this class day.',
+  'Es necesario elegir al menos un Nivel de Logro y un Contenido Esencial en cada día de clase.':
+    'You must select at least one Achievement Level and one Essential Content item on each class day.',
+  'Ahora mismo no te aparece nada para marcar porque tu PCA no tiene ':
+    'Nothing is available to select right now because your Annual Curriculum Plan has no ',
+  'temas ni niveles de logro': 'topics or achievement levels',
+  'temas': 'topics',
+  'niveles de logro': 'achievement levels',
+  ' en la semana que corresponde a este plan. Corrígelo en “Planes Curriculares (PCA)” y aparecerán aquí solos.':
+    ' for the week this plan belongs to. Fix it in “Annual Curriculum Plans (PCA)” and they will show up here on their own.',
+  'Recuerda que en tu PCA puedes mover las semanas y copiar los temas de una semana a otra con total libertad: si los temas quedaron en la semana equivocada, cámbialos de sitio y este plan los cargará solo.':
+    'Remember that in your PCA you can move weeks around and copy topics from one week to another freely: if the topics ended up in the wrong week, move them and this plan will load them on its own.',
+  'Si es lo segundo, corrige tu PCA para que los temas se carguen aquí: en “Planes Curriculares (PCA)” puedes mover las semanas y copiar los temas de una semana a otra con total libertad.':
+    'If it is the latter, fix your PCA so the topics load here: in “Annual Curriculum Plans (PCA)” you can move weeks around and copy topics from one week to another freely.',
   'Plan Curricular Anual': 'Annual Curriculum Plan',
   'Fecha y hora límite de entrega': 'Submission deadline (date and time)',
   ' (definida por el administrador)': ' (set by the administrator)',
@@ -10989,6 +11005,62 @@ function docenteDesarrollaMomentosPorSemana(docenteId){
   var d = allDocentes().find(function(x){ return x.id === docenteId; });
   return !!(d && d.momentosPorSemana);
 }
+/* ---------- Campos que se exigen desde la semana del 16 de noviembre de 2026 ----------
+   El Plan Semanal pasa a exigir tres cosas más: la FECHA de cada día de clase, al menos un NIVEL DE
+   LOGRO y al menos un CONTENIDO ESENCIAL marcados.
+
+   Solo se exige en los planes de esa semana en adelante. Medido sobre los 1682 planes que ya
+   existían: aplicarlo hacia atrás habría vuelto incompletos 229 planes por contenidos, 297 por
+   niveles de logro y 100 por fechas — planes ya entregados, muchos de ellos revisados, que habrían
+   cambiado de veredicto solos y habrían descuadrado el reporte de Presentación. */
+var SEMANAL_EXIGE_SELECCION_DESDE = '2026-11-16';
+function semanalExigeSeleccion(s){
+  var ref = (s && s.fechaInicio) || String((s && s.createdAt) || '').slice(0, 10);
+  return !!ref && ref >= SEMANAL_EXIGE_SELECCION_DESDE;
+}
+/* Lo que el PCA le OFRECE a este plan para marcar: exactamente los mismos ítems que el docente ve
+   en el formulario (los de su semana más los que quedaron pendientes de la anterior). Hace falta
+   saberlo para no exigir lo imposible: si la semana del PCA tiene un solo tema y el plan tiene tres
+   días, no se le puede pedir un tema por día — al marcarlo en el día 1 desaparece de los demás. */
+function ofrecidoDelPcaParaPlan(s){
+  var vacio = {temas: [], niveles: []};
+  if(!s || !s.pcaId || !s.semanaRowId) return vacio;
+  var semana = semanasDePca(s.pcaId).find(function(r){ return r.id === s.semanaRowId; });
+  if(!semana) return vacio;
+  var unicos = function(a){ return a.filter(function(x, i){ return x && a.indexOf(x) === i; }); };
+  var temas = parseLinesList(semana.temas).concat(temasPendientesAnteriores(s.pcaId, semana.id));
+  /* Los Niveles de Logro solo se ofrecen cuando la fecha del plan cae dentro del rango de esa
+     semana del PCA — misma condición que usa el formulario (ver semanaCoincide). */
+  var coincide = !!(semana.fechaInicio && semana.fechaFin && s.fechaInicio
+    && s.fechaInicio >= semana.fechaInicio && s.fechaInicio <= semana.fechaFin);
+  var niveles = [];
+  if(coincide){
+    ['basico','intermedio','avanzado'].forEach(function(tier){
+      niveles = niveles
+        .concat(parseLinesList(semana[NIVEL_LOGRO_PCA_FIELD[tier]]))
+        .concat(nivelLogroPendientesAnteriores(s.pcaId, semana.id, tier));
+    });
+  }
+  return {temas: unicos(temas), niveles: unicos(niveles)};
+}
+/* ¿Qué marcó el docente en TODO el plan? Se mira el plan entero y no cada día por separado porque
+   un ítem marcado en un día desaparece de la lista de los otros: lo que queda por marcar es lo que
+   no se marcó en ninguno. */
+function seleccionDelPlan(s){
+  var temas = {}, niveles = {};
+  (s.dias || []).forEach(function(dia){
+    splitItemsList(dia.contenidos).forEach(function(t){ temas[t] = 1; });
+    ['basico','intermedio','avanzado'].forEach(function(tier){
+      splitItemsList(dia[NIVEL_LOGRO_DIA_FIELD[tier]]).forEach(function(t){ niveles[t] = 1; });
+    });
+  });
+  return {temas: temas, niveles: niveles};
+}
+function diaTieneNivelLogro(dia){
+  return ['basico','intermedio','avanzado'].some(function(tier){
+    return splitItemsList(dia[NIVEL_LOGRO_DIA_FIELD[tier]]).length > 0;
+  });
+}
 function validarPlanSemanal(s){
   var editando = state.editingSemanal && state.editingSemanal.id === s.id;
   if(editando) return validarPlanSemanalCalculo(s);
@@ -11021,6 +11093,34 @@ function validarPlanSemanalCalculo(s){
      correspondencia con los temas de la semana, también qué se le revisa en las diapositivas. Un
      plan replanificado sin motivo deja al sistema sin con qué juzgarlo. */
   if(faltaMotivoReplanificacion(s)) faltanCasilleros = faltanCasilleros.concat(['Falta declarar el Motivo de la replanificación']);
+  /* Fecha del día, Nivel de Logro y Contenido Esencial (ver SEMANAL_EXIGE_SELECCION_DESDE). El
+     "al menos uno" se mide por día, pero solo mientras QUEDE algo por marcar: cuando el docente ya
+     repartió en otros días todo lo que el PCA ofrece esa semana, los días restantes no se penalizan
+     —no tendrían de dónde elegir—. Los días que el cronograma marca como feriado tampoco: no hubo
+     clase que planificar. */
+  var exigeSeleccion = semanalExigeSeleccion(s);
+  var pcaSinTemas = false, pcaSinNiveles = false, faltaSeleccion = false;
+  if(exigeSeleccion){
+    var ofrecido = ofrecidoDelPcaParaPlan(s);
+    var marcado = seleccionDelPlan(s);
+    var quedanTemas = ofrecido.temas.some(function(t){ return !marcado.temas[t]; });
+    var quedanNiveles = ofrecido.niveles.some(function(t){ return !marcado.niveles[t]; });
+    pcaSinTemas = !ofrecido.temas.length;
+    pcaSinNiveles = !ofrecido.niveles.length;
+    dias.forEach(function(dia, i){
+      var et = 'Día ' + (i + 1);
+      if(!dia.fecha) faltanCasilleros.push(et + ': falta la fecha del día de clase');
+      if(esFeriadoEscolar(dia.fecha)) return;
+      if(quedanNiveles && !diaTieneNivelLogro(dia)){
+        faltanCasilleros.push(et + ': falta marcar al menos un Nivel de Logro');
+        faltaSeleccion = true;
+      }
+      if(quedanTemas && !splitItemsList(dia.contenidos).length){
+        faltanCasilleros.push(et + ': falta marcar al menos un Contenido Esencial');
+        faltaSeleccion = true;
+      }
+    });
+  }
   var completo = dias.length > 0 && !faltanCasilleros.length;
   var diasFeriado = dias.map(function(dia, i){
     var etiqueta = etiquetaDiaSinClase(dia.fecha);
@@ -11051,6 +11151,12 @@ function validarPlanSemanalCalculo(s){
     faltanEnlaces: faltanEnlaces,
     metodo: metodoDeClase(metodoKey),
     exigeEnlace: exigirEnlace,
+    /* Para el aviso del formulario: si falta marcar Niveles de Logro o Contenidos Esenciales, y si
+       el PCA no tiene nada que ofrecer para esta semana (que es la causa de fondo más frecuente). */
+    exigeSeleccion: exigeSeleccion,
+    faltaSeleccion: faltaSeleccion,
+    pcaSinTemas: pcaSinTemas,
+    pcaSinNiveles: pcaSinNiveles,
     /* Para el panel del formulario: avisa que a este docente el método se le revisa a lo largo de
        la semana y no dentro de cada día. */
     momentosPorSemana: porSemana,
@@ -11271,6 +11377,22 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
   return '<div style="border:1px solid var(--' + color + '-600); background:var(--' + color + '-100); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px;">'
     + '<div style="font-weight:700; color:var(--' + color + '-600);">' + escapeHtml(titulo) + '</div>'
     + (detalles.length ? '<ul style="margin:6px 0 0 18px; padding:0;">' + detalles.map(function(x){ return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>' : '')
+    /* Niveles de Logro y Contenidos Esenciales sin marcar. Se explica aparte, y no como un renglón
+       más de la lista, porque casi siempre la causa no está en el plan sino en el PCA: la semana
+       que le toca a este plan no tiene temas cargados, o los tiene en otra semana. Decirle solo
+       "falta marcar" lo deja buscando una casilla que no existe. */
+    + ((v.faltaSeleccion || v.pcaSinTemas || v.pcaSinNiveles)
+        ? '<div style="margin-top:8px; font-size:12.5px; line-height:1.5;">'
+          + '<b>' + escapeHtml(te('Es necesario elegir al menos un Nivel de Logro y un Contenido Esencial en cada día de clase.', isIngles)) + '</b>'
+          + ((v.pcaSinTemas || v.pcaSinNiveles)
+              ? '<div style="margin-top:6px;">' + escapeHtml(te('Ahora mismo no te aparece nada para marcar porque tu PCA no tiene ', isIngles)
+                  + (v.pcaSinTemas && v.pcaSinNiveles ? te('temas ni niveles de logro', isIngles)
+                      : (v.pcaSinTemas ? te('temas', isIngles) : te('niveles de logro', isIngles)))
+                  + te(' en la semana que corresponde a este plan. Corrígelo en “Planes Curriculares (PCA)” y aparecerán aquí solos.', isIngles)) + '</div>'
+              : '')
+          + '<div style="margin-top:6px;">' + escapeHtml(te('Recuerda que en tu PCA puedes mover las semanas y copiar los temas de una semana a otra con total libertad: si los temas quedaron en la semana equivocada, cámbialos de sitio y este plan los cargará solo.', isIngles)) + '</div>'
+          + '</div>'
+        : '')
     /* Días sin clase normal (feriado o actividad interna del colegio): se dice explícitamente para
        que el docente no se quede buscando qué le falta. */
     + ((v.diasFeriado||[]).length
@@ -11596,8 +11718,11 @@ function semanalToolbarHtml(s){
    columna — usados tanto para armar el HTML como para leer/guardar la selección del docente. */
 var NIVEL_LOGRO_DIA_FIELD = {basico:'nivelLogroBasico', intermedio:'nivelLogroIntermedio', avanzado:'nivelLogroAvanzado'};
 var NIVEL_LOGRO_DIA_LABEL = {basico:'Básico', intermedio:'Intermedio', avanzado:'Avanzado'};
-function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
+function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles, exigeSeleccion){
   var tituloCategoria = te('Niveles de Logro', isIngles);
+  /* Para el aviso de "marca al menos uno": se mide sobre los TRES niveles juntos, no columna por
+     columna — basta con que el día tenga un ítem marcado en cualquiera de ellos. */
+  var hayOpciones = false, haySeleccion = false;
   function grupoHtml(tier, items, seleccion){
     return '<div class="checkbox-grid" style="flex-direction:column; align-items:stretch;">' + items.map(function(it){
       return '<label class="checkbox-pill nivel-logro-pill"><input type="checkbox" class="nivellogro-dia-cb" data-tier="' + tier + '" value="' + escapeHtml(it) + '" ' + (seleccion.indexOf(it)!==-1?'checked':'') + ' /><span>' + escapeHtml(it) + '</span></label>';
@@ -11608,6 +11733,8 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
     var itemsPendientes = (nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || [];
     var itemsReforzar = (nivelLogroItems[tier] && nivelLogroItems[tier].reforzar) || [];
     var seleccion = splitItemsList(dia[NIVEL_LOGRO_DIA_FIELD[tier]]);
+    if(itemsEstaSemana.length || itemsPendientes.length || itemsReforzar.length) hayOpciones = true;
+    if(seleccion.length) haySeleccion = true;
     var etiqueta = te(NIVEL_LOGRO_DIA_LABEL[tier], isIngles);
     var body;
     if(nivelLogroMotivo){
@@ -11620,8 +11747,10 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
       // mensaje afirmaba sin más "el PCA no tiene ítems", lo cual es engañoso en el segundo caso
       // (el ítem existe, solo que ya quedó marcado en otro día con una fecha distinta).
       body = isIngles
-        ? '<div class="hint">No ' + etiqueta + ' items available: they were already marked on another day of this plan, or the PCA has none for this week.</div>'
-        : '<div class="hint">No hay ítems de Nivel de Logro ' + etiqueta + ' disponibles: ya se marcaron en otro día de este plan, o el PCA no tiene ítems para esta semana.</div>';
+        ? '<div class="hint">No ' + etiqueta + ' items available: they were already marked on another day of this plan, or the PCA has none for this week.'
+          + (exigeSeleccion ? ' If it is the latter, fix your PCA: you can move weeks and copy items from one week to another freely.' : '') + '</div>'
+        : '<div class="hint">No hay ítems de Nivel de Logro ' + etiqueta + ' disponibles: ya se marcaron en otro día de este plan, o el PCA no tiene ítems para esta semana.'
+          + (exigeSeleccion ? ' Si es lo segundo, corrige tu PCA: puedes mover las semanas y copiar los ítems de una semana a otra con total libertad.' : '') + '</div>';
     } else {
       body = ''
         + (itemsEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">' + te('De esta semana', isIngles) + '</div>' + grupoHtml(tier, itemsEstaSemana, seleccion) : '')
@@ -11630,7 +11759,11 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles){
     }
     return '<div><div class="hint" style="font-weight:700; margin-bottom:4px;">' + etiqueta + '</div>' + body + '</div>';
   }).join('');
-  return '<div class="field"><label class="semanal-section-title">' + tituloCategoria + '</label><div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
+  return '<div class="field"><label class="semanal-section-title">' + tituloCategoria + '</label>'
+    + (exigeSeleccion && hayOpciones && !haySeleccion
+        ? '<div class="hint" style="color:var(--red-600); font-weight:700; margin-top:4px;">' + escapeHtml(te('Obligatorio: marca al menos uno.', isIngles)) + '</div>'
+        : '')
+    + '<div class="grid-3" style="margin-top:6px; align-items:start;">' + columnas + '</div></div>';
 }
 /* Color de las franjas del Plan Semanal según el área: ayuda a reconocer de un vistazo de qué
    asignatura es el plan impreso, sobre todo cuando el docente maneja varias. Las áreas que no
@@ -11645,7 +11778,7 @@ function estiloBandaAsignatura(asignatura){
   var m = BANDA_POR_ASIGNATURA.find(function(x){ return x.coincide.test(asignatura||''); });
   return m ? ' style="background:' + m.fondo + '; color:' + m.texto + ';"' : '';
 }
-function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles){
+function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles, exigeSeleccion){
   var seleccionados = splitItemsList(dia.contenidos);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
   // (para que no desaparezcan de su propia lista al marcarlos).
@@ -11666,9 +11799,13 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasRe
   if(motivoSinSemana){
     contenidosHtml = '<div class="hint">' + escapeHtml(motivoSinSemana) + '</div>';
   } else if(!opcionesEstaSemana.length && !opcionesPendientes.length && !opcionesReforzar.length){
-    contenidosHtml = '<div class="hint">' + te('No hay más temas disponibles: ya fueron asignados a otro día, o el PCA no tiene temas para esta semana.', isIngles) + '</div>';
+    contenidosHtml = '<div class="hint">' + te('No hay más temas disponibles: ya fueron asignados a otro día, o el PCA no tiene temas para esta semana.', isIngles)
+      + (exigeSeleccion ? ' ' + te('Si es lo segundo, corrige tu PCA para que los temas se carguen aquí: en “Planes Curriculares (PCA)” puedes mover las semanas y copiar los temas de una semana a otra con total libertad.', isIngles) : '')
+      + '</div>';
   } else {
-    contenidosHtml = ''
+    contenidosHtml = (exigeSeleccion && !seleccionados.length
+        ? '<div class="hint" style="color:var(--red-600); font-weight:700; margin-bottom:4px;">' + escapeHtml(te('Obligatorio: marca al menos uno.', isIngles)) + '</div>'
+        : '')
       + (opcionesEstaSemana.length ? '<div class="hint" style="font-weight:700; margin-bottom:4px;">' + te('Temas de esta semana', isIngles) + '</div>' + grupoHtml(opcionesEstaSemana) : '')
       + (opcionesPendientes.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">' + te('Pendientes de la semana anterior', isIngles) + '</div>' + grupoHtml(opcionesPendientes) : '')
       + (opcionesReforzar.length ? '<div class="hint" style="font-weight:700; margin:10px 0 4px;">' + te('De la semana anterior (para reforzar)', isIngles) + '</div>' + grupoHtml(opcionesReforzar) : '');
@@ -11683,10 +11820,12 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasRe
   + '<div class="semanal-day" data-day="' + dia.id + '">'
   + '  <div class="day-head"><strong>' + te('Día', isIngles) + ' ' + (i+1) + ' — ' + escapeHtml(fechaLarga) + '</strong>'
   + (etiquetaSinClase ? '<span class="pill pill-blue" title="' + escapeHtml(te('Día marcado en el cronograma escolar como ', isIngles) + etiquetaSinClase.toLowerCase() + te(': basta con escribir en los casilleros qué se hizo ese día.', isIngles)) + '">' + escapeHtml(te(etiquetaSinClase, isIngles)) + '</span>' : '')
-  + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
+  + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;'
+  + (exigeSeleccion && !dia.fecha ? ' border-color:var(--red-600); background:var(--red-100);' : '') + '" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
+  + (exigeSeleccion && !dia.fecha ? '<span class="hint no-print" style="color:var(--red-600); font-weight:700; margin-left:8px;">' + escapeHtml(te('Pon la fecha de este día de clase.', isIngles)) + '</span>' : '')
   + (total>1 ? '<button class="btn btn-danger btn-sm no-print" data-removeday="' + dia.id + '">' + te('Eliminar día', isIngles) + '</button>' : '')
   + '  </div>'
-  + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles)
+  + '  ' + nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles, exigeSeleccion)
   + '  <div class="field" style="margin-top:12px;"><label class="semanal-section-title">' + te('Contenidos Esenciales', isIngles) + '</label>' + contenidosHtml + '</div>'
   + '  <div class="grid-3" style="margin-top:12px; align-items:start;">'
   + '    <div class="field"><label>' + te('Actividades de Aprendizaje', isIngles) + '</label>' + richEditorHtml('actividades', dia.id, dia.actividades||'', te('Escribe las actividades de aprendizaje…', isIngles)) + '</div>'
@@ -11811,7 +11950,7 @@ function renderSemanalForm(d){
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var reforzarDisponibles = temasReforzar.filter(function(t){ return !usadosEnOtrosDias[t]; });
-    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, reforzarDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles);
+    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, reforzarDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles, semanalExigeSeleccion(s));
   }).join('');
 
   /* Color de las franjas según el área de la asignatura (ver BANDA_POR_ASIGNATURA). */
@@ -13758,7 +13897,6 @@ var ADMIN_TABS = [
   {key:'semanal', label:'Planes Semanales (Escuela)'},
   {key:'semanalcolegio', label:'Planes Semanales (Colegio)'},
   {key:'taller', label:'Taller Práctico'},
-  {key:'diapositivas', label:'Diapositivas'},
   {key:'consultas', label:'Consultas'},
   {key:'presentacion', label:'Presentación de Planes (Escuela)'},
   {key:'presentaciontaller', label:'Presentación de Talleres Prácticos'},
@@ -13898,6 +14036,12 @@ function enlacesDeDiapositivas(docenteId, asignatura, curso, filtro){
   filas.sort(function(a,b){ return (a.semana||'').localeCompare(b.semana||''); });
   return filas;
 }
+/* RETIRADA DEL PANEL (18-11-2026). Esta hoja listaba, a partir de la Carga Horaria, qué
+   combinaciones de docente/asignatura/curso tenían enlace de diapositivas. Se quitó su pestaña
+   "Diapositivas" de Planificación Curricular a pedido del asesor: la revisión real se lleva en
+   "Revisión de Diapositivas" (Presentaciones). La función se conserva sin uso por si hiciera falta
+   volver a colgarla; para eso basta devolver 'diapositivas' a ADMIN_TABS, al grupo 'curricular' y a
+   los dos despachadores de renderAdmin/bindAdminEvents. */
 function renderAdminDiapositivas(){
   var filtro = state.diapositivasFiltro || (state.diapositivasFiltro = {texto:'', soloSinEnlace:false, desde:'', hasta:'', criterio:'semana'});
   if(filtro.criterio === undefined) filtro.criterio = 'semana';
@@ -14046,7 +14190,7 @@ function bindAdminDiapositivasEvents(){
 
 var ADMIN_GROUPS = [
   {key:'personal', label:'Personal', tabs:['docentes','carga']},
-  {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller','diapositivas']},
+  {key:'curricular', label:'Planificación Curricular', tabs:['pca','semanal','semanalcolegio','taller']},
   {key:'presentaciones', label:'Presentaciones', tabs:['presentacion','presentacioncolegio','presentaciontaller','presentacionfaltantes','revisiondiapos','presentacionpca','presentacionpcacolegio','presentacionresumen']},
   {key:'config', label:'Configuración', tabs:['consultas','fechaslimite']}
 ];
@@ -14058,6 +14202,9 @@ function grupoDeAdminTab(tabKey){
 function renderAdmin(d){
   if(!isStaffRole(d.role)) return renderDashboard(d);
   var tab = state.adminTab || 'docentes';
+  /* Si la pestaña guardada ya no existe (p.ej. la de "Diapositivas", que se retiró), se vuelve a la
+     primera: si no, el panel se quedaría sin ninguna pestaña marcada y con el cuerpo vacío. */
+  if(!ADMIN_TABS.some(function(x){ return x.key === tab; })) tab = state.adminTab = 'docentes';
   if(!state.adminGroupOpen) state.adminGroupOpen = grupoDeAdminTab(tab);
   var gruposHtml = ADMIN_GROUPS.map(function(grupo){
     var abierto = state.adminGroupOpen === grupo.key;
@@ -14080,7 +14227,6 @@ function renderAdmin(d){
   else if(tab === 'semanal') body = renderAdminSemanal('escuela');
   else if(tab === 'semanalcolegio') body = renderAdminSemanal('colegio');
   else if(tab === 'taller') body = renderTallerListInner(d, true);
-  else if(tab === 'diapositivas') body = renderAdminDiapositivas();
   else if(tab === 'consultas') body = renderAdminConsultas();
   else if(tab === 'presentacion') body = renderAdminPresentacion('escuela');
   else if(tab === 'presentacioncolegio') body = renderAdminPresentacion('colegio');
@@ -14120,7 +14266,6 @@ function bindAdminEvents(){
   else if(tab === 'semanal') bindSemanalListSharedEvents();
   else if(tab === 'semanalcolegio') bindSemanalListSharedEvents();
   else if(tab === 'taller') bindTallerListEvents();
-  else if(tab === 'diapositivas') bindAdminDiapositivasEvents();
   else if(tab === 'consultas') bindAdminConsultasEvents();
   else if(tab === 'presentacion') bindAdminPresentacionEvents();
   else if(tab === 'presentacioncolegio') bindAdminPresentacionEvents();
