@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261120132738">
+<meta name="app-build" content="20261120134054">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -863,7 +863,35 @@ function parseLinesList(html){
    lo que ya existe en Firestore — pero todo lo que se guarde de aquí en adelante usa el separador
    seguro y ya no se puede corromper así. */
 var ITEMS_SEP = '';
-function joinItemsList(arr){ return (arr||[]).join(ITEMS_SEP); }
+/* Se escribe el separador invisible SIEMPRE, también cuando se guarda un solo ítem. Antes, con un
+   único ítem seleccionado, el valor guardado no llevaba ninguna marca y al volver a leerlo era
+   imposible distinguir "un ítem que contiene un punto y coma" de "varios ítems separados por punto
+   y coma" (ver splitItemsList): el ítem se partía en trozos, ninguno coincidía con las opciones del
+   PCA y la casilla aparecía desmarcada. Con la marca por delante, lo que se guarde de ahora en
+   adelante no puede confundirse. El trozo vacío que deja el separador inicial lo descarta
+   splitItemsList con su filter(Boolean). */
+function joinItemsList(arr){
+  var items = (arr||[]).filter(function(x){ return x!==undefined && x!==null && String(x).trim(); });
+  return items.length ? ITEMS_SEP + items.join(ITEMS_SEP) : '';
+}
+/* Para lo que YA está guardado sin la marca: se decide con las opciones que ofrece el PCA.
+   Medido sobre la base real: 213 casillas antiguas usan de verdad el ';' como separador y 35 son
+   un solo ítem con un punto y coma dentro. Mirando el vocabulario se resuelven bien las dos. */
+function resolverItemsGuardados(valor, opciones){
+  if(!valor) return [];
+  var s = String(valor);
+  if(s.indexOf(ITEMS_SEP)!==-1) return splitItemsList(s);
+  if(s.indexOf(';')===-1){ var unico = s.trim(); return unico ? [unico] : []; }
+  var conocidas = opciones || [];
+  var partes = s.split(';').map(function(x){ return x.trim(); }).filter(Boolean);
+  /* Primero lo antiguo: si TODOS los trozos son opciones reales, eran varios ítems. */
+  if(partes.length>1 && partes.every(function(p){ return conocidas.indexOf(p)!==-1; })) return partes;
+  /* Si el texto entero es una opción, era UN ítem con su propio punto y coma. */
+  var entero = s.trim();
+  if(conocidas.indexOf(entero)!==-1) return [entero];
+  /* Sin forma de saberlo (el PCA cambió desde entonces), se deja como estaba. */
+  return partes;
+}
 function splitItemsList(str){
   if(!str) return [];
   if(str.indexOf(ITEMS_SEP)!==-1) return str.split(ITEMS_SEP).map(function(x){ return x.trim(); }).filter(Boolean);
@@ -11970,6 +11998,23 @@ function renderSemanalForm(d){
 
   // La semana vinculada (semanaRowId) se conserva a propósito aunque la fecha actual ya no
   // encaje exactamente en su rango (para no perder el enlace por un simple desajuste — ver
+  /* Repara, en la copia que se está editando, las selecciones guardadas sin el separador
+     invisible: con las opciones del PCA delante se sabe si un ';' separaba dos ítems o estaba
+     DENTRO de uno solo (ver resolverItemsGuardados). Mientras no se hacía, un ítem con punto y
+     coma se partía en trozos que no coincidían con nada y su casilla salía vacía. Al reescribirlo
+     con joinItemsList queda con la marca, así que el próximo guardado lo deja arreglado para
+     siempre. Es idempotente: repetirlo en cada render no cambia nada. */
+  var vocabulario = ofrecidoDelPcaParaPlan(s);
+  (s.dias||[]).forEach(function(dia){
+    var temas = resolverItemsGuardados(dia.contenidos, vocabulario.temas);
+    if(temas.length) dia.contenidos = joinItemsList(temas);
+    ['basico','intermedio','avanzado'].forEach(function(tier){
+      var campo = NIVEL_LOGRO_DIA_FIELD[tier];
+      var items = resolverItemsGuardados(dia[campo], vocabulario.niveles);
+      if(items.length) dia[campo] = joinItemsList(items);
+    });
+  });
+
   // applyFechaSelection), pero para Nivel de Logro sí debe quedar claro cuando eso pasa: si la
   // fecha del plan ya no coincide con el rango Fecha Inicio/Fin de esa semana del PCA, se
   // muestra "no hay" en vez de dejar los niveles de una semana distinta.
@@ -12007,7 +12052,10 @@ function renderSemanalForm(d){
     ? '<div class="checkbox-grid" id="sfBloqueBox">' + bloqueOpts.map(function(b){
         return '<label class="checkbox-pill"><input type="checkbox" class="bloque-cb" value="' + escapeHtml(b) + '" ' + (bloqueSeleccion.indexOf(b)!==-1?'checked':'') + ' />' + escapeHtml(b) + '</label>';
       }).join('') + '</div>'
-    : '<input class="cell-input" id="sfBloque" value="' + escapeHtml(s.bloqueCurricular||'') + '" />';
+    /* Este campo es de texto libre cuando la asignatura no tiene bloques predefinidos, pero el
+       valor pudo guardarse antes como lista de opciones; se muestra legible, sin el separador
+       invisible. */
+    : '<input class="cell-input" id="sfBloque" value="' + escapeHtml(itemsListParaTexto(s.bloqueCurricular||'') || '') + '" />';
 
   var temasSemana = semanaActual ? parseLinesList(semanaActual.temas) : [];
   var temasPendientes = semanaActual ? temasPendientesAnteriores(s.pcaId, semanaActual.id) : [];
