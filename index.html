@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261120134054">
+<meta name="app-build" content="20261120135305">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -10488,7 +10488,8 @@ function importarSemanal(semId){
       return {
         id: uid('dia'), fecha:'', contenidos: dia.contenidos||'', nivelLogroBasico: dia.nivelLogroBasico||'',
         nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
-        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||'',
+        jornada: dia.jornada||''
       };
     }),
     revisadoPor:'Lic. David Villalta', aprobadoPor:'Lcdo. José Gómez',
@@ -10547,7 +10548,7 @@ function bindSemanalListSharedEvents(){
 }
 
 /* ============================= PLAN SEMANAL — FORM ============================= */
-function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', actividades:'', recursos:'', evaluacion:''}; }
+function blankDia(){ return {id:uid('dia'), fecha:'', contenidos:'', nivelLogroBasico:'', nivelLogroIntermedio:'', nivelLogroAvanzado:'', actividades:'', recursos:'', evaluacion:'', jornada:''}; }
 /* (La antigua semanalEstaCompleto — Contenidos + Actividades + Nivel de Logro — se retiró: ahora
    existe un solo criterio de completitud, validarPlanSemanal(), definido más abajo.) */
 /* Texto plano de los 3 niveles de logro seleccionados para un día del Plan Semanal, para usarlo
@@ -11111,6 +11112,38 @@ function docenteDesarrollaMomentosPorSemana(docenteId){
   var d = allDocentes().find(function(x){ return x.id === docenteId; });
   return !!(d && d.momentosPorSemana);
 }
+/* ---------- Jornadas de repaso en la Escuela ----------
+   En la Escuela (de Inicial a 6.º EGB) hay días en que no se avanza materia nueva: el repaso
+   navideño, el de fin de parcial, las jornadas de refuerzo. Pedirle a esos días los momentos del
+   método y el enlace de las diapositivas es reclamarles una clase que no hubo, y marcar cada uno
+   en el cronograma escolar no tiene sentido porque no son iguales para todo el colegio: cada
+   docente los acomoda a su curso.
+
+   Por eso el docente de Escuela puede declarar el día como "Repaso" en el propio Plan Semanal, y
+   ese día se trata igual que un feriado del cronograma: sigue teniendo que escribir qué hizo en
+   Actividades, Recursos y Evaluación, pero no se le exige el método, ni el enlace, ni marcar
+   Niveles de Logro ni Contenidos Esenciales.
+
+   Se reconoce de dos maneras: por la casilla "Jornada" del día, y también si lo escribe con sus
+   palabras en las Actividades. La lista de frases es corta a propósito: un "repaso" suelto es
+   parte normal de cualquier clase y no puede eximir de nada. */
+var REPASO_FRASES = /(repaso|refuerzo|actividad(es)?|programa|jornada|semana)\s+(de\s+|del\s+)?navide|semana\s+de\s+repaso|jornada\s+de\s+repaso|d[ií]a\s+de\s+repaso|repaso\s+general|repaso\s+y\s+refuerzo/i;
+function cursoDelPlan(s){ return ((s && s.curso)==='Otro…' ? (s.cursoManual||'') : ((s && s.curso)||'')); }
+function planEsDeEscuela(s){ return !!s && esEscuelaPorNivelCurso(s.nivel, cursoDelPlan(s)); }
+function diaEsRepaso(s, dia){
+  if(!dia || !planEsDeEscuela(s)) return false;
+  if(dia.jornada === 'repaso') return true;
+  return REPASO_FRASES.test(richTextToPlain(dia.actividades||''));
+}
+/* Lo que hace que a un día no se le exija clase normal: el cronograma escolar o el repaso que
+   declara el propio docente. */
+function diaSinClaseNormal(s, dia){
+  return esFeriadoEscolar(dia && dia.fecha) || diaEsRepaso(s, dia);
+}
+function etiquetaDeJornada(s, dia){
+  return etiquetaDiaSinClase(dia && dia.fecha) || (diaEsRepaso(s, dia) ? 'Repaso' : '');
+}
+
 /* ---------- Campos que se exigen desde la semana del 16 de noviembre de 2026 ----------
    El Plan Semanal pasa a exigir tres cosas más: la FECHA de cada día de clase, al menos un NIVEL DE
    LOGRO y al menos un CONTENIDO ESENCIAL marcados.
@@ -11190,8 +11223,9 @@ function validarPlanSemanalCalculo(s){
   var porSemana = docenteDesarrollaMomentosPorSemana(s.docenteId);
   var r = validarBloquesPlan(dias.map(function(dia, i){
     return { etiqueta:'Día ' + (i + 1), actividades: dia.actividades, recursos: dia.recursos, evaluacion: dia.evaluacion,
-             /* Ver esFeriadoEscolar: los feriados del cronograma no exigen método ni diapositivas. */
-             exento: esFeriadoEscolar(dia.fecha) };
+             /* Ni los feriados del cronograma ni las jornadas de repaso que declara el docente de
+                Escuela exigen método ni diapositivas (ver diaSinClaseNormal). */
+             exento: diaSinClaseNormal(s, dia) };
   }), metodoKey, exigirEnlace, porSemana);
   var faltanCasilleros = r.faltanCasilleros, problemasMetodo = r.problemasMetodo, faltanEnlaces = r.faltanEnlaces;
   /* El Motivo de la replanificación es obligatorio: decide si se le exige al docente cambiar las
@@ -11216,7 +11250,7 @@ function validarPlanSemanalCalculo(s){
     dias.forEach(function(dia, i){
       var et = 'Día ' + (i + 1);
       if(!dia.fecha) faltanCasilleros.push(et + ': falta la fecha del día de clase');
-      if(esFeriadoEscolar(dia.fecha)) return;
+      if(diaSinClaseNormal(s, dia)) return;
       if(quedanNiveles && !diaTieneNivelLogro(dia)){
         faltanCasilleros.push(et + ': falta marcar al menos un Nivel de Logro');
         faltaSeleccion = true;
@@ -11228,8 +11262,10 @@ function validarPlanSemanalCalculo(s){
     });
   }
   var completo = dias.length > 0 && !faltanCasilleros.length;
+  /* Incluye también las jornadas de repaso declaradas por el docente de Escuela, para que el aviso
+     del formulario diga por qué a esos días no se les exige el método. */
   var diasFeriado = dias.map(function(dia, i){
-    var etiqueta = etiquetaDiaSinClase(dia.fecha);
+    var etiqueta = etiquetaDeJornada(s, dia);
     return etiqueta ? ('Día ' + (i+1) + (dia.fecha ? ' (' + fmtDate(dia.fecha) + ')' : '') + ' — ' + etiqueta.toLowerCase()) : null;
   }).filter(Boolean);
   var actividadesRepetidas = actividadesRepetidasPlan(s);
@@ -11502,7 +11538,7 @@ function checklistPlanHtml(v, isIngles, etiquetaBloque, etiquetaCadaBloque){
     /* Días sin clase normal (feriado o actividad interna del colegio): se dice explícitamente para
        que el docente no se quede buscando qué le falta. */
     + ((v.diasFeriado||[]).length
-        ? '<div class="hint" style="margin-top:6px;">' + escapeHtml(te('Según el cronograma escolar: ', isIngles) + v.diasFeriado.join(', ') + '. ' + te('En esos días basta con escribir en los casilleros qué se hizo (p.ej. “Feriado” o el nombre del programa) — no se exige el método ni el enlace de las diapositivas.', isIngles)) + '</div>'
+        ? '<div class="hint" style="margin-top:6px;">' + escapeHtml(te('Días sin clase normal: ', isIngles) + v.diasFeriado.join(', ') + '. ' + te('En esos días basta con escribir en los casilleros qué se hizo (p.ej. “Feriado”, “Repaso navideño” o el nombre del programa) — no se exige el método, ni el enlace de las diapositivas, ni marcar Niveles de Logro o Contenidos Esenciales.', isIngles)) + '</div>'
         : '')
     /* Días fuera de la semana del plan: el plan queda archivado en la semana de la Fecha, no en la
        de sus días, y después el docente no lo encuentra donde lo busca. */
@@ -11654,7 +11690,31 @@ function refrescarChecklistSemanal(s){
   _checklistTimer = setTimeout(function(){
     var cont = document.getElementById('semanalChecklist');
     if(cont) cont.innerHTML = semanalChecklistHtml(s, semanalEsIngles(s));
+    sincronizarJornadaEnPantalla(s);
   }, 500);
+}
+/* Cuando el docente ESCRIBE "Repaso navideño" en las Actividades, el día pasa a ser jornada de
+   repaso al instante, pero el encabezado no se vuelve a dibujar (redibujar el formulario entero
+   mientras alguien escribe le haría perder el cursor). Aquí se pone al día solo lo que cambia: la
+   casilla "Jornada" y la etiqueta del día, para que vea reflejado lo que acaba de escribir. */
+function sincronizarJornadaEnPantalla(s){
+  if(!planEsDeEscuela(s)) return;
+  (s.dias||[]).forEach(function(dia){
+    var caja = document.querySelector('.semanal-day[data-day="' + dia.id + '"]');
+    if(!caja || etiquetaDiaSinClase(dia.fecha)) return;
+    var repaso = diaEsRepaso(s, dia);
+    var sel = caja.querySelector('select[data-df="jornada"]');
+    if(sel && sel.value !== (repaso ? 'repaso' : '')) sel.value = repaso ? 'repaso' : '';
+    var cabeza = caja.querySelector('.day-head');
+    if(!cabeza) return;
+    var pill = cabeza.querySelector('.pill-jornada');
+    if(repaso && !pill){
+      pill = document.createElement('span');
+      pill.className = 'pill pill-blue pill-jornada';
+      pill.textContent = 'Repaso';
+      cabeza.insertBefore(pill, cabeza.children[1] || null);
+    } else if(!repaso && pill){ pill.parentNode.removeChild(pill); }
+  });
 }
 function refrescarChecklistTaller(t){
   clearTimeout(_checklistTimer);
@@ -11900,7 +11960,7 @@ function estiloBandaAsignatura(asignatura){
   var m = BANDA_POR_ASIGNATURA.find(function(x){ return x.coincide.test(asignatura||''); });
   return m ? ' style="background:' + m.fondo + '; color:' + m.texto + ';"' : '';
 }
-function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles, exigeSeleccion){
+function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasReforzar, motivoSinSemana, nivelLogroItems, nivelLogroMotivo, isIngles, exigeSeleccion, jornada){
   var seleccionados = splitItemsList(dia.contenidos);
   // Incluye también los ya seleccionados en este mismo día aunque ya no estén "disponibles"
   // (para que no desaparezcan de su propia lista al marcarlos).
@@ -11938,10 +11998,25 @@ function semanalDayHtml(dia, i, total, temasEstaSemana, temasPendientes, temasRe
      mismo para que el docente sepa por qué no se le exige el método ni el enlace de ese día
      (ver tipoDiaSinClase). */
   var etiquetaSinClase = etiquetaDiaSinClase(dia.fecha);
+  /* En la Escuela el docente puede declarar el día como jornada de repaso (ver diaEsRepaso): se
+     muestra el selector, y la etiqueta sale igual que la del feriado. Si el cronograma ya marcó el
+     día, manda el cronograma y el selector no hace falta. */
+  var repaso = !etiquetaSinClase && jornada && jornada.esEscuela;
+  var esRepaso = repaso && jornada.esRepaso;
+  var etiquetaDia = etiquetaSinClase || (esRepaso ? 'Repaso' : '');
   return ''
   + '<div class="semanal-day" data-day="' + dia.id + '">'
   + '  <div class="day-head"><strong>' + te('Día', isIngles) + ' ' + (i+1) + ' — ' + escapeHtml(fechaLarga) + '</strong>'
-  + (etiquetaSinClase ? '<span class="pill pill-blue" title="' + escapeHtml(te('Día marcado en el cronograma escolar como ', isIngles) + etiquetaSinClase.toLowerCase() + te(': basta con escribir en los casilleros qué se hizo ese día.', isIngles)) + '">' + escapeHtml(te(etiquetaSinClase, isIngles)) + '</span>' : '')
+  + (etiquetaDia ? '<span class="pill pill-blue' + (etiquetaSinClase ? '' : ' pill-jornada') + '" title="' + escapeHtml(etiquetaSinClase
+        ? (te('Día marcado en el cronograma escolar como ', isIngles) + etiquetaSinClase.toLowerCase() + te(': basta con escribir en los casilleros qué se hizo ese día.', isIngles))
+        : te('Jornada de repaso: basta con escribir en los casilleros qué se hizo. No se exige el método, ni el enlace de las diapositivas, ni marcar Niveles de Logro o Contenidos Esenciales.', isIngles)) + '">' + escapeHtml(te(etiquetaDia, isIngles)) + '</span>' : '')
+  + (repaso
+      ? '<label class="hint no-print" style="margin-left:10px; display:inline-flex; align-items:center; gap:6px;">' + escapeHtml(te('Jornada:', isIngles))
+        + '<select class="cell-input" style="display:inline-block; width:auto;" data-df="jornada">'
+        + '<option value=""' + (esRepaso?'':' selected') + '>' + escapeHtml(te('Clase normal', isIngles)) + '</option>'
+        + '<option value="repaso"' + (esRepaso?' selected':'') + '>' + escapeHtml(te('Repaso / refuerzo', isIngles)) + '</option>'
+        + '</select></label>'
+      : '')
   + '    <input type="date" class="cell-input no-print" style="display:inline-block; width:auto; margin-left:10px;'
   + (exigeSeleccion && !dia.fecha ? ' border-color:var(--red-600); background:var(--red-100);' : '') + '" data-df="fecha" value="' + escapeHtml(dia.fecha||'') + '" />'
   + (exigeSeleccion && !dia.fecha ? '<span class="hint no-print" style="color:var(--red-600); font-weight:700; margin-left:8px;">' + escapeHtml(te('Pon la fecha de este día de clase.', isIngles)) + '</span>' : '')
@@ -12092,7 +12167,8 @@ function renderSemanalForm(d){
     var estaSemanaDisponibles = temasSemana.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var pendientesDisponibles = temasPendientes.filter(function(t){ return !usadosEnOtrosDias[t]; });
     var reforzarDisponibles = temasReforzar.filter(function(t){ return !usadosEnOtrosDias[t]; });
-    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, reforzarDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles, semanalExigeSeleccion(s));
+    return semanalDayHtml(dia, i, (s.dias||[]).length, estaSemanaDisponibles, pendientesDisponibles, reforzarDisponibles, motivoSinSemana, nivelLogroParaDia(dia), nivelLogroMotivo, isIngles, semanalExigeSeleccion(s),
+      {esEscuela: planEsDeEscuela(s), esRepaso: diaEsRepaso(s, dia)});
   }).join('');
 
   /* Color de las franjas según el área de la asignatura (ver BANDA_POR_ASIGNATURA). */
@@ -12315,7 +12391,8 @@ function replanificarSemanal(semId, motivoClave, motivoTexto, nuevaFechaInicio, 
     var nuevo = {
       id: uid('dia'), fecha: dia.fecha||'', contenidos: dia.contenidos||'',
       nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
-      actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+      actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||'',
+      jornada: dia.jornada||''
     };
     if(idx===0){
       nuevo.contenidos = mergeSemicolonLista(nuevo.contenidos, temasReforzar);
@@ -12390,7 +12467,8 @@ function duplicarSemanalOtroGrupo(semId){
       return {
         id: uid('dia'), fecha: dia.fecha||'', contenidos: dia.contenidos||'',
         nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
-        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||''
+        actividades: dia.actividades||'', recursos: dia.recursos||'', evaluacion: dia.evaluacion||'',
+        jornada: dia.jornada||''
       };
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
@@ -12421,7 +12499,8 @@ function saveSemanal(s, silent){
       return {
         id: dia.id, fecha: dia.fecha||'', contenidos: dia.contenidos||'',
         nivelLogroBasico: dia.nivelLogroBasico||'', nivelLogroIntermedio: dia.nivelLogroIntermedio||'', nivelLogroAvanzado: dia.nivelLogroAvanzado||'',
-        actividades: sanitizeRte(dia.actividades||''), recursos: sanitizeRte(dia.recursos||''), evaluacion: sanitizeRte(dia.evaluacion||'')
+        actividades: sanitizeRte(dia.actividades||''), recursos: sanitizeRte(dia.recursos||''), evaluacion: sanitizeRte(dia.evaluacion||''),
+        jornada: dia.jornada||''
       };
     }),
     revisadoPor: s.revisadoPor||'', aprobadoPor: s.aprobadoPor||'',
