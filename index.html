@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261120125423">
+<meta name="app-build" content="20261120132143">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -1479,8 +1479,16 @@ function resumenPapelera(bloques){
   else if(r.numero!==undefined && (r.curso || r.asignatura)) detalle = 'N.º ' + r.numero + ' · ' + (r.asignatura||'') + (r.curso?(' · '+r.curso):'');
   else if(r.asignatura || r.curso) detalle = ((r.asignatura==='Otra…'?r.asignaturaManual:r.asignatura)||'') + (r.curso ? (' · ' + (r.curso==='Otro…'?r.cursoManual:r.curso)) : '');
   else if(r.titulo) detalle = r.titulo;
+  /* Semanas del PCA: sin esto se leían como un id suelto ("wk_mwo2va…") y el administrador no
+     podía saber qué estaba a punto de restaurar. */
+  else if(r.pcaId && (r.unidad || r.semana!==undefined)) detalle = (r.unidad||'Semana')
+    + (r.semana ? ' · semana ' + r.semana : '') + (r.fechaInicio ? ' (' + fmtDate(r.fechaInicio) + ')' : '');
   else detalle = r.id;
-  var extra = bloques.length>1 ? (' (+' + bloques.slice(1).reduce(function(n,b){ return n+b.registros.length; },0) + ' registro(s) relacionado(s))') : '';
+  /* Cuántos registros más arrastra la misma eliminación: los de los otros bloques y también los
+     del primero, que antes no se contaban (23 semanas borradas de golpe se leían como una sola). */
+  var otros = bloques.slice(1).reduce(function(n,b){ return n+b.registros.length; },0)
+    + Math.max(0, primero.registros.length - 1);
+  var extra = otros ? (' (+' + otros + ' registro(s) relacionado(s))') : '';
   return etiqueta + ' — ' + detalle + extra;
 }
 function moverAPapelera(bloques, motivo){
@@ -9281,12 +9289,43 @@ function quitarMarcasPegado(html){
   });
   return div.innerHTML;
 }
+/* ¿Esta fila de semana está completamente en blanco? Es la forma de reconocer las filas que el
+   propio formulario inventa (una por unidad) cuando abre un PCA y no encuentra sus semanas:
+   weekRow() las crea sin fechas y sin ningún texto. */
+function filaDeSemanaEnBlanco(f){
+  if(!f) return true;
+  if(String(f.fechaInicio||'').trim() || String(f.fechaFin||'').trim()) return false;
+  if(String(f.pagina||'').trim()) return false;
+  return !['destreza','nivelLogroIntermedio','nivelLogroAvanzado','temas','observacion']
+    .some(function(k){ return richTextToPlain(f[k]||'').trim(); });
+}
 function savePca(p, silent){
   var d = currentDocente();
   var existingHeader = load(LS.PCA).find(function(x){ return x.id===p.id; });
   if(existingHeader && !p._forzarGuardado && hayConflictoGuardado('pca', existingHeader.updatedAt)){
     if(silent){ toast('No se autoguardó: este PCA se modificó en otro dispositivo o pestaña. Recarga la página antes de seguir editando.', 'error'); return; }
     avisarConflictoGuardado('pca', existingHeader.updatedAt, function(){ p._forzarGuardado = true; savePca(p, silent); });
+    return;
+  }
+  /* ---------- Salvavidas: nunca reemplazar semanas reales por el esqueleto en blanco ----------
+     Guardar un PCA BORRA todas sus semanas y las reescribe con lo que el formulario tenga en
+     memoria (ver más abajo). Si el formulario se abrió antes de que llegaran las semanas desde la
+     nube, openPcaForm pone una fila vacía por unidad y, en cuanto el docente toca cualquier
+     casilla, el autoguardado escribe ese vacío encima del trabajo de todo el año. Así se perdieron
+     23 semanas de un PCA el 19 de noviembre de 2026, sin dejar rastro en la papelera.
+     Aquí se corta: si lo que hay en pantalla está TODO en blanco y en la base hay más semanas, no
+     se guarda nada y se le dice al docente qué pasó. */
+  var semanasEnBase = load(LS.CONT).filter(function(c){ return c.pcaId===p.id; });
+  var filasEnPantalla = [];
+  (p.unidades||[]).forEach(function(u){ (u.filas||[]).forEach(function(f){ filasEnPantalla.push(f); }); });
+  /* Se compara el CONTENIDO, no la cantidad: un PCA con una sola semana por unidad tiene tantas
+     filas como el esqueleto en blanco, y comparando números el guardia no saltaría. */
+  if(filasEnPantalla.length && filasEnPantalla.every(filaDeSemanaEnBlanco)
+     && semanasEnBase.some(function(c){ return !filaDeSemanaEnBlanco(c); })){
+    /* Se detiene también el autoguardado: si no, lo reintentaría cada pocos segundos. */
+    detenerAutoguardado('pca');
+    toast('No se guardó: este Plan Curricular tiene ' + semanasEnBase.length + ' semanas guardadas y el formulario se abrió vacío '
+      + '(seguramente la información todavía no había terminado de cargar). Recarga la página y vuelve a abrirlo. No se ha perdido nada.', 'error');
     return;
   }
   delete p._forzarGuardado;
@@ -9322,6 +9361,19 @@ function savePca(p, silent){
   marcarBaseConflicto('pca', header.updatedAt);
 
   var cont = load(LS.CONT).filter(function(c){ return c.pcaId!==p.id; });
+  /* Las semanas que este guardado va a hacer desaparecer (las que ya no están en el formulario)
+     pasan por la papelera, como cualquier otra eliminación del sistema. Antes no lo hacían: el
+     reemplazo era silencioso y lo borrado no se podía recuperar de ninguna manera. Solo se anota
+     cuando de verdad desaparece alguna fila —editar una semana conserva su id—, así que el
+     autoguardado no llena la papelera mientras el docente escribe. */
+  var idsQueQuedan = {};
+  (p.unidades||[]).forEach(function(u){ (u.filas||[]).forEach(function(f){ idsQueQuedan[f.id] = 1; }); });
+  var semanasQueSeVan = semanasEnBase.filter(function(c){ return !idsQueQuedan[c.id]; });
+  if(semanasQueSeVan.length){
+    moverAPapelera([{key: LS.CONT, registros: semanasQueSeVan}],
+      'Semanas quitadas al guardar el PCA ' + ((p.asignatura==='Otra…'?p.asignaturaManual:p.asignatura)||'')
+        + ' · ' + ((p.curso==='Otro…'?p.cursoManual:p.curso)||''));
+  }
   p.unidades.forEach(function(u){
     u.filas.forEach(function(f){
       cont.push({
