@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261120132143">
+<meta name="app-build" content="20261120132738">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -711,6 +711,19 @@ var FS_CACHE = { DOCENTES: [], CARGA: [], PCA: [], CONT: [], SEMANAL: [], FECHAS
    casillero, y la lista de Administración dibuja cientos de filas de una sola vez. */
 var DATOS_VERSION = 0;
 function marcarDatosCambiados(){ DATOS_VERSION++; }
+/* ---------- Qué colecciones ya llegaron de la nube ----------
+   FS_CACHE arranca con un array VACÍO por colección, así que mientras la primera respuesta de
+   Firestore está en camino, load() devuelve lo mismo que si el docente no tuviera nada. Eso no es
+   un detalle: el formulario del PCA, al no encontrar semanas, pone una fila en blanco por unidad,
+   y el primer guardado escribe ese vacío encima del trabajo del año (así se perdieron 23 semanas
+   el 19 de noviembre de 2026). Aquí se anota qué colecciones ya respondieron al menos una vez,
+   para no dejar abrir un formulario que todavía no tiene con qué llenarse.
+   Vacío y "todavía no ha llegado" dejan así de confundirse. */
+var FS_CARGADA = {};
+function marcarColeccionCargada(key){ FS_CARGADA[key] = true; }
+function datosSincronizados(claves){
+  return (claves||[]).every(function(k){ return !!FS_CARGADA[k]; });
+}
 function load(key){ return FS_CACHE[key] || []; }
 function save(key, val){
   var old = FS_CACHE[key] || [];
@@ -8636,6 +8649,13 @@ function checklistPcaHtml(p, isIngles){
 }
 
 function openPcaForm(pcaId, returnTo){
+  /* No se abre un PCA existente hasta que las semanas hayan llegado de la nube: si se abriera
+     antes, el formulario se dibujaría con una fila en blanco por unidad y el primer guardado
+     borraría el año entero (ver el salvavidas de savePca y FS_CARGADA). */
+  if(pcaId && !datosSincronizados(['PCA','CONT'])){
+    toast('Espera un momento: todavía se están cargando las semanas de tus Planes Curriculares. Inténtalo de nuevo en unos segundos.', 'error');
+    return;
+  }
   state.pcaReturnTo = returnTo || 'pcalist';
   var d = currentDocente();
   if(pcaId){
@@ -8664,6 +8684,12 @@ function openPcaForm(pcaId, returnTo){
    curso o asignatura (p.ej. copiar el PCA de 7.º "A" para crear el de 7.º "B") y la guarde él
    mismo con "Guardar plan". */
 function duplicatePca(pcaId){
+  /* Mismo motivo que en openPcaForm: duplicar antes de que lleguen las semanas crearía una copia
+     con una fila en blanco por unidad, y el docente creería que el original estaba vacío. */
+  if(!datosSincronizados(['PCA','CONT'])){
+    toast('Espera un momento: todavía se están cargando las semanas de tus Planes Curriculares. Inténtalo de nuevo en unos segundos.', 'error');
+    return;
+  }
   var d = currentDocente();
   var header = load(LS.PCA).find(function(p){ return p.id===pcaId; });
   if(!header) return;
@@ -16996,7 +17022,9 @@ async function attachRealtimeListeners(){
     /* El Inspector General sí necesita INCIDENTES (pestaña Disciplina) aunque no sea "staff" —
        pero NUNCA debe sincronizar DECE (confidencial), la otra colección de esta lista. */
     var permitidoParaInspector = soyInspector && key === 'INCIDENTES';
-    if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; marcarDatosCambiados(); return; }
+    /* Estas quedan vacías a propósito para quien no es personal administrativo: se dan por
+       cargadas, porque su vacío es definitivo y no "todavía no llegó". */
+    if(!soyAdmin && !permitidoParaInspector && COLECCIONES_SOLO_STAFF.indexOf(key)!==-1){ FS_CACHE[key] = []; marcarColeccionCargada(key); marcarDatosCambiados(); return; }
     var colRef = window.FB.collection(window.FB.db, FS_COLLECTION[key]);
     /* CONTENIDOS es, con diferencia, la colección más pesada del sistema (una fila por CADA semana
        de CADA unidad de CADA PCA de TODO el colegio: miles de documentos). Sincronizarla completa
@@ -17017,6 +17045,7 @@ async function attachRealtimeListeners(){
         var porId = {};
         parciales.propias.concat(parciales.area).forEach(function(r){ porId[r.id] = r; });
         FS_CACHE[key] = Object.keys(porId).map(function(id){ return porId[id]; });
+        marcarColeccionCargada(key);
         marcarDatosCambiados();
         if(!debeOmitirRenderPorEdicionActiva(key)) render();
       };
@@ -17053,6 +17082,7 @@ async function attachRealtimeListeners(){
       var arr = [];
       snap.forEach(function(docSnap){ arr.push(docSnap.data()); });
       FS_CACHE[key] = arr;
+      marcarColeccionCargada(key);
       marcarDatosCambiados();
       // El eco de Firestore por el propio autoguardado del docente llega segundos después de
       // escribir; si en ese momento sigue con ese mismo formulario abierto, NO hace falta
