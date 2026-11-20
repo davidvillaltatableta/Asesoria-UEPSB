@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261118142806">
+<meta name="app-build" content="20261120125423">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -11729,10 +11729,26 @@ function nivelesLogroDiaHtml(dia, nivelLogroItems, nivelLogroMotivo, isIngles, e
     }).join('') + '</div>';
   }
   var columnas = ['basico','intermedio','avanzado'].map(function(tier){
-    var itemsEstaSemana = (nivelLogroItems[tier] && nivelLogroItems[tier].estaSemana) || [];
-    var itemsPendientes = (nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || [];
-    var itemsReforzar = (nivelLogroItems[tier] && nivelLogroItems[tier].reforzar) || [];
+    var itemsEstaSemana = ((nivelLogroItems[tier] && nivelLogroItems[tier].estaSemana) || []).slice();
+    var itemsPendientes = ((nivelLogroItems[tier] && nivelLogroItems[tier].pendientes) || []).slice();
+    var itemsReforzar = ((nivelLogroItems[tier] && nivelLogroItems[tier].reforzar) || []).slice();
     var seleccion = splitItemsList(dia[NIVEL_LOGRO_DIA_FIELD[tier]]);
+    /* Un ítem YA MARCADO en este día que ya no figura entre las opciones se vuelve a añadir a su
+       propia lista. Es exactamente lo que hace Contenidos Esenciales (ver semanalDayHtml) y aquí
+       faltaba, lo que provocaba el fallo que reportaron los docentes: "marco los Niveles de Logro,
+       guardo, salgo, vuelvo a entrar y aparecen desmarcados".
+
+       Por qué ocurría: la lista "Pendientes de la semana anterior" la arma
+       nivelLogroPendientesAnteriores, que devuelve SOLO los ítems de la semana anterior del PCA que
+       todavía no marcó NADIE (ver nivelLogroVistosDelPca). En cuanto el docente marcaba uno y
+       guardaba, ese ítem dejaba de estar pendiente, salía de la lista y se quedaba sin casilla que
+       dibujar: no es que se desmarcara —el dato seguía guardado— es que desaparecía de la pantalla.
+       Al volver a marcarlo y guardar, otra vez lo mismo. */
+    seleccion.forEach(function(it){
+      if(itemsEstaSemana.indexOf(it) === -1 && itemsPendientes.indexOf(it) === -1 && itemsReforzar.indexOf(it) === -1){
+        itemsEstaSemana.push(it);
+      }
+    });
     if(itemsEstaSemana.length || itemsPendientes.length || itemsReforzar.length) hayOpciones = true;
     if(seleccion.length) haySeleccion = true;
     var etiqueta = te(NIVEL_LOGRO_DIA_LABEL[tier], isIngles);
