@@ -3,7 +3,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-build" content="20261120135305">
+<meta name="app-build" content="20261122204710">
 <style>
   :root{
     --blue-900:#0A2A5E;
@@ -8755,7 +8755,7 @@ function semanalEsIngles(s){
   return /inglés|english/i.test(s.asignatura||'');
 }
 var PCA_EN = {
-  /* Lo que se exige desde la semana del 16-11-2026 (ver SEMANAL_EXIGE_SELECCION_DESDE). */
+  /* Lo que se exige desde la semana del 23-11-2026 (ver SEMANAL_EXIGE_SELECCION_DESDE). */
   'Obligatorio: marca al menos uno.': 'Required: select at least one.',
   'Pon la fecha de este día de clase.': 'Enter the date of this class day.',
   'Es necesario elegir al menos un Nivel de Logro y un Contenido Esencial en cada día de clase.':
@@ -11144,15 +11144,20 @@ function etiquetaDeJornada(s, dia){
   return etiquetaDiaSinClase(dia && dia.fecha) || (diaEsRepaso(s, dia) ? 'Repaso' : '');
 }
 
-/* ---------- Campos que se exigen desde la semana del 16 de noviembre de 2026 ----------
+/* ---------- Campos que se exigen desde la semana del 23 de noviembre de 2026 ----------
    El Plan Semanal pasa a exigir tres cosas más: la FECHA de cada día de clase, al menos un NIVEL DE
    LOGRO y al menos un CONTENIDO ESENCIAL marcados.
 
    Solo se exige en los planes de esa semana en adelante. Medido sobre los 1682 planes que ya
    existían: aplicarlo hacia atrás habría vuelto incompletos 229 planes por contenidos, 297 por
    niveles de logro y 100 por fechas — planes ya entregados, muchos de ellos revisados, que habrían
-   cambiado de veredicto solos y habrían descuadrado el reporte de Presentación. */
-var SEMANAL_EXIGE_SELECCION_DESDE = '2026-11-16';
+   cambiado de veredicto solos y habrían descuadrado el reporte de Presentación.
+
+   El corte se fijó primero en el 16 de noviembre y el asesor lo movió al 23: la semana del 16 ya
+   estaba empezada cuando se publicó el cambio y no correspondía exigirles algo a mitad de semana.
+   Decide la SEMANA del plan, no cuándo se creó, para que replanificar una semana vieja no arrastre
+   la exigencia; un plan sin fecha se juzga por su fecha de creación, para que no se escape. */
+var SEMANAL_EXIGE_SELECCION_DESDE = '2026-11-23';
 function semanalExigeSeleccion(s){
   var ref = (s && s.fechaInicio) || String((s && s.createdAt) || '').slice(0, 10);
   return !!ref && ref >= SEMANAL_EXIGE_SELECCION_DESDE;
@@ -16288,14 +16293,26 @@ function cargaQueExigePlanSemanal(docenteId, banda){
    (Dorys Cañas presenta "2.º BGU" y "2.º BGU/2.º DIS" en semanas distintas, y las dos siguen
    vivas). */
 var SEMANAS_PARA_ABANDONAR_CURSO = 4;
-function etiquetaDeCursoAbandonada(ultimaDelCurso, ultimaDeLaAsignatura){
-  if(!ultimaDelCurso || !ultimaDeLaAsignatura) return false;
-  return ultimaDelCurso < addDays(ultimaDeLaAsignatura, -7 * SEMANAS_PARA_ABANDONAR_CURSO);
+/* Sirve igual para una etiqueta de curso dentro de su asignatura que para una asignatura entera
+   dentro de lo que el docente entrega: en los dos casos la pregunta es la misma —¿hace más de un
+   mes que no se usa, habiendo cosas más nuevas?—. */
+function dejoDeUsarse(ultimaPropia, ultimaDeReferencia){
+  if(!ultimaPropia || !ultimaDeReferencia) return false;
+  return ultimaPropia < addDays(ultimaDeReferencia, -7 * SEMANAS_PARA_ABANDONAR_CURSO);
+}
+/* Un mismo grupo escrito de dos maneras. En Bachillerato varios docentes dictan juntos BGU y
+   Diseño y escriben el curso "2.º BGU/2.º DIS" unas semanas y "2.º BGU" otras: es un solo grupo y
+   un solo plan, pero el reporte los contaba como dos obligaciones y le reclamaba a la docente
+   justo el plan que sí había entregado, con el otro nombre. Para comparar se toma lo que va antes
+   de la barra. Comprobado sobre la base: todas las etiquetas con "/" son de esta forma
+   ("1.º BGU/1.º DIS", "2.º BGU/2.º DIS", "3.º BGU/3.º DIS") y su lado izquierdo existe suelto. */
+function claveGrupoCurso(curso){
+  return normCursoCmp(String(curso||'').split('/')[0]);
 }
 function combosExigiblesDocente(docenteId, banda, criterio){
   var out = [], vistos = {};
   function agregar(asignatura, curso, nivel){
-    var clave = asignatura + '|' + normCursoCmp(curso);
+    var clave = asignatura + '|' + claveGrupoCurso(curso);
     if(vistos[clave]) return;
     vistos[clave] = 1;
     out.push({asignatura:asignatura, curso:curso, nivel:nivel});
@@ -16305,22 +16322,34 @@ function combosExigiblesDocente(docenteId, banda, criterio){
        una asignatura existen planes con curso, mandan esos; si todos vienen sin curso, se exige un
        único plan de esa asignatura. Sin esto la misma asignatura se contaba dos veces. */
     var porAsignatura = {};
+    /* La fecha del plan más reciente del docente: es la referencia para saber si una ASIGNATURA
+       entera dejó de usarse (ver más abajo). */
+    var ultimaDelDocente = '';
     load(LS.SEMANAL).forEach(function(s){
       if(s.docenteId!==docenteId || !s.fechaInicio || !s.asignatura) return;
       if(esAsignaturaTallerPractico(s.nivel, s.asignatura)) return;
       if(banda && esEscuelaPorNivelCurso(s.nivel, s.curso) !== (banda==='escuela')) return;
+      if(s.fechaInicio > ultimaDelDocente) ultimaDelDocente = s.fechaInicio;
       var reg = porAsignatura[s.asignatura] || (porAsignatura[s.asignatura] = {cursos:{}, nivel:s.nivel||'', ultima:''});
       if(s.fechaInicio > reg.ultima) reg.ultima = s.fechaInicio;
       if(!(s.curso||'').trim()) return;
-      var clave = normCursoCmp(s.curso);
+      var clave = claveGrupoCurso(s.curso);
       var cur = reg.cursos[clave] || (reg.cursos[clave] = {etiqueta:s.curso, ultima:''});
-      cur.etiqueta = s.curso;
-      if(s.fechaInicio > cur.ultima) cur.ultima = s.fechaInicio;
+      /* Si el mismo grupo se escribió de dos maneras, se muestra la MÁS RECIENTE: es la que el
+         docente usa ahora y con la que el asesor lo va a reconocer. */
+      if(s.fechaInicio >= cur.ultima){ cur.etiqueta = s.curso; cur.ultima = s.fechaInicio; }
     });
     Object.keys(porAsignatura).forEach(function(a){
       var reg = porAsignatura[a];
+      /* Asignatura abandonada: varios docentes cambiaron a mitad de año el NOMBRE de la asignatura
+         (Dorys Cañas pasó de "Inglés" a "ENGLISH (Grupo A1-…)"; los de Diseño renombraron sus
+         módulos). Hasta ahora solo se descartaban las etiquetas de CURSO que se dejaban de usar, y
+         el nombre viejo de la asignatura se les reclamaba todas las semanas para siempre, aunque
+         tuvieran el plan entregado con el nombre nuevo. Mismo criterio que para los cursos: un mes
+         sin usarse, habiendo planes más nuevos. */
+      if(dejoDeUsarse(reg.ultima, ultimaDelDocente)) return;
       var claves = Object.keys(reg.cursos).filter(function(k){
-        return !etiquetaDeCursoAbandonada(reg.cursos[k].ultima, reg.ultima);
+        return !dejoDeUsarse(reg.cursos[k].ultima, reg.ultima);
       });
       if(!claves.length) agregar(a, '', reg.nivel);
       else claves.forEach(function(k){ agregar(a, reg.cursos[k].etiqueta, reg.nivel); });
@@ -16347,7 +16376,7 @@ function filasNoPresentadasDocente(docenteId, desde, hasta, banda, criterio){
         /* El curso solo se compara cuando los DOS lo tienen: con el criterio por asignatura no hay
            curso que exigir, y un plan guardado sin curso vale para el curso que se esperaba (si no,
            esos planes antiguos aparecerían como no presentados aunque estén hechos). */
-        if(criterio !== 'asignatura' && (r.curso||'') && (s.curso||'') && normCursoCmp(s.curso) !== normCursoCmp(r.curso)) return false;
+        if(criterio !== 'asignatura' && (r.curso||'') && (s.curso||'') && claveGrupoCurso(s.curso) !== claveGrupoCurso(r.curso)) return false;
         return s.fechaInicio >= w.semanaInicio && s.fechaInicio <= addDays(w.semanaInicio, 6);
       });
       if(!presentado) filas.push({ asignatura:r.asignatura, curso: r.curso || 'Todos sus cursos', nivel:r.nivel, semanaInicio:w.semanaInicio, semanaFin:w.semanaFin, limite:w.limite });
